@@ -836,9 +836,13 @@ function play(item){
   // ── VOD/LIVE: usar ExoPlayer nativo si está disponible ──
   if(typeof AndroidPlayer!=='undefined'){
     document.getElementById('playerWrap').classList.add('active');
+    // Altura fija para que ExoPlayer nativo ocupe ese espacio
+    document.getElementById('playerWrap').style.height='220px';
+    document.getElementById('playerWrap').style.display='block';
     showOverlay(false);
     document.getElementById('nowBar').classList.add('visible');
     setStatus(item.type==='vod'?'vod':'live');
+    updateFavBtn();
     AndroidPlayer.playUrl(url);
     clearInterval(EPG.timer);document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
@@ -916,11 +920,14 @@ function stopPlayer(){
   vid.pause();vid.removeAttribute('src');
   showOverlay(true,false,'Selecciona un canal o película');
   vcShowControls(false);
-  document.getElementById('playerWrap').classList.remove('active');
+  const pw=document.getElementById('playerWrap');
+  pw.classList.remove('active');
+  pw.style.height='';pw.style.display='';
   document.getElementById('nowBar').classList.remove('visible');
   document.getElementById('epgBar').classList.remove('visible');
   const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
   clearInterval(EPG.timer);S.current=null;
+  if(typeof AndroidPlayer!=='undefined') AndroidPlayer.stop();
 }
 function showOverlay(show,spinner=false,msg=''){
   const ov=document.getElementById('pOverlay');ov.classList.toggle('hidden',!show);
