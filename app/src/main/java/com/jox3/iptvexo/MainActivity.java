@@ -50,10 +50,13 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Edge to edge total
         getWindow().setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         );
+
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.player_view);
@@ -77,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
         webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
         webView.loadUrl("file:///android_asset/player.html");
 
+        // EPG overlay para fullscreen
         epgOverlay = new TextView(this);
         epgOverlay.setTextColor(Color.WHITE);
         epgOverlay.setTextSize(14);
@@ -123,17 +127,9 @@ public class MainActivity extends AppCompatActivity {
         isPlaying = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Ocultar el video nativo del WebView
-        webView.evaluateJavascript(
-            "document.getElementById('vid').style.display='none';" +
-            "document.getElementById('playerWrap').style.background='transparent';",
-            null
-        );
-
         playerView.setVisibility(View.VISIBLE);
         setInlinePlayerSize();
 
-        // ExoPlayer con SSL bypass via OkHttp
         OkHttpClient okHttpClient = buildUnsafeOkHttpClient();
         OkHttpDataSource.Factory dataSourceFactory = new OkHttpDataSource.Factory(okHttpClient);
         player = new ExoPlayer.Builder(this)
@@ -171,14 +167,18 @@ public class MainActivity extends AppCompatActivity {
         if (!isPlaying) return;
         isFullscreen = true;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        );
+
+        // Fullscreen completo — sin barras
+        int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
+        // PlayerView ocupa todo
         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
@@ -193,6 +193,7 @@ public class MainActivity extends AppCompatActivity {
         isFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setInlinePlayerSize();
         webView.setVisibility(View.VISIBLE);
         epgOverlay.setVisibility(View.GONE);
@@ -206,15 +207,12 @@ public class MainActivity extends AppCompatActivity {
             player = null;
         }
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         playerView.setVisibility(View.GONE);
         epgOverlay.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
-        webView.evaluateJavascript(
-            "document.getElementById('vid').style.display='';",
-            null
-        );
     }
 
     @Override
