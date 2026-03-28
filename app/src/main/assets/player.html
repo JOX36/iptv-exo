@@ -835,11 +835,10 @@ function play(item){
 
   // ── VOD/LIVE: usar ExoPlayer nativo si está disponible ──
   if(typeof AndroidPlayer!=='undefined'){
-    setStatus(item.type==='vod'?'vod':'live');
+    document.getElementById('playerWrap').classList.add('active');
     showOverlay(false);
     document.getElementById('nowBar').classList.add('visible');
-    // Ocultar playerWrap del WebView — ExoPlayer lo maneja en la app
-    document.getElementById('playerWrap').classList.remove('active');
+    setStatus(item.type==='vod'?'vod':'live');
     AndroidPlayer.playUrl(url);
     clearInterval(EPG.timer);document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
