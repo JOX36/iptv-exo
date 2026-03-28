@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>IPTV Player — JOX3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -41,7 +41,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 #appScreen{display:none;height:100vh;flex-direction:column}
 
 /* TOPBAR */
-.topbar{display:flex;flex-direction:column;background:var(--bg2);border-bottom:1px solid var(--border);padding:6px 10px;flex-shrink:0;z-index:100;gap:6px}
+.topbar{display:flex;flex-direction:column;background:var(--bg2);border-bottom:1px solid var(--border);padding:6px 10px;padding-top:calc(6px + env(safe-area-inset-top, 24px));flex-shrink:0;z-index:100;gap:6px}
 .topbar-row1{display:flex;align-items:center;gap:6px;width:100%;min-width:0}
 .topbar-row2{display:flex;align-items:center;gap:6px;width:100%}
 .topbar-logo{font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:700;color:var(--accent);letter-spacing:1px;white-space:nowrap;flex-shrink:0}
@@ -384,7 +384,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 <div id="appScreen">
   <div class="topbar">
     <div class="topbar-row1">
-      <div class="topbar-logo">▶ JOX3</div>
+      <div class="topbar-logo">◈ JOX3 TV</div>
       <div class="sec-tabs">
         <div class="sec-tab active" id="secLive"   onclick="switchSec('live')">📺 Live</div>
         <div class="sec-tab"        id="secVod"    onclick="switchSec('vod')">🎬 VOD</div>
@@ -482,6 +482,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
             </div>
           </div>
           <button class="vbtn" id="btnFav" onclick="toggleFavCurrent()">⭐ Favorito</button>
+          <button class="vbtn" onclick="goFullscreen()">⛶ Pantalla completa</button>
           <div class="drop-wrap">
             <button class="vbtn" id="btnExt" onclick="toggleDrop('dropExt')">▶ Reproductor</button>
             <div class="drop-menu" id="dropExt">
@@ -788,7 +789,14 @@ function detectQuality(name){
   return '';
 }
 
-// ══ ANDROID PLAYER ══
+// ══ FULLSCREEN BUTTON ══
+function goFullscreen(){
+  if(typeof AndroidPlayer!=='undefined'){
+    AndroidPlayer.goFullscreen();
+  }else{
+    doFullscreen();
+  }
+}
 function launchVLC(url,label=''){
   if(!url){toast('⚠️ Sin URL');return}
   if(typeof AndroidPlayer!=='undefined'){
