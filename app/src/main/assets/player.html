@@ -108,6 +108,9 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 /* PLAYER */
 .player-wrap{flex-shrink:0;background:#000;position:relative;display:none}
 .player-wrap.active{display:block}
+.player-wrap.android-mode{background:transparent!important}
+.player-wrap.android-mode #vid{display:none!important}
+.player-wrap.android-mode .p-overlay{display:none!important}
 #vid{width:100%;display:block;background:#000;max-height:32vh;transition:object-fit .2s}
 .vid-contain{object-fit:contain}
 .vid-cover{object-fit:cover}
@@ -835,10 +838,9 @@ function play(item){
 
   // ── VOD/LIVE: usar ExoPlayer nativo si está disponible ──
   if(typeof AndroidPlayer!=='undefined'){
-    document.getElementById('playerWrap').classList.add('active');
-    // Altura fija para que ExoPlayer nativo ocupe ese espacio
-    document.getElementById('playerWrap').style.height='220px';
-    document.getElementById('playerWrap').style.display='block';
+    const pw=document.getElementById('playerWrap');
+    pw.classList.add('active','android-mode');
+    pw.style.height='280px';
     showOverlay(false);
     document.getElementById('nowBar').classList.add('visible');
     setStatus(item.type==='vod'?'vod':'live');
@@ -921,7 +923,7 @@ function stopPlayer(){
   showOverlay(true,false,'Selecciona un canal o película');
   vcShowControls(false);
   const pw=document.getElementById('playerWrap');
-  pw.classList.remove('active');
+  pw.classList.remove('active','android-mode');
   pw.style.height='';pw.style.display='';
   document.getElementById('nowBar').classList.remove('visible');
   document.getElementById('epgBar').classList.remove('visible');
