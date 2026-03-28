@@ -13,6 +13,10 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
+import android.widget.FrameLayout;
+import android.graphics.Color;
+import android.view.Gravity;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
@@ -25,6 +29,7 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private ExoPlayer player;
     private PlayerView playerView;
+    private TextView epgOverlay;
     private boolean isPlaying = false;
     private boolean isFullscreen = false;
 
@@ -40,6 +45,22 @@ public class MainActivity extends AppCompatActivity {
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         playerView.setVisibility(View.GONE);
         webView = findViewById(R.id.webview);
+
+        // EPG overlay para fullscreen
+        epgOverlay = new TextView(this);
+        epgOverlay.setTextColor(Color.WHITE);
+        epgOverlay.setTextSize(14);
+        epgOverlay.setPadding(24, 12, 24, 12);
+        epgOverlay.setBackgroundColor(Color.argb(160, 0, 0, 0));
+        epgOverlay.setVisibility(View.GONE);
+        epgOverlay.setGravity(Gravity.START);
+        FrameLayout.LayoutParams epgParams = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
+        epgParams.gravity = Gravity.BOTTOM;
+        addContentView(epgOverlay, epgParams);
+
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
@@ -57,15 +78,12 @@ public class MainActivity extends AppCompatActivity {
         }
         isPlaying = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        // Mostrar PlayerView pequeño encima del WebView
         playerView.setVisibility(View.VISIBLE);
         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 600
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
         );
         params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         playerView.setLayoutParams(params);
-
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
         MediaItem mediaItem = MediaItem.fromUri(url);
@@ -82,6 +100,10 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
+    }
+
     private void enterFullscreen() {
         if (!isPlaying) return;
         isFullscreen = true;
@@ -94,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
-        // Expandir PlayerView a pantalla completa
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
@@ -102,20 +123,21 @@ public class MainActivity extends AppCompatActivity {
         );
         playerView.setLayoutParams(params);
         webView.setVisibility(View.GONE);
+        epgOverlay.setVisibility(View.VISIBLE);
     }
 
     private void exitFullscreen() {
         isFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
-        // Volver PlayerView a tamaño pequeño
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 600
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
         );
         params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         playerView.setLayoutParams(params);
         webView.setVisibility(View.VISIBLE);
+        epgOverlay.setVisibility(View.GONE);
     }
 
     private void stopPlayer() {
@@ -129,6 +151,7 @@ public class MainActivity extends AppCompatActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         playerView.setVisibility(View.GONE);
+        epgOverlay.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
     }
 
@@ -147,9 +170,8 @@ public class MainActivity extends AppCompatActivity {
     public void onPictureInPictureModeChanged(boolean isInPiP) {
         super.onPictureInPictureModeChanged(isInPiP);
         playerView.setUseController(!isInPiP);
-        if (!isInPiP && isFullscreen) {
-            exitFullscreen();
-        }
+        epgOverlay.setVisibility(isInPiP ? View.GONE : (isFullscreen ? View.VISIBLE : View.GONE));
+        if (!isInPiP && isFullscreen) exitFullscreen();
     }
 
     class PlayerBridge {
@@ -168,6 +190,16 @@ public class MainActivity extends AppCompatActivity {
             runOnUiThread(() -> {
                 if (isFullscreen) exitFullscreen();
                 else enterFullscreen();
+            });
+        }
+
+        @JavascriptInterface
+        public void updateEpg(String text) {
+            runOnUiThread(() -> {
+                if (isFullscreen && text != null && !text.isEmpty()) {
+                    epgOverlay.setText(text);
+                    epgOverlay.setVisibility(View.VISIBLE);
+                }
             });
         }
     }
