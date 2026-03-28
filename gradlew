@@ -1,7 +1,7 @@
 #!/bin/sh
 APP_NAME="Gradle"
 APP_BASE_NAME=`basename "$0"`
-DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+DEFAULT_JVM_OPTS="-Xmx64m -Xms64m"
 die () { echo; echo "ERROR: $*"; echo; exit 1; } >&2
 warn () { echo "$*"; } >&2
 SAVED="`pwd`"
