@@ -53,15 +53,6 @@ public class MainActivity extends AppCompatActivity {
         }
         isPlaying = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-        getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
-            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        );
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
@@ -80,6 +71,23 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void enterFullscreen() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        );
+    }
+
+    private void exitFullscreen() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+    }
+
     private void stopPlayer() {
         isPlaying = false;
         if (player != null) {
@@ -87,8 +95,7 @@ public class MainActivity extends AppCompatActivity {
             player = null;
         }
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        exitFullscreen();
         playerView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
     }
@@ -119,6 +126,16 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void stop() {
             runOnUiThread(() -> stopPlayer());
+        }
+
+        @JavascriptInterface
+        public void goFullscreen() {
+            runOnUiThread(() -> enterFullscreen());
+        }
+
+        @JavascriptInterface
+        public void exitFullscreen() {
+            runOnUiThread(() -> exitFullscreen());
         }
     }
 
