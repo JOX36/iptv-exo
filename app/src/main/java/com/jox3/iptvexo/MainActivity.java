@@ -1,7 +1,9 @@
 package com.jox3.iptvexo;
 
+import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
 import android.content.pm.ActivityInfo;
+import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Rational;
@@ -9,12 +11,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
-import android.widget.FrameLayout;
 import android.graphics.Color;
 import android.view.Gravity;
 import androidx.appcompat.app.AppCompatActivity;
@@ -33,6 +36,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean isPlaying = false;
     private boolean isFullscreen = false;
 
+    @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -41,10 +45,28 @@ public class MainActivity extends AppCompatActivity {
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         );
         setContentView(R.layout.activity_main);
+
         playerView = findViewById(R.id.player_view);
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         playerView.setVisibility(View.GONE);
+
         webView = findViewById(R.id.webview);
+        WebSettings ws = webView.getSettings();
+        ws.setJavaScriptEnabled(true);
+        ws.setDomStorageEnabled(true);
+        ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        ws.setMediaPlaybackRequiresUserGesture(false);
+
+        // Aceptar cualquier certificado SSL — resuelve servidores HTTPS con puerto no estándar
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.proceed();
+            }
+        });
+
+        webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
+        webView.loadUrl("file:///android_asset/player.html");
 
         // EPG overlay para fullscreen
         epgOverlay = new TextView(this);
@@ -60,15 +82,6 @@ public class MainActivity extends AppCompatActivity {
         );
         epgParams.gravity = Gravity.BOTTOM;
         addContentView(epgOverlay, epgParams);
-
-        WebSettings ws = webView.getSettings();
-        ws.setJavaScriptEnabled(true);
-        ws.setDomStorageEnabled(true);
-        ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        ws.setMediaPlaybackRequiresUserGesture(false);
-        webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
-        webView.setWebViewClient(new WebViewClient());
-        webView.loadUrl("file:///android_asset/player.html");
     }
 
     private void initPlayer(String url) {
