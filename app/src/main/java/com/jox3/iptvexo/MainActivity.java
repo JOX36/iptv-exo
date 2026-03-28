@@ -23,10 +23,20 @@ import android.view.Gravity;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.okhttp.OkHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import okhttp3.OkHttpClient;
 
+@UnstableApi
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
@@ -47,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.player_view);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         playerView.setVisibility(View.GONE);
 
         webView = findViewById(R.id.webview);
@@ -57,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setMediaPlaybackRequiresUserGesture(false);
 
-        // Aceptar cualquier certificado SSL — resuelve servidores HTTPS con puerto no estándar
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
@@ -68,7 +77,6 @@ public class MainActivity extends AppCompatActivity {
         webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
         webView.loadUrl("file:///android_asset/player.html");
 
-        // EPG overlay para fullscreen
         epgOverlay = new TextView(this);
         epgOverlay.setTextColor(Color.WHITE);
         epgOverlay.setTextSize(14);
@@ -84,6 +92,29 @@ public class MainActivity extends AppCompatActivity {
         addContentView(epgOverlay, epgParams);
     }
 
+    private OkHttpClient buildUnsafeOkHttpClient() {
+        try {
+            X509TrustManager trustAll = new X509TrustManager() {
+                @SuppressLint("TrustAllX509TrustManager")
+                @Override
+                public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+                @SuppressLint("TrustAllX509TrustManager")
+                @Override
+                public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
+                @Override
+                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+            };
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, new TrustManager[]{trustAll}, new java.security.SecureRandom());
+            return new OkHttpClient.Builder()
+                .sslSocketFactory(sslContext.getSocketFactory(), trustAll)
+                .hostnameVerifier((hostname, session) -> true)
+                .build();
+        } catch (Exception e) {
+            return new OkHttpClient.Builder().build();
+        }
+    }
+
     private void initPlayer(String url) {
         if (player != null) {
             player.release();
@@ -91,13 +122,23 @@ public class MainActivity extends AppCompatActivity {
         }
         isPlaying = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        playerView.setVisibility(View.VISIBLE);
-        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
+
+        // Ocultar el video nativo del WebView
+        webView.evaluateJavascript(
+            "document.getElementById('vid').style.display='none';" +
+            "document.getElementById('playerWrap').style.background='transparent';",
+            null
         );
-        params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        playerView.setLayoutParams(params);
-        player = new ExoPlayer.Builder(this).build();
+
+        playerView.setVisibility(View.VISIBLE);
+        setInlinePlayerSize();
+
+        // ExoPlayer con SSL bypass via OkHttp
+        OkHttpClient okHttpClient = buildUnsafeOkHttpClient();
+        OkHttpDataSource.Factory dataSourceFactory = new OkHttpDataSource.Factory(okHttpClient);
+        player = new ExoPlayer.Builder(this)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
+            .build();
         playerView.setPlayer(player);
         MediaItem mediaItem = MediaItem.fromUri(url);
         player.setMediaItem(mediaItem);
@@ -111,6 +152,15 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    private void setInlinePlayerSize() {
+        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
+        );
+        params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        playerView.setLayoutParams(params);
     }
 
     private int dpToPx(int dp) {
@@ -129,11 +179,11 @@ public class MainActivity extends AppCompatActivity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         );
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         playerView.setLayoutParams(params);
         webView.setVisibility(View.GONE);
         epgOverlay.setVisibility(View.VISIBLE);
@@ -143,12 +193,7 @@ public class MainActivity extends AppCompatActivity {
         isFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
-        );
-        params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        playerView.setLayoutParams(params);
+        setInlinePlayerSize();
         webView.setVisibility(View.VISIBLE);
         epgOverlay.setVisibility(View.GONE);
     }
@@ -166,6 +211,10 @@ public class MainActivity extends AppCompatActivity {
         playerView.setVisibility(View.GONE);
         epgOverlay.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
+        webView.evaluateJavascript(
+            "document.getElementById('vid').style.display='';",
+            null
+        );
     }
 
     @Override
