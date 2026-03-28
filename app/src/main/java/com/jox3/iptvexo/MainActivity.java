@@ -28,25 +28,19 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Pantalla completa edge-to-edge
         getWindow().setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         );
-
         setContentView(R.layout.activity_main);
-
         playerView = findViewById(R.id.player_view);
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         webView = findViewById(R.id.webview);
-
         WebSettings ws = webView.getSettings();
         ws.setJavaScriptEnabled(true);
         ws.setDomStorageEnabled(true);
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setMediaPlaybackRequiresUserGesture(false);
-
         webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
         webView.setWebViewClient(new WebViewClient());
         webView.loadUrl("file:///android_asset/player.html");
@@ -57,13 +51,8 @@ public class MainActivity extends AppCompatActivity {
             player.release();
             player = null;
         }
-
         isPlaying = true;
-
-        // Mantener pantalla encendida
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        // Landscape + fullscreen
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         getWindow().getDecorView().setSystemUiVisibility(
             View.SYSTEM_UI_FLAG_FULLSCREEN |
@@ -73,17 +62,14 @@ public class MainActivity extends AppCompatActivity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
-
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
         playerView.setVisibility(View.VISIBLE);
         webView.setVisibility(View.GONE);
-
         MediaItem mediaItem = MediaItem.fromUri(url);
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
-
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -100,18 +86,13 @@ public class MainActivity extends AppCompatActivity {
             player.release();
             player = null;
         }
-        // Apagar keep screen on
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        // Volver a portrait
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
-
         playerView.setVisibility(View.GONE);
         webView.setVisibility(View.VISIBLE);
     }
 
-    // PiP al presionar home
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
@@ -156,3 +137,4 @@ public class MainActivity extends AppCompatActivity {
         } else {
             super.onBackPressed();
         }
+    }
