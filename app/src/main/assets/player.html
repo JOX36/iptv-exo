@@ -108,8 +108,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 /* PLAYER */
 .player-wrap{flex-shrink:0;background:#000;position:relative;display:none}
 .player-wrap.active{display:block}
-.player-wrap.android-mode{background:transparent!important;height:0!important;min-height:0!important;overflow:hidden!important;padding:0!important;margin:0!important}
-.player-wrap.android-mode *{display:none!important}
+.player-wrap.android-mode{height:0!important;min-height:0!important;overflow:hidden!important;display:block!important;padding:0!important;margin:0!important;background:transparent!important}
 #vid{width:100%;display:block;background:#000;max-height:32vh;transition:object-fit .2s}
 .vid-contain{object-fit:contain}
 .vid-cover{object-fit:cover}
@@ -874,11 +873,10 @@ function play(item){
   if(typeof AndroidPlayer!=='undefined'){
     const pw=document.getElementById('playerWrap');
     pw.classList.add('active','android-mode');
-    pw.style.height='280px';
-    showOverlay(false);
     document.getElementById('nowBar').classList.add('visible');
     setStatus(item.type==='vod'?'vod':'live');
     updateFavBtn();
+    // Notificar a Java para mostrar ExoPlayer
     AndroidPlayer.playUrl(url);
     clearInterval(EPG.timer);document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
@@ -958,7 +956,7 @@ function stopPlayer(){
   vcShowControls(false);
   const pw=document.getElementById('playerWrap');
   pw.classList.remove('active','android-mode');
-  pw.style.height='';pw.style.display='';
+  pw.style.height='';
   document.getElementById('nowBar').classList.remove('visible');
   document.getElementById('epgBar').classList.remove('visible');
   const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
