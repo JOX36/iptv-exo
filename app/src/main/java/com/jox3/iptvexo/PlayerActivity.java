@@ -413,16 +413,27 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (!isInPictureInPictureMode()) {
+        // Solo liberar si NO es PiP y la activity se está terminando
+        if (!isInPictureInPictureMode() && isFinishing()) {
             if (player != null) { player.stop(); player.release(); player = null; }
+        } else if (!isInPictureInPictureMode()) {
+            // Pausar cuando va a background (ej: home button sin PiP)
+            if (player != null) player.pause();
         }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        // Reanudar si vuelve de background
+        if (player != null) player.play();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         hideHandler.removeCallbacksAndMessages(null);
-        if (player != null) { player.release(); player = null; }
+        if (player != null) { player.stop(); player.release(); player = null; }
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
         result.putExtra("fav_removed", favChanged && !favAdded);
@@ -436,4 +447,5 @@ public class PlayerActivity extends AppCompatActivity {
         if (isVodFullscreen) exitVodFullscreen();
         else super.onBackPressed();
     }
-}
+                             }
+
