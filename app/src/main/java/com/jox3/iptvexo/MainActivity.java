@@ -50,17 +50,14 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Edge to edge total
         getWindow().setFlags(
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         );
-
         setContentView(R.layout.activity_main);
 
         playerView = findViewById(R.id.player_view);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         playerView.setVisibility(View.GONE);
 
         webView = findViewById(R.id.webview);
@@ -69,25 +66,21 @@ public class MainActivity extends AppCompatActivity {
         ws.setDomStorageEnabled(true);
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setMediaPlaybackRequiresUserGesture(false);
-
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.proceed();
             }
         });
-
         webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
         webView.loadUrl("file:///android_asset/player.html");
 
-        // EPG overlay para fullscreen
         epgOverlay = new TextView(this);
         epgOverlay.setTextColor(Color.WHITE);
         epgOverlay.setTextSize(14);
         epgOverlay.setPadding(24, 12, 24, 12);
         epgOverlay.setBackgroundColor(Color.argb(160, 0, 0, 0));
         epgOverlay.setVisibility(View.GONE);
-        epgOverlay.setGravity(Gravity.START);
         FrameLayout.LayoutParams epgParams = new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
@@ -96,23 +89,19 @@ public class MainActivity extends AppCompatActivity {
         addContentView(epgOverlay, epgParams);
     }
 
+    @SuppressLint("TrustAllX509TrustManager")
     private OkHttpClient buildUnsafeOkHttpClient() {
         try {
             X509TrustManager trustAll = new X509TrustManager() {
-                @SuppressLint("TrustAllX509TrustManager")
-                @Override
-                public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
-                @SuppressLint("TrustAllX509TrustManager")
-                @Override
-                public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {}
-                @Override
+                public void checkClientTrusted(X509Certificate[] c, String a) throws CertificateException {}
+                public void checkServerTrusted(X509Certificate[] c, String a) throws CertificateException {}
                 public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
             };
             SSLContext sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, new TrustManager[]{trustAll}, new java.security.SecureRandom());
             return new OkHttpClient.Builder()
                 .sslSocketFactory(sslContext.getSocketFactory(), trustAll)
-                .hostnameVerifier((hostname, session) -> true)
+                .hostnameVerifier((h, s) -> true)
                 .build();
         } catch (Exception e) {
             return new OkHttpClient.Builder().build();
@@ -120,70 +109,59 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void initPlayer(String url) {
-        if (player != null) {
-            player.release();
-            player = null;
-        }
+        if (player != null) { player.release(); player = null; }
         isPlaying = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // PlayerView encima del WebView — tamaño fijo inline
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        playerView.setBackgroundColor(Color.BLACK);
+        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
+        );
+        params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        playerView.setLayoutParams(params);
         playerView.setVisibility(View.VISIBLE);
-        setInlinePlayerSize();
 
-        OkHttpClient okHttpClient = buildUnsafeOkHttpClient();
-        OkHttpDataSource.Factory dataSourceFactory = new OkHttpDataSource.Factory(okHttpClient);
+        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeOkHttpClient());
         player = new ExoPlayer.Builder(this)
-            .setMediaSourceFactory(new DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
             .build();
         playerView.setPlayer(player);
-        MediaItem mediaItem = MediaItem.fromUri(url);
-        player.setMediaItem(mediaItem);
+        player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
         player.play();
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_ENDED || state == Player.STATE_IDLE) {
+                if (state == Player.STATE_ENDED || state == Player.STATE_IDLE)
                     runOnUiThread(() -> stopPlayer());
-                }
             }
         });
-    }
 
-    private void setInlinePlayerSize() {
-        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
-        );
-        params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        playerView.setLayoutParams(params);
-    }
-
-    private int dpToPx(int dp) {
-        return Math.round(dp * getResources().getDisplayMetrics().density);
+        // Desplazar WebView para que empiece debajo del player
+        webView.post(() -> {
+            ViewGroup.MarginLayoutParams wvp = (ViewGroup.MarginLayoutParams) webView.getLayoutParams();
+            wvp.topMargin = dpToPx(280);
+            webView.setLayoutParams(wvp);
+        });
     }
 
     private void enterFullscreen() {
         if (!isPlaying) return;
         isFullscreen = true;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-
-        // Fullscreen completo — sin barras
-        int flags = View.SYSTEM_UI_FLAG_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
-        getWindow().getDecorView().setSystemUiVisibility(flags);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
-        // PlayerView ocupa todo
-        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
-        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        // PlayerView ocupa toda la pantalla
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+        );
         playerView.setLayoutParams(params);
         webView.setVisibility(View.GONE);
         epgOverlay.setVisibility(View.VISIBLE);
@@ -194,7 +172,13 @@ public class MainActivity extends AppCompatActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        setInlinePlayerSize();
+        // Volver a tamaño inline
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        RelativeLayout.LayoutParams params = new RelativeLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
+        );
+        params.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        playerView.setLayoutParams(params);
         webView.setVisibility(View.VISIBLE);
         epgOverlay.setVisibility(View.GONE);
     }
@@ -202,27 +186,32 @@ public class MainActivity extends AppCompatActivity {
     private void stopPlayer() {
         isPlaying = false;
         isFullscreen = false;
-        if (player != null) {
-            player.release();
-            player = null;
-        }
+        if (player != null) { player.release(); player = null; }
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         playerView.setVisibility(View.GONE);
         epgOverlay.setVisibility(View.GONE);
+        // Resetear margen del WebView
+        webView.post(() -> {
+            ViewGroup.MarginLayoutParams wvp = (ViewGroup.MarginLayoutParams) webView.getLayoutParams();
+            wvp.topMargin = 0;
+            webView.setLayoutParams(wvp);
+        });
         webView.setVisibility(View.VISIBLE);
+    }
+
+    private int dpToPx(int dp) {
+        return Math.round(dp * getResources().getDisplayMetrics().density);
     }
 
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
         if (isPlaying && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PictureInPictureParams params = new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(16, 9))
-                .build();
-            enterPictureInPictureMode(params);
+            enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16, 9)).build());
         }
     }
 
@@ -236,21 +225,14 @@ public class MainActivity extends AppCompatActivity {
 
     class PlayerBridge {
         @JavascriptInterface
-        public void playUrl(String url) {
-            runOnUiThread(() -> initPlayer(url));
-        }
+        public void playUrl(String url) { runOnUiThread(() -> initPlayer(url)); }
 
         @JavascriptInterface
-        public void stop() {
-            runOnUiThread(() -> stopPlayer());
-        }
+        public void stop() { runOnUiThread(() -> stopPlayer()); }
 
         @JavascriptInterface
         public void goFullscreen() {
-            runOnUiThread(() -> {
-                if (isFullscreen) exitFullscreen();
-                else enterFullscreen();
-            });
+            runOnUiThread(() -> { if (isFullscreen) exitFullscreen(); else enterFullscreen(); });
         }
 
         @JavascriptInterface
@@ -272,15 +254,9 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (isFullscreen) {
-            exitFullscreen();
-        } else if (isPlaying) {
-            stopPlayer();
-            webView.evaluateJavascript("stopPlayer()", null);
-        } else if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            super.onBackPressed();
-        }
+        if (isFullscreen) exitFullscreen();
+        else if (isPlaying) { stopPlayer(); webView.evaluateJavascript("stopPlayer()", null); }
+        else if (webView.canGoBack()) webView.goBack();
+        else super.onBackPressed();
     }
 }
