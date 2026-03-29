@@ -1,19 +1,46 @@
 <?xml version="1.0" encoding="utf-8"?>
-<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="#000000">
 
-    <WebView
-        android:id="@+id/webview"
+    <!-- PlayerView fullscreen overlay — solo visible en fullscreen -->
+    <FrameLayout
+        android:id="@+id/fullscreen_container"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="match_parent"
+        android:visibility="gone">
 
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/player_view"
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/player_view_fs"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+    </FrameLayout>
+
+    <!-- Layout normal (inline) -->
+    <LinearLayout
+        android:id="@+id/inline_container"
         android:layout_width="match_parent"
-        android:layout_height="280dp"
-        android:layout_alignParentTop="true"
-        android:visibility="gone" />
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-</RelativeLayout>
+        <!-- PlayerView inline — oculto hasta reproducir -->
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/player_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="0"
+            android:visibility="gone" />
+
+        <!-- WebView ocupa el resto -->
+        <WebView
+            android:id="@+id/webview"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
+
+</LinearLayout>
