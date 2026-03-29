@@ -364,6 +364,23 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .ep-btn.play{background:rgba(0,212,255,.1);border-color:var(--accent);color:var(--accent)}
 .modal-loading{display:flex;flex-direction:column;align-items:center;padding:30px;gap:12px}
 .modal-loading p{color:var(--muted);font-size:.8rem}
+
+/* VOD INFO MODAL */
+.vod-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;display:flex;align-items:flex-end;justify-content:center}
+.vod-modal-bg.hidden{display:none}
+.vod-modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px 16px 0 0;width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;animation:slideUp .25s ease;overflow:hidden}
+.vod-modal-cover{width:100%;height:200px;object-fit:cover;background:var(--bg3);display:block;flex-shrink:0}
+.vod-modal-cover-ph{width:100%;height:160px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:4rem;flex-shrink:0}
+.vod-modal-info{flex:1;overflow-y:auto;padding:16px}
+.vod-modal-title{font-family:'Rajdhani',sans-serif;font-size:1.3rem;font-weight:700;margin-bottom:4px}
+.vod-modal-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.vod-modal-badge{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:.68rem;color:var(--muted2)}
+.vod-modal-rating{color:var(--yellow);font-size:.78rem;font-weight:600}
+.vod-modal-plot{font-size:.8rem;color:var(--muted2);line-height:1.5;margin-bottom:16px}
+.vod-modal-btns{display:flex;gap:8px;flex-wrap:wrap}
+.vod-modal-play{flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:var(--radius);color:#0a0e14;cursor:pointer;font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;padding:12px;letter-spacing:.5px}
+.vod-modal-ext{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--muted2);cursor:pointer;font-size:.85rem;padding:12px 16px}
+.vod-modal-close{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.6);border:none;border-radius:50%;color:#fff;cursor:pointer;font-size:1.2rem;width:34px;height:34px;display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(4px)}
 </style>
 </head>
 <body>
@@ -560,6 +577,23 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
   </div>
 </div>
 
+<!-- VOD INFO MODAL -->
+<div class="vod-modal-bg hidden" id="vodModal" onclick="if(event.target===this)closeVodModal()">
+  <div class="vod-modal" style="position:relative">
+    <button class="vod-modal-close" onclick="closeVodModal()">✕</button>
+    <div id="vodModalCover"></div>
+    <div class="vod-modal-info">
+      <div class="vod-modal-title" id="vodModalTitle">—</div>
+      <div class="vod-modal-meta" id="vodModalMeta"></div>
+      <div class="vod-modal-plot" id="vodModalPlot"></div>
+      <div class="vod-modal-btns">
+        <button class="vod-modal-play" id="vodModalPlayBtn" onclick="playFromVodModal()">▶ Reproducir</button>
+        <button class="vod-modal-ext" onclick="extFromVodModal()">📲 Externo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // ══ STATE ══
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
@@ -690,7 +724,8 @@ function vodCard(ch){
   const isAct=S.current?.id===ch.id;const isFav=S.favs.has(fk(ch));
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
   const imgEl=ch.cover?`<img class="vod-thumb" src="${esc(ch.cover)}" loading="lazy" onerror="this.outerHTML='<div class=vod-ph>${S.sec==='series'?'🎭':'🎬'}</div>'">`:`<div class="vod-ph">${S.sec==='series'?'🎭':'🎬'}</div>`;
-  return `<div class="vod-card${isAct?' active':''}" onclick='play(${js(ch)})'><div style="position:relative">${imgEl}${qBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div><button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
+  const onclick=ch.type==='series'?`play(${js(ch)})`:`openVodInfo(${js(ch)})`;
+  return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'><div style="position:relative">${imgEl}${qBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div><button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
 }
 function renderSide(){
   const el=document.getElementById('sideList');const t=S.sTab;
@@ -1135,6 +1170,42 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function js(obj){return JSON.stringify(obj).replace(/'/g,"&#39;")}
 function toast(msg,ms=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms)}
 function timeAgo(ts){const d=Date.now()-ts,m=Math.floor(d/60000);if(m<1)return'ahora';if(m<60)return`${m}m`;const h=Math.floor(m/60);if(h<24)return`${h}h`;return`${Math.floor(h/24)}d`}
+
+// ══ VOD INFO MODAL ══
+let _vodModalItem=null;
+async function openVodInfo(item){
+  _vodModalItem=item;
+  document.getElementById('vodModal').classList.remove('hidden');
+  document.getElementById('vodModalTitle').textContent=item.name;
+  document.getElementById('vodModalMeta').innerHTML='<span class="vod-modal-badge">⏳ Cargando...</span>';
+  document.getElementById('vodModalPlot').textContent='';
+  const coverEl=document.getElementById('vodModalCover');
+  if(item.cover){
+    coverEl.innerHTML=`<img class="vod-modal-cover" src="${esc(item.cover)}" onerror="this.outerHTML='<div class=vod-modal-cover-ph>🎬</div>'">`;
+  }else{
+    coverEl.innerHTML=`<div class="vod-modal-cover-ph">🎬</div>`;
+  }
+  try{
+    const data=await xApi('get_vod_info',`&vod_id=${item.id}`);
+    const info=data.info||{};
+    const meta=[];
+    if(info.releasedate||info.year) meta.push(`<span class="vod-modal-badge">${(info.releasedate||info.year||'').substring(0,4)}</span>`);
+    if(info.duration) meta.push(`<span class="vod-modal-badge">⏱ ${info.duration}</span>`);
+    if(info.genre) meta.push(`<span class="vod-modal-badge">${esc(info.genre)}</span>`);
+    if(info.rating||item.rating) meta.push(`<span class="vod-modal-rating">⭐ ${info.rating||item.rating}</span>`);
+    document.getElementById('vodModalMeta').innerHTML=meta.join('')||'';
+    document.getElementById('vodModalPlot').textContent=info.plot||info.description||'Sin sinopsis disponible.';
+    if(info.movie_image||info.cover_big){
+      coverEl.innerHTML=`<img class="vod-modal-cover" src="${esc(info.movie_image||info.cover_big)}" onerror="this.outerHTML='<div class=vod-modal-cover-ph>🎬</div>'">`;
+    }
+  }catch(e){
+    document.getElementById('vodModalMeta').innerHTML='';
+    document.getElementById('vodModalPlot').textContent='Sin información disponible.';
+  }
+}
+function closeVodModal(){document.getElementById('vodModal').classList.add('hidden');_vodModalItem=null}
+function playFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();play(item)}
+function extFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();launchVLC(item.url,item.name)}
 
 // ══ SERIES ══
 let seriesData=null;
