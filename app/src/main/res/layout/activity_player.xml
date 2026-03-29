@@ -11,6 +11,183 @@
         android:background="#000000" />
 
     <LinearLayout
+        android:id="@+id/vod_layout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="#0a0e14"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/vod_top_bar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#0d1219"
+            android:orientation="horizontal"
+            android:padding="10dp"
+            android:gravity="center_vertical">
+
+            <ImageButton
+                android:id="@+id/vod_btn_back"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/ic_media_previous"
+                android:tint="#00d4ff"
+                android:contentDescription="Atrás" />
+
+            <TextView
+                android:id="@+id/vod_txt_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#e0f4ff"
+                android:textSize="13sp"
+                android:textStyle="bold"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:paddingStart="8dp" />
+
+            <ImageButton
+                android:id="@+id/vod_btn_fav"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@android:drawable/btn_star_big_off"
+                android:contentDescription="Favorito" />
+
+        </LinearLayout>
+
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/vod_player_view"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="4"
+            android:background="#000000" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="6"
+            android:background="#0d1219">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="14dp">
+
+                <TextView
+                    android:id="@+id/vod_txt_full_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#e0f4ff"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:layout_marginBottom="8dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="10dp">
+
+                    <TextView
+                        android:id="@+id/vod_txt_year"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:textSize="11sp"
+                        android:padding="4dp"
+                        android:layout_marginEnd="6dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/vod_txt_duration"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:textSize="11sp"
+                        android:padding="4dp"
+                        android:layout_marginEnd="6dp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/vod_txt_rating"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#ffc107"
+                        android:textSize="12sp"
+                        android:textStyle="bold"
+                        android:padding="4dp"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/vod_txt_plot"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="#7ab8cc"
+                    android:textSize="13sp"
+                    android:lineSpacingMultiplier="1.4"
+                    android:layout_marginBottom="16dp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center">
+
+                    <Button
+                        android:id="@+id/vod_btn_pip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="PiP"
+                        android:textSize="11sp"
+                        android:backgroundTint="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:layout_marginEnd="8dp" />
+
+                    <Button
+                        android:id="@+id/vod_btn_external"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="📲 Externo"
+                        android:textSize="11sp"
+                        android:backgroundTint="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:layout_marginEnd="8dp" />
+
+                    <Button
+                        android:id="@+id/vod_btn_copy"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="📋 URL"
+                        android:textSize="11sp"
+                        android:backgroundTint="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:layout_marginEnd="8dp" />
+
+                    <Button
+                        android:id="@+id/vod_btn_stop"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="⏹"
+                        android:textSize="13sp"
+                        android:backgroundTint="#33ef4444"
+                        android:textColor="#ef4444" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+        </ScrollView>
+
+    </LinearLayout>
+
+    <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
