@@ -2,6 +2,8 @@ package com.jox3.iptvexo;
 
 import android.annotation.SuppressLint;
 import android.app.PictureInPictureParams;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.net.http.SslError;
@@ -12,6 +14,7 @@ import android.util.Rational;
 import android.view.View;
 import android.view.WindowManager;
 import android.webkit.SslErrorHandler;
+import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -26,18 +29,25 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import okhttp3.OkHttpClient;
-import android.widget.Button;
 
 @UnstableApi
 public class PlayerActivity extends AppCompatActivity {
 
     private ExoPlayer player;
+
+    // LIVE views
     private PlayerView playerView;
     private LinearLayout topBar, bottomBar, loadingOverlay;
     private TextView txtChannelName, txtStatus, txtEpg, txtLoading;
@@ -45,21 +55,24 @@ public class PlayerActivity extends AppCompatActivity {
     private Button btnPip, btnExternal, btnStop;
     private ProgressBar progress;
 
+    // VOD views
+    private LinearLayout vodLayout;
+    private PlayerView vodPlayerView;
+    private ImageButton vodBtnBack, vodBtnFav;
+    private Button vodBtnPip, vodBtnExternal, vodBtnCopy, vodBtnStop;
+    private TextView vodTxtTitle, vodTxtFullTitle, vodTxtYear, vodTxtDuration, vodTxtRating, vodTxtPlot;
+
     private String url, name, group, type, logo, itemId;
     private boolean isFav = false;
     private boolean barsVisible = true;
-    private Handler hideHandler = new Handler();
-    private int retryCount = 0;
-
-    // Resultado para devolver a MainActivity
     private boolean favChanged = false;
     private boolean favAdded = false;
+    private int retryCount = 0;
+    private Handler hideHandler = new Handler();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // Fullscreen inmersivo
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
@@ -67,57 +80,145 @@ public class PlayerActivity extends AppCompatActivity {
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
-
         setContentView(R.layout.activity_player);
 
-        // Obtener datos del intent
-        url     = getIntent().getStringExtra("url");
-        name    = getIntent().getStringExtra("name");
-        group   = getIntent().getStringExtra("group");
-        type    = getIntent().getStringExtra("type");
-        logo    = getIntent().getStringExtra("logo");
-        itemId  = getIntent().getStringExtra("id");
+        url    = getIntent().getStringExtra("url");
+        name   = getIntent().getStringExtra("name");
+        group  = getIntent().getStringExtra("group");
+        type   = getIntent().getStringExtra("type");
+        logo   = getIntent().getStringExtra("logo");
+        itemId = getIntent().getStringExtra("id");
 
-        // Orientación según tipo
-        if ("live".equals(type)) {
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // LIVE views
+        playerView     = findViewById(R.id.player_view);
+        topBar         = findViewById(R.id.top_bar);
+        bottomBar      = findViewById(R.id.bottom_bar);
+        loadingOverlay = findViewById(R.id.loading_overlay);
+        txtChannelName = findViewById(R.id.txt_channel_name);
+        txtStatus      = findViewById(R.id.txt_status);
+        txtEpg         = findViewById(R.id.txt_epg);
+        txtLoading     = findViewById(R.id.txt_loading);
+        progress       = findViewById(R.id.progress);
+        btnBack        = findViewById(R.id.btn_back);
+        btnFav         = findViewById(R.id.btn_fav);
+        btnPip         = findViewById(R.id.btn_pip);
+        btnExternal    = findViewById(R.id.btn_external);
+        btnStop        = findViewById(R.id.btn_stop);
+
+        // VOD views
+        vodLayout      = findViewById(R.id.vod_layout);
+        vodPlayerView  = findViewById(R.id.vod_player_view);
+        vodBtnBack     = findViewById(R.id.vod_btn_back);
+        vodBtnFav      = findViewById(R.id.vod_btn_fav);
+        vodBtnPip      = findViewById(R.id.vod_btn_pip);
+        vodBtnExternal = findViewById(R.id.vod_btn_external);
+        vodBtnCopy     = findViewById(R.id.vod_btn_copy);
+        vodBtnStop     = findViewById(R.id.vod_btn_stop);
+        vodTxtTitle    = findViewById(R.id.vod_txt_title);
+        vodTxtFullTitle= findViewById(R.id.vod_txt_full_title);
+        vodTxtYear     = findViewById(R.id.vod_txt_year);
+        vodTxtDuration = findViewById(R.id.vod_txt_duration);
+        vodTxtRating   = findViewById(R.id.vod_txt_rating);
+        vodTxtPlot     = findViewById(R.id.vod_txt_plot);
+
+        boolean isVod = "vod".equals(type) || "series".equals(type);
+
+        if (isVod) {
+            setupVodMode();
+        } else {
+            setupLiveMode();
         }
 
-        // Vistas
-        playerView      = findViewById(R.id.player_view);
-        topBar          = findViewById(R.id.top_bar);
-        bottomBar       = findViewById(R.id.bottom_bar);
-        loadingOverlay  = findViewById(R.id.loading_overlay);
-        txtChannelName  = findViewById(R.id.txt_channel_name);
-        txtStatus       = findViewById(R.id.txt_status);
-        txtEpg          = findViewById(R.id.txt_epg);
-        txtLoading      = findViewById(R.id.txt_loading);
-        progress        = findViewById(R.id.progress);
-        btnBack         = findViewById(R.id.btn_back);
-        btnFav          = findViewById(R.id.btn_fav);
-        btnPip          = findViewById(R.id.btn_pip);
-        btnExternal     = findViewById(R.id.btn_external);
-        btnStop         = findViewById(R.id.btn_stop);
+        initPlayer(isVod ? vodPlayerView : playerView);
+    }
 
-        // Info
-        txtChannelName.setText(name);
-        txtStatus.setText("live".equals(type) ? "🔴 EN VIVO" : "▶ VOD");
-
+    private void setupLiveMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        playerView.setUseController(true);
-
-        // Botones
+        vodLayout.setVisibility(View.GONE);
+        txtChannelName.setText(name);
+        txtStatus.setText("🔴 EN VIVO");
         btnBack.setOnClickListener(v -> finish());
         btnStop.setOnClickListener(v -> finish());
-        btnFav.setOnClickListener(v -> toggleFav());
+        btnFav.setOnClickListener(v -> toggleFav(btnFav));
         btnPip.setOnClickListener(v -> enterPip());
         btnExternal.setOnClickListener(v -> launchExternal());
-
-        // Tap para mostrar/ocultar barras
         playerView.setOnClickListener(v -> toggleBars());
+    }
 
-        // Iniciar reproducción
-        initPlayer();
+    private void setupVodMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        vodLayout.setVisibility(View.VISIBLE);
+        playerView.setVisibility(View.GONE);
+        topBar.setVisibility(View.GONE);
+        bottomBar.setVisibility(View.GONE);
+        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        vodTxtTitle.setText(name);
+        vodTxtFullTitle.setText(name);
+        vodTxtPlot.setText("Cargando información...");
+        vodBtnBack.setOnClickListener(v -> finish());
+        vodBtnStop.setOnClickListener(v -> finish());
+        vodBtnFav.setOnClickListener(v -> toggleFav(vodBtnFav));
+        vodBtnPip.setOnClickListener(v -> enterPip());
+        vodBtnExternal.setOnClickListener(v -> launchExternal());
+        vodBtnCopy.setOnClickListener(v -> copyUrl());
+        fetchVodInfo();
+    }
+
+    private void fetchVodInfo() {
+        new Thread(() -> {
+            try {
+                // Extraer host/user/pass de la URL
+                // URL formato: http://host/movie/user/pass/id.ext
+                String host = "", user = "", pass = "";
+                String[] parts = url.split("/");
+                if (parts.length >= 6) {
+                    host = parts[0] + "//" + parts[2];
+                    user = parts[4];
+                    pass = parts[5];
+                }
+                String apiUrl = host + "/player_api.php?username=" + user +
+                    "&password=" + pass + "&action=get_vod_info&vod_id=" + itemId;
+
+                URL u = new URL(apiUrl);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+
+                JSONObject json = new JSONObject(sb.toString());
+                JSONObject info = json.optJSONObject("info");
+                if (info == null) return;
+
+                String plot = info.optString("plot", "");
+                String year = info.optString("releasedate", info.optString("year", ""));
+                String duration = info.optString("duration", "");
+                String rating = info.optString("rating", "");
+
+                runOnUiThread(() -> {
+                    if (!plot.isEmpty()) vodTxtPlot.setText(plot);
+                    else vodTxtPlot.setText("Sin sinopsis disponible.");
+                    if (!year.isEmpty()) {
+                        vodTxtYear.setText(year.length() >= 4 ? year.substring(0,4) : year);
+                        vodTxtYear.setVisibility(View.VISIBLE);
+                    }
+                    if (!duration.isEmpty()) {
+                        vodTxtDuration.setText("⏱ " + duration);
+                        vodTxtDuration.setVisibility(View.VISIBLE);
+                    }
+                    if (!rating.isEmpty() && !rating.equals("0")) {
+                        vodTxtRating.setText("⭐ " + rating);
+                        vodTxtRating.setVisibility(View.VISIBLE);
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> vodTxtPlot.setText("Sin información disponible."));
+            }
+        }).start();
     }
 
     @SuppressLint("TrustAllX509TrustManager")
@@ -138,36 +239,32 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    private void initPlayer() {
+    private void initPlayer(PlayerView pv) {
         showLoading(true);
         if (player != null) { player.release(); player = null; }
-
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
         player = new ExoPlayer.Builder(this)
             .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
             .build();
-        playerView.setPlayer(player);
+        pv.setPlayer(player);
         player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
         player.play();
-
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     showLoading(false);
-                    scheduleHideBars();
+                    if ("live".equals(type)) scheduleHideBars();
                 } else if (state == Player.STATE_BUFFERING) {
                     showLoading(true);
-                } else if (state == Player.STATE_IDLE || state == Player.STATE_ENDED) {
-                    if ("live".equals(type) && retryCount < 3) {
+                } else if ((state == Player.STATE_IDLE || state == Player.STATE_ENDED) && "live".equals(type)) {
+                    if (retryCount < 3) {
                         retryCount++;
                         txtLoading.setText("Reconectando... (" + retryCount + "/3)");
                         showLoading(true);
-                        hideHandler.postDelayed(() -> initPlayer(), 3000);
-                    } else {
-                        showLoading(false);
-                    }
+                        hideHandler.postDelayed(() -> initPlayer(playerView), 3000);
+                    } else showLoading(false);
                 }
             }
 
@@ -177,7 +274,7 @@ public class PlayerActivity extends AppCompatActivity {
                     retryCount++;
                     txtLoading.setText("Reconectando... (" + retryCount + "/3)");
                     showLoading(true);
-                    hideHandler.postDelayed(() -> initPlayer(), 3000);
+                    hideHandler.postDelayed(() -> initPlayer(playerView), 3000);
                 } else {
                     showLoading(false);
                     Toast.makeText(PlayerActivity.this, "❌ Error al reproducir", Toast.LENGTH_SHORT).show();
@@ -206,11 +303,11 @@ public class PlayerActivity extends AppCompatActivity {
         }, 4000);
     }
 
-    private void toggleFav() {
+    private void toggleFav(ImageButton btn) {
         isFav = !isFav;
         favChanged = true;
         favAdded = isFav;
-        btnFav.setImageResource(isFav ?
+        btn.setImageResource(isFav ?
             android.R.drawable.btn_star_big_on :
             android.R.drawable.btn_star_big_off);
         Toast.makeText(this, isFav ? "⭐ Favorito guardado" : "Quitado de favoritos", Toast.LENGTH_SHORT).show();
@@ -230,19 +327,23 @@ public class PlayerActivity extends AppCompatActivity {
             intent.setPackage("org.videolan.vlc");
             startActivity(intent);
         } catch (Exception e) {
-            // VLC no instalado — copiar URL
-            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("url", url));
-            Toast.makeText(this, "📋 URL copiada", Toast.LENGTH_SHORT).show();
+            copyUrl();
         }
+    }
+
+    private void copyUrl() {
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("url", url));
+        Toast.makeText(this, "📋 URL copiada", Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onPictureInPictureModeChanged(boolean isInPiP) {
         super.onPictureInPictureModeChanged(isInPiP);
-        topBar.setVisibility(isInPiP ? View.GONE : View.VISIBLE);
-        bottomBar.setVisibility(isInPiP ? View.GONE : View.VISIBLE);
-        playerView.setUseController(!isInPiP);
+        if (player != null) {
+            PlayerView pv = "live".equals(type) ? playerView : vodPlayerView;
+            pv.setUseController(!isInPiP);
+        }
     }
 
     @Override
@@ -262,7 +363,6 @@ public class PlayerActivity extends AppCompatActivity {
         super.onDestroy();
         hideHandler.removeCallbacksAndMessages(null);
         if (player != null) { player.release(); player = null; }
-        // Devolver resultado de favoritos a MainActivity
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
         result.putExtra("fav_removed", favChanged && !favAdded);
