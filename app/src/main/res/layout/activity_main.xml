@@ -1,25 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/root_container"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:background="#000000">
 
-    <!-- WebView ocupa toda la pantalla — maneja topbar, tabs, contenido -->
-    <WebView
-        android:id="@+id/webview"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent" />
-
-    <!-- PlayerView inline — se posiciona sobre el WebView en la posición correcta -->
+    <!-- ExoPlayer inline — altura 0 cuando oculto, 240dp al reproducir -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
-        android:layout_height="240dp"
-        android:layout_gravity="top"
+        android:layout_height="0dp"
+        android:background="#000000"
         android:visibility="gone" />
 
-    <!-- Contenedor fullscreen — tapa todo cuando está activo -->
+    <!-- WebView — ocupa todo lo que queda -->
+    <WebView
+        android:id="@+id/webview"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+    <!-- Fullscreen — tapa todo cuando está activo -->
     <FrameLayout
         android:id="@+id/fullscreen_container"
         android:layout_width="match_parent"
@@ -29,8 +30,9 @@
         <androidx.media3.ui.PlayerView
             android:id="@+id/player_view_fs"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
+            android:layout_height="match_parent"
+            android:background="#000000" />
 
     </FrameLayout>
 
-</FrameLayout>
+</LinearLayout>
