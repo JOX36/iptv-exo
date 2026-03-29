@@ -16,6 +16,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.graphics.Color;
 import android.view.Gravity;
@@ -46,19 +47,17 @@ public class MainActivity extends AppCompatActivity {
     private TextView epgOverlay;
     private boolean isPlaying = false;
     private boolean isFullscreen = false;
-    private int playerTopOffset = 0; // offset desde arriba donde va el player
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_main);
 
-        fullscreenContainer = findViewById(R.id.fullscreen_container);
         playerViewInline = findViewById(R.id.player_view);
-        playerViewFs = findViewById(R.id.player_view_fs);
-        webView = findViewById(R.id.webview);
+        playerViewFs     = findViewById(R.id.player_view_fs);
+        fullscreenContainer = findViewById(R.id.fullscreen_container);
+        webView          = findViewById(R.id.webview);
 
         playerViewInline.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         playerViewInline.setBackgroundColor(Color.BLACK);
@@ -79,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
         webView.addJavascriptInterface(new PlayerBridge(), "AndroidPlayer");
         webView.loadUrl("file:///android_asset/player.html");
 
+        // EPG overlay para fullscreen
         epgOverlay = new TextView(this);
         epgOverlay.setTextColor(Color.WHITE);
         epgOverlay.setTextSize(14);
@@ -110,20 +110,30 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void initPlayer(String url, int topOffsetPx) {
-        if (player != null) { player.release(); player = null; }
-        isPlaying = true;
-        playerTopOffset = topOffsetPx;
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        // Posicionar PlayerView exactamente donde está el playerWrap en el WebView
-        int playerHeightPx = dpToPx(240);
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, playerHeightPx
+    private void showInlinePlayer() {
+        // Dar altura fija al PlayerView — empuja el WebView hacia abajo
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(240)
         );
-        params.topMargin = topOffsetPx;
         playerViewInline.setLayoutParams(params);
         playerViewInline.setVisibility(View.VISIBLE);
+    }
+
+    private void hideInlinePlayer() {
+        // Altura 0 — el WebView sube y ocupa todo
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0
+        );
+        playerViewInline.setLayoutParams(params);
+        playerViewInline.setVisibility(View.GONE);
+    }
+
+    private void initPlayer(String url) {
+        if (player != null) { player.release(); player = null; }
+        isPlaying = true;
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        showInlinePlayer();
 
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeOkHttpClient());
         player = new ExoPlayer.Builder(this)
@@ -152,9 +162,10 @@ public class MainActivity extends AppCompatActivity {
             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        // Transferir player al contenedor fullscreen
         playerViewInline.setPlayer(null);
         playerViewFs.setPlayer(player);
-        playerViewInline.setVisibility(View.GONE);
+        hideInlinePlayer();
         fullscreenContainer.setVisibility(View.VISIBLE);
         epgOverlay.setVisibility(View.VISIBLE);
     }
@@ -164,10 +175,11 @@ public class MainActivity extends AppCompatActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        // Transferir player de vuelta al inline
         playerViewFs.setPlayer(null);
         playerViewInline.setPlayer(player);
         fullscreenContainer.setVisibility(View.GONE);
-        playerViewInline.setVisibility(View.VISIBLE);
+        showInlinePlayer();
         epgOverlay.setVisibility(View.GONE);
     }
 
@@ -180,7 +192,7 @@ public class MainActivity extends AppCompatActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
         fullscreenContainer.setVisibility(View.GONE);
-        playerViewInline.setVisibility(View.GONE);
+        hideInlinePlayer();
         epgOverlay.setVisibility(View.GONE);
     }
 
@@ -209,20 +221,13 @@ public class MainActivity extends AppCompatActivity {
     class PlayerBridge {
         @JavascriptInterface
         public void playUrl(String url) {
-            // JS pasa la URL y el offsetTop del playerWrap
-            webView.post(() -> webView.evaluateJavascript(
-                "document.getElementById('playerWrap').getBoundingClientRect().top + window.scrollY",
-                value -> {
-                    int offset = 0;
-                    try { offset = (int)(Double.parseDouble(value) * getResources().getDisplayMetrics().density); } catch(Exception e) {}
-                    final int finalOffset = offset;
-                    runOnUiThread(() -> initPlayer(url, finalOffset));
-                }
-            ));
+            runOnUiThread(() -> initPlayer(url));
         }
 
         @JavascriptInterface
-        public void stop() { runOnUiThread(() -> stopPlayer()); }
+        public void stop() {
+            runOnUiThread(() -> stopPlayer());
+        }
 
         @JavascriptInterface
         public void goFullscreen() {
@@ -249,7 +254,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public void onBackPressed() {
         if (isFullscreen) exitFullscreen();
-        else if (isPlaying) { stopPlayer(); webView.evaluateJavascript("stopPlayer()", null); }
+        else if (isPlaying) {
+            stopPlayer();
+            webView.evaluateJavascript("stopPlayer()", null);
+        }
         else if (webView.canGoBack()) webView.goBack();
         else super.onBackPressed();
     }
