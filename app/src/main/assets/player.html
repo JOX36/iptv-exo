@@ -108,9 +108,8 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 /* PLAYER */
 .player-wrap{flex-shrink:0;background:#000;position:relative;display:none}
 .player-wrap.active{display:block}
-.player-wrap.android-mode{background:transparent!important}
-.player-wrap.android-mode #vid{display:none!important}
-.player-wrap.android-mode .p-overlay{display:none!important}
+.player-wrap.android-mode{background:transparent!important;height:0!important;min-height:0!important;overflow:hidden!important;padding:0!important;margin:0!important}
+.player-wrap.android-mode *{display:none!important}
 #vid{width:100%;display:block;background:#000;max-height:32vh;transition:object-fit .2s}
 .vid-contain{object-fit:contain}
 .vid-cover{object-fit:cover}
