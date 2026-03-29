@@ -1,408 +1,439 @@
-<?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#000000">
+package com.jox3.iptvexo;
 
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/player_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#000000" />
+import android.annotation.SuppressLint;
+import android.app.PictureInPictureParams;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.util.Rational;
+import android.view.View;
+import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.ProgressBar;
+import android.widget.ScrollView;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.MediaItem;
+import androidx.media3.common.Player;
+import androidx.media3.common.util.UnstableApi;
+import androidx.media3.datasource.okhttp.OkHttpDataSource;
+import androidx.media3.exoplayer.ExoPlayer;
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
+import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.PlayerView;
+import org.json.JSONObject;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import okhttp3.OkHttpClient;
 
-    <LinearLayout
-        android:id="@+id/vod_layout"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:background="#0a0e14"
-        android:visibility="gone">
+@UnstableApi
+public class PlayerActivity extends AppCompatActivity {
 
-        <LinearLayout
-            android:id="@+id/vod_top_bar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#0d1219"
-            android:orientation="horizontal"
-            android:padding="10dp"
-            android:gravity="center_vertical">
+    private ExoPlayer player;
 
-            <ImageButton
-                android:id="@+id/vod_btn_back"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_media_previous"
-                android:tint="#00d4ff"
-                android:contentDescription="Atrás" />
+    // LIVE views
+    private PlayerView playerView;
+    private LinearLayout topBar, bottomBar, loadingOverlay;
+    private TextView txtChannelName, txtStatus, txtEpg, txtLoading;
+    private ImageButton btnBack, btnFav;
+    private Button btnPip, btnExternal, btnStop;
+    private ProgressBar progress;
 
-            <TextView
-                android:id="@+id/vod_txt_title"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="#e0f4ff"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:paddingStart="8dp" />
+    // VOD views
+    private LinearLayout vodLayout;
+    private PlayerView vodPlayerView;
+    private ImageButton vodBtnBack, vodBtnFav;
+    private Button vodBtnPip, vodBtnExternal, vodBtnCopy, vodBtnStop, vodBtnFullscreen;
+    private TextView vodTxtTitle, vodTxtFullTitle, vodTxtYear, vodTxtDuration, vodTxtRating, vodTxtPlot;
+    private ScrollView vodScrollView;
 
-            <ImageButton
-                android:id="@+id/vod_btn_fav"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/btn_star_big_off"
-                android:contentDescription="Favorito" />
+    // VOD fullscreen overlay views
+    private LinearLayout vodFsTopBar, vodFsBottomBar;
+    private TextView vodFsTitle;
+    private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt;
 
-        </LinearLayout>
+    private String url, name, group, type, logo, itemId;
+    private boolean isFav = false;
+    private boolean barsVisible = true;
+    private boolean favChanged = false;
+    private boolean favAdded = false;
+    private boolean isVodFullscreen = false;
+    private int retryCount = 0;
+    private Handler hideHandler = new Handler();
 
-        <androidx.media3.ui.PlayerView
-            android:id="@+id/vod_player_view"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="4"
-            android:background="#000000" />
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        );
+        setContentView(R.layout.activity_player);
 
-        <ScrollView
-            android:id="@+id/vod_scroll"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="6"
-            android:background="#0d1219">
+        url    = getIntent().getStringExtra("url");
+        name   = getIntent().getStringExtra("name");
+        group  = getIntent().getStringExtra("group");
+        type   = getIntent().getStringExtra("type");
+        logo   = getIntent().getStringExtra("logo");
+        itemId = getIntent().getStringExtra("id");
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="14dp">
+        // LIVE views
+        playerView     = findViewById(R.id.player_view);
+        topBar         = findViewById(R.id.top_bar);
+        bottomBar      = findViewById(R.id.bottom_bar);
+        loadingOverlay = findViewById(R.id.loading_overlay);
+        txtChannelName = findViewById(R.id.txt_channel_name);
+        txtStatus      = findViewById(R.id.txt_status);
+        txtEpg         = findViewById(R.id.txt_epg);
+        txtLoading     = findViewById(R.id.txt_loading);
+        progress       = findViewById(R.id.progress);
+        btnBack        = findViewById(R.id.btn_back);
+        btnFav         = findViewById(R.id.btn_fav);
+        btnPip         = findViewById(R.id.btn_pip);
+        btnExternal    = findViewById(R.id.btn_external);
+        btnStop        = findViewById(R.id.btn_stop);
 
-                <TextView
-                    android:id="@+id/vod_txt_full_title"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="#e0f4ff"
-                    android:textSize="15sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="8dp" />
+        // VOD views
+        vodLayout        = findViewById(R.id.vod_layout);
+        vodPlayerView    = findViewById(R.id.vod_player_view);
+        vodBtnBack       = findViewById(R.id.vod_btn_back);
+        vodBtnFav        = findViewById(R.id.vod_btn_fav);
+        vodBtnPip        = findViewById(R.id.vod_btn_pip);
+        vodBtnExternal   = findViewById(R.id.vod_btn_external);
+        vodBtnCopy       = findViewById(R.id.vod_btn_copy);
+        vodBtnStop       = findViewById(R.id.vod_btn_stop);
+        vodBtnFullscreen = findViewById(R.id.vod_btn_fullscreen);
+        vodTxtTitle      = findViewById(R.id.vod_txt_title);
+        vodTxtFullTitle  = findViewById(R.id.vod_txt_full_title);
+        vodTxtYear       = findViewById(R.id.vod_txt_year);
+        vodTxtDuration   = findViewById(R.id.vod_txt_duration);
+        vodTxtRating     = findViewById(R.id.vod_txt_rating);
+        vodTxtPlot       = findViewById(R.id.vod_txt_plot);
+        vodScrollView    = findViewById(R.id.vod_scroll);
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="10dp">
+        // VOD fullscreen overlay
+        vodFsTopBar    = findViewById(R.id.vod_fs_top_bar);
+        vodFsBottomBar = findViewById(R.id.vod_fs_bottom_bar);
+        vodFsTitle     = findViewById(R.id.vod_fs_title);
+        vodFsBtnExit   = findViewById(R.id.vod_fs_btn_exit);
+        vodFsBtnPip    = findViewById(R.id.vod_fs_btn_pip);
+        vodFsBtnExt    = findViewById(R.id.vod_fs_btn_ext);
 
-                    <TextView
-                        android:id="@+id/vod_txt_year"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="#1a2535"
-                        android:textColor="#7ab8cc"
-                        android:textSize="11sp"
-                        android:padding="4dp"
-                        android:layout_marginEnd="6dp"
-                        android:visibility="gone" />
+        boolean isVod = "vod".equals(type) || "series".equals(type);
+        if (isVod) setupVodMode();
+        else setupLiveMode();
 
-                    <TextView
-                        android:id="@+id/vod_txt_duration"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:background="#1a2535"
-                        android:textColor="#7ab8cc"
-                        android:textSize="11sp"
-                        android:padding="4dp"
-                        android:layout_marginEnd="6dp"
-                        android:visibility="gone" />
+        initPlayer(isVod ? vodPlayerView : playerView);
+    }
 
-                    <TextView
-                        android:id="@+id/vod_txt_rating"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="#ffc107"
-                        android:textSize="12sp"
-                        android:textStyle="bold"
-                        android:padding="4dp"
-                        android:visibility="gone" />
+    private void setupLiveMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        vodLayout.setVisibility(View.GONE);
+        txtChannelName.setText(name);
+        txtStatus.setText("🔴 EN VIVO");
+        btnBack.setOnClickListener(v -> finish());
+        btnStop.setOnClickListener(v -> finish());
+        btnFav.setOnClickListener(v -> toggleFav(btnFav));
+        btnPip.setOnClickListener(v -> enterPip());
+        btnExternal.setOnClickListener(v -> launchExternal());
+        playerView.setOnClickListener(v -> toggleBars());
+    }
 
-                </LinearLayout>
+    private void setupVodMode() {
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        vodLayout.setVisibility(View.VISIBLE);
+        playerView.setVisibility(View.GONE);
+        topBar.setVisibility(View.GONE);
+        bottomBar.setVisibility(View.GONE);
+        vodFsTopBar.setVisibility(View.GONE);
+        vodFsBottomBar.setVisibility(View.GONE);
+        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        vodTxtTitle.setText(name);
+        vodTxtFullTitle.setText(name);
+        vodTxtPlot.setText("Cargando información...");
+        vodFsTitle.setText(name);
 
-                <TextView
-                    android:id="@+id/vod_txt_plot"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="#7ab8cc"
-                    android:textSize="13sp"
-                    android:lineSpacingMultiplier="1.4"
-                    android:layout_marginBottom="14dp" />
+        vodBtnBack.setOnClickListener(v -> finish());
+        vodBtnStop.setOnClickListener(v -> finish());
+        vodBtnFav.setOnClickListener(v -> toggleFav(vodBtnFav));
+        vodBtnPip.setOnClickListener(v -> enterPip());
+        vodBtnExternal.setOnClickListener(v -> launchExternal());
+        vodBtnCopy.setOnClickListener(v -> copyUrl());
+        vodBtnFullscreen.setOnClickListener(v -> enterVodFullscreen());
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center"
-                    android:layout_marginBottom="8dp">
+        // Fullscreen overlay buttons
+        vodFsBtnExit.setOnClickListener(v -> exitVodFullscreen());
+        vodFsBtnPip.setOnClickListener(v -> enterPip());
+        vodFsBtnExt.setOnClickListener(v -> launchExternal());
 
-                    <Button
-                        android:id="@+id/vod_btn_fullscreen"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="⛶ Pantalla completa"
-                        android:textSize="11sp"
-                        android:backgroundTint="#1a3550"
-                        android:textColor="#00d4ff"
-                        android:layout_marginEnd="8dp" />
+        // Tap video to show/hide fullscreen controls
+        vodPlayerView.setOnClickListener(v -> {
+            if (isVodFullscreen) toggleVodFsBars();
+        });
 
-                    <Button
-                        android:id="@+id/vod_btn_pip"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="PiP"
-                        android:textSize="11sp"
-                        android:backgroundTint="#1a2535"
-                        android:textColor="#7ab8cc" />
+        fetchVodInfo();
+    }
 
-                </LinearLayout>
+    private void enterVodFullscreen() {
+        isVodFullscreen = true;
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        vodScrollView.setVisibility(View.GONE);
+        vodBtnBack.setVisibility(View.GONE);
+        vodBtnFav.setVisibility(View.GONE);
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center"
-                    android:layout_marginBottom="8dp">
+        // Expandir PlayerView a toda la pantalla
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
+        lp.weight = 10;
+        vodPlayerView.setLayoutParams(lp);
+        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
 
-                    <Button
-                        android:id="@+id/vod_btn_external"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="📲 Externo"
-                        android:textSize="11sp"
-                        android:backgroundTint="#1a2535"
-                        android:textColor="#7ab8cc"
-                        android:layout_marginEnd="8dp" />
+        // Mostrar overlay de fullscreen
+        vodFsTopBar.setVisibility(View.VISIBLE);
+        vodFsBottomBar.setVisibility(View.VISIBLE);
+        scheduleHideVodFsBars();
+    }
 
-                    <Button
-                        android:id="@+id/vod_btn_copy"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="📋 URL"
-                        android:textSize="11sp"
-                        android:backgroundTint="#1a2535"
-                        android:textColor="#7ab8cc"
-                        android:layout_marginEnd="8dp" />
+    private void exitVodFullscreen() {
+        isVodFullscreen = false;
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        vodScrollView.setVisibility(View.VISIBLE);
+        vodBtnBack.setVisibility(View.VISIBLE);
+        vodBtnFav.setVisibility(View.VISIBLE);
 
-                    <Button
-                        android:id="@+id/vod_btn_stop"
-                        android:layout_width="wrap_content"
-                        android:layout_height="36dp"
-                        android:text="⏹"
-                        android:textSize="13sp"
-                        android:backgroundTint="#33ef4444"
-                        android:textColor="#ef4444" />
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
+        lp.weight = 4;
+        vodPlayerView.setLayoutParams(lp);
+        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
 
-                </LinearLayout>
+        vodFsTopBar.setVisibility(View.GONE);
+        vodFsBottomBar.setVisibility(View.GONE);
+        hideHandler.removeCallbacksAndMessages(null);
+    }
 
-            </LinearLayout>
-        </ScrollView>
+    private void toggleVodFsBars() {
+        boolean visible = vodFsTopBar.getVisibility() == View.VISIBLE;
+        vodFsTopBar.setVisibility(visible ? View.GONE : View.VISIBLE);
+        vodFsBottomBar.setVisibility(visible ? View.GONE : View.VISIBLE);
+        if (!visible) scheduleHideVodFsBars();
+    }
 
-    </LinearLayout>
+    private void scheduleHideVodFsBars() {
+        hideHandler.removeCallbacksAndMessages(null);
+        hideHandler.postDelayed(() -> {
+            vodFsTopBar.setVisibility(View.GONE);
+            vodFsBottomBar.setVisibility(View.GONE);
+        }, 4000);
+    }
 
-    <LinearLayout
-        android:id="@+id/vod_fs_top_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:background="#CC000000"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:visibility="gone">
+    private void fetchVodInfo() {
+        new Thread(() -> {
+            try {
+                String[] parts = url.split("/");
+                if (parts.length < 6) return;
+                String host = parts[0] + "//" + parts[2];
+                String user = parts[4];
+                String pass = parts[5];
+                String apiUrl = host + "/player_api.php?username=" + user +
+                    "&password=" + pass + "&action=get_vod_info&vod_id=" + itemId;
+                URL u = new URL(apiUrl);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONObject json = new JSONObject(sb.toString());
+                JSONObject info = json.optJSONObject("info");
+                if (info == null) return;
+                String plot     = info.optString("plot", "");
+                String year     = info.optString("releasedate", info.optString("year", ""));
+                String duration = info.optString("duration", "");
+                String rating   = info.optString("rating", "");
+                runOnUiThread(() -> {
+                    vodTxtPlot.setText(!plot.isEmpty() ? plot : "Sin sinopsis disponible.");
+                    if (!year.isEmpty()) { vodTxtYear.setText(year.length()>=4?year.substring(0,4):year); vodTxtYear.setVisibility(View.VISIBLE); }
+                    if (!duration.isEmpty()) { vodTxtDuration.setText("⏱ "+duration); vodTxtDuration.setVisibility(View.VISIBLE); }
+                    if (!rating.isEmpty() && !rating.equals("0")) { vodTxtRating.setText("⭐ "+rating); vodTxtRating.setVisibility(View.VISIBLE); }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> vodTxtPlot.setText("Sin información disponible."));
+            }
+        }).start();
+    }
 
-        <Button
-            android:id="@+id/vod_fs_btn_exit"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="✕ Salir"
-            android:textSize="11sp"
-            android:backgroundTint="#1a2535"
-            android:textColor="#00d4ff"
-            android:layout_marginEnd="10dp" />
+    @SuppressLint("TrustAllX509TrustManager")
+    private OkHttpClient buildUnsafeClient() {
+        try {
+            X509TrustManager tm = new X509TrustManager() {
+                public void checkClientTrusted(X509Certificate[] c, String a) throws CertificateException {}
+                public void checkServerTrusted(X509Certificate[] c, String a) throws CertificateException {}
+                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+            };
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, new TrustManager[]{tm}, new java.security.SecureRandom());
+            return new OkHttpClient.Builder()
+                .sslSocketFactory(sc.getSocketFactory(), tm)
+                .hostnameVerifier((h, s) -> true).build();
+        } catch (Exception e) {
+            return new OkHttpClient.Builder().build();
+        }
+    }
 
-        <TextView
-            android:id="@+id/vod_fs_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:ellipsize="end"
-            android:maxLines="1" />
+    private void initPlayer(PlayerView pv) {
+        showLoading(true);
+        if (player != null) { player.release(); player = null; }
+        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
+        player = new ExoPlayer.Builder(this)
+            .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
+            .build();
+        pv.setPlayer(player);
+        player.setMediaItem(MediaItem.fromUri(url));
+        player.prepare();
+        player.play();
+        player.addListener(new Player.Listener() {
+            @Override
+            public void onPlaybackStateChanged(int state) {
+                if (state == Player.STATE_READY) {
+                    showLoading(false);
+                    if ("live".equals(type)) scheduleHideBars();
+                } else if (state == Player.STATE_BUFFERING) {
+                    showLoading(true);
+                } else if ((state == Player.STATE_IDLE || state == Player.STATE_ENDED) && "live".equals(type)) {
+                    if (retryCount < 3) {
+                        retryCount++;
+                        txtLoading.setText("Reconectando... (" + retryCount + "/3)");
+                        showLoading(true);
+                        hideHandler.postDelayed(() -> initPlayer(playerView), 3000);
+                    } else showLoading(false);
+                }
+            }
+            @Override
+            public void onPlayerError(androidx.media3.common.PlaybackException error) {
+                if ("live".equals(type) && retryCount < 3) {
+                    retryCount++;
+                    txtLoading.setText("Reconectando... (" + retryCount + "/3)");
+                    showLoading(true);
+                    hideHandler.postDelayed(() -> initPlayer(playerView), 3000);
+                } else {
+                    showLoading(false);
+                    Toast.makeText(PlayerActivity.this, "❌ Error al reproducir", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+    }
 
-    </LinearLayout>
+    private void showLoading(boolean show) {
+        loadingOverlay.setVisibility(show ? View.VISIBLE : View.GONE);
+    }
 
-    <LinearLayout
-        android:id="@+id/vod_fs_bottom_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="#CC000000"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="center"
-        android:visibility="gone">
+    private void toggleBars() {
+        barsVisible = !barsVisible;
+        topBar.setVisibility(barsVisible ? View.VISIBLE : View.GONE);
+        bottomBar.setVisibility(barsVisible ? View.VISIBLE : View.GONE);
+        if (barsVisible) scheduleHideBars();
+    }
 
-        <Button
-            android:id="@+id/vod_fs_btn_pip"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="PiP"
-            android:textSize="11sp"
-            android:backgroundTint="#1a2535"
-            android:textColor="#7ab8cc"
-            android:layout_marginEnd="8dp" />
+    private void scheduleHideBars() {
+        hideHandler.removeCallbacksAndMessages(null);
+        hideHandler.postDelayed(() -> {
+            topBar.setVisibility(View.GONE);
+            bottomBar.setVisibility(View.GONE);
+            barsVisible = false;
+        }, 4000);
+    }
 
-        <Button
-            android:id="@+id/vod_fs_btn_ext"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="📲 Externo"
-            android:textSize="11sp"
-            android:backgroundTint="#1a2535"
-            android:textColor="#7ab8cc" />
+    private void toggleFav(ImageButton btn) {
+        isFav = !isFav;
+        favChanged = true;
+        favAdded = isFav;
+        btn.setImageResource(isFav ? android.R.drawable.btn_star_big_on : android.R.drawable.btn_star_big_off);
+        Toast.makeText(this, isFav ? "⭐ Favorito guardado" : "Quitado de favoritos", Toast.LENGTH_SHORT).show();
+    }
 
-    </LinearLayout>
+    private void enterPip() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16, 9)).build());
+        }
+    }
 
-    <LinearLayout
-        android:id="@+id/top_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:background="#88000000"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="center_vertical">
+    private void launchExternal() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(android.net.Uri.parse(url), "video/*");
+            intent.setPackage("org.videolan.vlc");
+            startActivity(intent);
+        } catch (Exception e) { copyUrl(); }
+    }
 
-        <ImageButton
-            android:id="@+id/btn_back"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_media_previous"
-            android:tint="#FFFFFF"
-            android:contentDescription="Atrás" />
+    private void copyUrl() {
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("url", url));
+        Toast.makeText(this, "📋 URL copiada", Toast.LENGTH_SHORT).show();
+    }
 
-        <TextView
-            android:id="@+id/txt_channel_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="8dp" />
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPiP) {
+        super.onPictureInPictureModeChanged(isInPiP);
+        // En PiP: ocultar TODO — solo video puro
+        int vis = isInPiP ? View.GONE : View.VISIBLE;
+        topBar.setVisibility(View.GONE);
+        bottomBar.setVisibility(View.GONE);
+        vodFsTopBar.setVisibility(View.GONE);
+        vodFsBottomBar.setVisibility(View.GONE);
+        if ("vod".equals(type) || "series".equals(type)) {
+            LinearLayout vodTopBar = findViewById(R.id.vod_top_bar);
+            vodTopBar.setVisibility(isInPiP ? View.GONE : View.VISIBLE);
+            vodScrollView.setVisibility(isInPiP ? View.GONE : (isVodFullscreen ? View.GONE : View.VISIBLE));
+        }
+        PlayerView pv = "live".equals(type) ? playerView : vodPlayerView;
+        if (player != null) pv.setUseController(!isInPiP);
+    }
 
-        <TextView
-            android:id="@+id/txt_status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#00d4ff"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:padding="4dp" />
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (!isInPictureInPictureMode()) {
+            if (player != null) { player.stop(); player.release(); player = null; }
+        }
+    }
 
-        <ImageButton
-            android:id="@+id/btn_fav"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/btn_star_big_off"
-            android:contentDescription="Favorito" />
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        hideHandler.removeCallbacksAndMessages(null);
+        if (player != null) { player.release(); player = null; }
+        Intent result = new Intent();
+        result.putExtra("fav_added", favChanged && favAdded);
+        result.putExtra("fav_removed", favChanged && !favAdded);
+        result.putExtra("item_id", itemId);
+        result.putExtra("item_type", type);
+        setResult(RESULT_OK, result);
+    }
 
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/bottom_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="#88000000"
-        android:orientation="vertical"
-        android:padding="12dp">
-
-        <TextView
-            android:id="@+id/txt_epg"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#00d4ff"
-            android:textSize="12sp"
-            android:paddingBottom="8dp"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center">
-
-            <Button
-                android:id="@+id/btn_pip"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="PiP"
-                android:textSize="11sp"
-                android:backgroundTint="#331a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp" />
-
-            <Button
-                android:id="@+id/btn_external"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="📲 Externo"
-                android:textSize="11sp"
-                android:backgroundTint="#331a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp" />
-
-            <Button
-                android:id="@+id/btn_stop"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="⏹ Detener"
-                android:textSize="11sp"
-                android:backgroundTint="#33ef4444"
-                android:textColor="#ef4444" />
-
-        </LinearLayout>
-
-    </LinearLayout>
-
-    <LinearLayout
-        android:id="@+id/loading_overlay"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:background="#CC000000">
-
-        <ProgressBar
-            android:id="@+id/progress"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:indeterminateTint="#00d4ff" />
-
-        <TextView
-            android:id="@+id/txt_loading"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Conectando..."
-            android:textColor="#7ab8cc"
-            android:textSize="13sp"
-            android:layout_marginTop="12dp" />
-
-    </LinearLayout>
-
-</FrameLayout>
+    @Override
+    public void onBackPressed() {
+        if (isVodFullscreen) exitVodFullscreen();
+        else super.onBackPressed();
+    }
+}
