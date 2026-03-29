@@ -482,7 +482,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
           <div class="now-status loading" id="nowStatus">...</div>
         </div>
         <div class="vbtn-bar">
-          <div class="drop-wrap">
+          <div class="drop-wrap" id="wrapAspect">
             <button class="vbtn" id="btnAspect" onclick="toggleDrop('dropAspect')">⊡ Aspecto</button>
             <div class="drop-menu" id="dropAspect">
               <div class="drop-opt active" id="asp-contain" onclick="setAspect('contain','Contener')">📐 Contener</div>
@@ -490,7 +490,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
               <div class="drop-opt"        id="asp-fill"    onclick="setAspect('fill','Estirar')">↔ Estirar</div>
             </div>
           </div>
-          <div class="drop-wrap">
+          <div class="drop-wrap" id="wrapSpeed">
             <button class="vbtn" id="btnSpeed" onclick="toggleDrop('dropSpeed')">⏩ 1× Velocidad</button>
             <div class="drop-menu" id="dropSpeed">
               <div class="drop-opt" onclick="setSpeed(0.5)">0.5×</div>
@@ -502,8 +502,8 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
             </div>
           </div>
           <button class="vbtn" id="btnFav" onclick="toggleFavCurrent()">⭐ Favorito</button>
-          <button class="vbtn" onclick="goFullscreen()">⛶ Pantalla completa</button>
-          <div class="drop-wrap">
+          <button class="vbtn" id="btnFs" onclick="goFullscreen()">⛶ Pantalla completa</button>
+          <div class="drop-wrap" id="wrapExt">
             <button class="vbtn" id="btnExt" onclick="toggleDrop('dropExt')">▶ Reproductor</button>
             <div class="drop-menu" id="dropExt">
               <div class="drop-opt" onclick="openVLC()">▶ Abrir en app</div>
@@ -633,21 +633,11 @@ async function doLogin(){
   renderAccBtn();
   await loadSec('live');
   setTimeout(()=>startBackgroundIndex(),1500);
-  setTimeout(()=>testCors(),3000);
-}
-
-// ══ CORS TEST ══
-async function testCors(){
-  try{
-    const cats=S.cats.live;if(!cats.length)return;
-    const loaded=cats.find(c=>c.loaded&&c.items.length);
-    const testUrl=loaded?loaded.items[0].url:`${S.host}/live/${S.user}/${S.pass}/1.m3u8`;
-    const ctrl=new AbortController();const tid=setTimeout(()=>ctrl.abort(),5000);
-    await fetch(testUrl,{method:'HEAD',signal:ctrl.signal});clearTimeout(tid);
-    toast('✅ Servidor compatible — reproducción directa OK',4000);
-  }catch(e){
-    if(e.name==='AbortError') toast('⚠️ No se pudo verificar compatibilidad',3000);
-    else toast('⚠️ Este servidor puede requerir VLC o MX Player',5000);
+  // Ocultar botones innecesarios en modo app
+  if(typeof AndroidPlayer!=='undefined'){
+    ['wrapAspect','wrapSpeed','btnFs','wrapExt'].forEach(id=>{
+      const el=document.getElementById(id);if(el)el.style.display='none';
+    });
   }
 }
 
@@ -1033,7 +1023,7 @@ async function switchAccount(a){
   stopPlayer();S.host=a.host;S.user=a.user;S.pass=a.pass;S.cats={live:[],vod:[],series:[]};S.activeCat={live:null,vod:null,series:null};S.channels=[];S.current=null;IDX.items=[];IDX.done=false;IDX.running=false;
   lsSet(K.LAST,{host:a.host,user:a.user,pass:a.pass});saveAcc();loadPersis();renderAccBtn();
   toast('🔄 Cambiando a '+a.host.replace(/^https?:\/\//,''));
-  await loadSec('live');setTimeout(()=>startBackgroundIndex(),1500);setTimeout(()=>testCors(),3000);
+  await loadSec('live');setTimeout(()=>startBackgroundIndex(),1500);
 }
 
 // ══ EPG ══
