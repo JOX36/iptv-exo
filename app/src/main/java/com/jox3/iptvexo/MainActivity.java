@@ -53,10 +53,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setFlags(
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        );
+
+        // Sin FLAG_LAYOUT_NO_LIMITS — el layout respeta las barras del sistema
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
         setContentView(R.layout.activity_main);
 
         fullscreenContainer = findViewById(R.id.fullscreen_container);
@@ -65,9 +65,9 @@ public class MainActivity extends AppCompatActivity {
         playerViewFs = findViewById(R.id.player_view_fs);
         webView = findViewById(R.id.webview);
 
-        // Inline: FIT para ver todo el video sin distorsión
         playerViewInline.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-        // Fullscreen: FILL para ocupar toda la pantalla sin barras
+        playerViewInline.setBackgroundColor(Color.BLACK);
+        // Fullscreen: FILL para llenar toda la pantalla
         playerViewFs.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         playerViewFs.setBackgroundColor(Color.BLACK);
 
@@ -121,8 +121,9 @@ public class MainActivity extends AppCompatActivity {
         isPlaying = true;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
+        // PlayerView inline con altura fija
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(280)
+            ViewGroup.LayoutParams.MATCH_PARENT, dpToPx(240)
         );
         playerViewInline.setLayoutParams(params);
         playerViewInline.setVisibility(View.VISIBLE);
@@ -148,19 +149,20 @@ public class MainActivity extends AppCompatActivity {
         if (!isPlaying) return;
         isFullscreen = true;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // Fullscreen real — oculta barras del sistema
         getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            View.SYSTEM_UI_FLAG_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY |
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
         );
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-        // Transferir player al PlayerView fullscreen (FILL — sin barras)
-        playerViewInline.setVisibility(View.GONE);
-        if (player != null) {
-            playerViewInline.setPlayer(null);
-            playerViewFs.setPlayer(player);
-        }
+        // Transferir player al PlayerView fullscreen (FILL)
+        playerViewInline.setPlayer(null);
+        playerViewFs.setPlayer(player);
         fullscreenContainer.setVisibility(View.VISIBLE);
         inlineContainer.setVisibility(View.GONE);
         epgOverlay.setVisibility(View.VISIBLE);
@@ -173,12 +175,10 @@ public class MainActivity extends AppCompatActivity {
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
         // Transferir player de vuelta al inline
+        playerViewFs.setPlayer(null);
+        playerViewInline.setPlayer(player);
         fullscreenContainer.setVisibility(View.GONE);
         inlineContainer.setVisibility(View.VISIBLE);
-        if (player != null) {
-            playerViewFs.setPlayer(null);
-            playerViewInline.setPlayer(player);
-        }
         playerViewInline.setVisibility(View.VISIBLE);
         epgOverlay.setVisibility(View.GONE);
     }
