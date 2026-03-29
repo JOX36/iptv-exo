@@ -869,18 +869,25 @@ function play(item){
   const url=item.url;
   if(!url){showOverlay(true,false,'❌ Sin URL');setStatus('error');return}
 
-  // ── VOD/LIVE: usar ExoPlayer nativo si está disponible ──
+  // ── VOD/LIVE: usar PlayerActivity nativa si está disponible ──
   if(typeof AndroidPlayer!=='undefined'){
     const pw=document.getElementById('playerWrap');
     pw.classList.add('active','android-mode');
     document.getElementById('nowBar').classList.add('visible');
     setStatus(item.type==='vod'?'vod':'live');
     updateFavBtn();
-    // Notificar a Java para mostrar ExoPlayer
-    AndroidPlayer.playUrl(url);
-    clearInterval(EPG.timer);document.getElementById('epgBar').classList.remove('visible');
+    // Abrir PlayerActivity con todos los datos
+    AndroidPlayer.openPlayer(
+      item.url||'',
+      item.name||'',
+      item.group||'',
+      item.type||'live',
+      item.logo||'',
+      String(item.id||'')
+    );
+    clearInterval(EPG.timer);
+    document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
-    if(item.type==='live') loadEpg(item.id);
     return;
   }
 
