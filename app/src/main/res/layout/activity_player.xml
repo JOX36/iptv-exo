@@ -10,6 +10,7 @@
         android:layout_height="match_parent"
         android:background="#000000" />
 
+    <!-- VOD/SERIES: layout vertical -->
     <LinearLayout
         android:id="@+id/vod_layout"
         android:layout_width="match_parent"
@@ -18,54 +19,64 @@
         android:background="#0a0e14"
         android:visibility="gone">
 
-        <LinearLayout
-            android:id="@+id/vod_top_bar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:background="#0d1219"
-            android:orientation="horizontal"
-            android:padding="10dp"
-            android:gravity="center_vertical">
-
-            <ImageButton
-                android:id="@+id/vod_btn_back"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/ic_media_previous"
-                android:tint="#00d4ff"
-                android:contentDescription="Atrás" />
-
-            <TextView
-                android:id="@+id/vod_txt_title"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="#e0f4ff"
-                android:textSize="13sp"
-                android:textStyle="bold"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:paddingStart="8dp" />
-
-            <ImageButton
-                android:id="@+id/vod_btn_fav"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@android:drawable/btn_star_big_off"
-                android:contentDescription="Favorito"
-                android:visibility="visible" />
-
-        </LinearLayout>
-
-        <androidx.media3.ui.PlayerView
-            android:id="@+id/vod_player_view"
+        <!-- Video 40% â€” sin topbar encima, el topbar es overlay transparente -->
+        <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="4"
-            android:background="#000000" />
+            android:layout_weight="4">
 
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/vod_player_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <!-- Topbar transparente sobre el video -->
+            <LinearLayout
+                android:id="@+id/vod_top_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top"
+                android:background="#99000000"
+                android:orientation="horizontal"
+                android:padding="8dp"
+                android:gravity="center_vertical">
+
+                <ImageButton
+                    android:id="@+id/vod_btn_back"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@android:drawable/ic_media_previous"
+                    android:tint="#00d4ff"
+                    android:contentDescription="AtrÃ¡s" />
+
+                <TextView
+                    android:id="@+id/vod_txt_title"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingStart="8dp" />
+
+                <ImageButton
+                    android:id="@+id/vod_btn_fav"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@android:drawable/btn_star_big_off"
+                    android:contentDescription="Favorito"
+                    android:visibility="visible" />
+
+            </LinearLayout>
+
+        </FrameLayout>
+
+        <!-- Info 60% scrolleable -->
         <ScrollView
             android:id="@+id/vod_scroll"
             android:layout_width="match_parent"
@@ -148,7 +159,7 @@
                         android:id="@+id/vod_btn_fullscreen"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="⛶ Pantalla completa"
+                        android:text="â›¶ Pantalla completa"
                         android:textSize="11sp"
                         android:backgroundTint="#1a3550"
                         android:textColor="#00d4ff"
@@ -176,7 +187,7 @@
                         android:id="@+id/vod_btn_external"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="📲 Externo"
+                        android:text="ðŸ“² Externo"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -186,7 +197,7 @@
                         android:id="@+id/vod_btn_copy"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="📋 URL"
+                        android:text="ðŸ“‹ URL"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -196,7 +207,7 @@
                         android:id="@+id/vod_btn_stop"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="⏹"
+                        android:text="â¹"
                         android:textSize="13sp"
                         android:backgroundTint="#33ef4444"
                         android:textColor="#ef4444" />
@@ -214,7 +225,7 @@
                         android:id="@+id/vod_btn_audio"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="🔊 Audio"
+                        android:text="ðŸ”Š Audio"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -225,7 +236,7 @@
                         android:id="@+id/vod_btn_subs"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="💬 Subtítulos"
+                        android:text="ðŸ’¬ SubtÃ­tulos"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -238,6 +249,7 @@
 
     </LinearLayout>
 
+    <!-- VOD FULLSCREEN top overlay -->
     <LinearLayout
         android:id="@+id/vod_fs_top_bar"
         android:layout_width="match_parent"
@@ -253,7 +265,7 @@
             android:id="@+id/vod_fs_btn_exit"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="✕ Salir"
+            android:text="âœ• Salir"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#00d4ff"
@@ -272,6 +284,7 @@
 
     </LinearLayout>
 
+    <!-- VOD FULLSCREEN bottom overlay -->
     <LinearLayout
         android:id="@+id/vod_fs_bottom_bar"
         android:layout_width="match_parent"
@@ -297,7 +310,7 @@
             android:id="@+id/vod_fs_btn_ext"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="📲 Externo"
+            android:text="ðŸ“² Externo"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -307,7 +320,7 @@
             android:id="@+id/vod_fs_btn_url"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="📋 URL"
+            android:text="ðŸ“‹ URL"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -317,7 +330,7 @@
             android:id="@+id/vod_fs_btn_subs"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="💬 Subs"
+            android:text="ðŸ’¬ Subs"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -325,6 +338,7 @@
 
     </LinearLayout>
 
+    <!-- LIVE top bar -->
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
@@ -333,7 +347,8 @@
         android:background="#88000000"
         android:orientation="horizontal"
         android:padding="12dp"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:visibility="gone">
 
         <ImageButton
             android:id="@+id/btn_back"
@@ -342,7 +357,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_previous"
             android:tint="#FFFFFF"
-            android:contentDescription="Atrás" />
+            android:contentDescription="AtrÃ¡s" />
 
         <TextView
             android:id="@+id/txt_channel_name"
@@ -375,6 +390,7 @@
 
     </LinearLayout>
 
+    <!-- LIVE bottom bar -->
     <LinearLayout
         android:id="@+id/bottom_bar"
         android:layout_width="match_parent"
@@ -382,7 +398,8 @@
         android:layout_gravity="bottom"
         android:background="#88000000"
         android:orientation="vertical"
-        android:padding="12dp">
+        android:padding="12dp"
+        android:visibility="gone">
 
         <TextView
             android:id="@+id/txt_epg"
@@ -403,7 +420,7 @@
                 android:id="@+id/btn_audio"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
-                android:text="🔊 Audio"
+                android:text="ðŸ”Š Audio"
                 android:textSize="11sp"
                 android:backgroundTint="#331a2535"
                 android:textColor="#7ab8cc"
@@ -414,7 +431,7 @@
                 android:id="@+id/btn_subs"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
-                android:text="💬 Subs"
+                android:text="ðŸ’¬ Subs"
                 android:textSize="11sp"
                 android:backgroundTint="#331a2535"
                 android:textColor="#7ab8cc"
@@ -435,7 +452,7 @@
                 android:id="@+id/btn_external"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
-                android:text="📲 Externo"
+                android:text="ðŸ“² Externo"
                 android:textSize="11sp"
                 android:backgroundTint="#331a2535"
                 android:textColor="#7ab8cc"
@@ -445,7 +462,7 @@
                 android:id="@+id/btn_stop"
                 android:layout_width="wrap_content"
                 android:layout_height="36dp"
-                android:text="⏹ Detener"
+                android:text="â¹ Detener"
                 android:textSize="11sp"
                 android:backgroundTint="#33ef4444"
                 android:textColor="#ef4444" />
@@ -454,6 +471,7 @@
 
     </LinearLayout>
 
+    <!-- Loading overlay -->
     <LinearLayout
         android:id="@+id/loading_overlay"
         android:layout_width="match_parent"
