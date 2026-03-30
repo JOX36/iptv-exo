@@ -300,7 +300,28 @@
             android:text="📲 Externo"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
-            android:textColor="#7ab8cc" />
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/vod_fs_btn_url"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="📋 URL"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/vod_fs_btn_subs"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="💬 Subs"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:visibility="gone" />
 
     </LinearLayout>
 
