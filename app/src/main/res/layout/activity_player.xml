@@ -54,7 +54,8 @@
                 android:layout_height="36dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/btn_star_big_off"
-                android:contentDescription="Favorito" />
+                android:contentDescription="Favorito"
+                android:visibility="visible" />
 
         </LinearLayout>
 
@@ -202,6 +203,36 @@
 
                 </LinearLayout>
 
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center"
+                    android:layout_marginBottom="8dp">
+
+                    <Button
+                        android:id="@+id/vod_btn_audio"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="🔊 Audio"
+                        android:textSize="11sp"
+                        android:backgroundTint="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:layout_marginEnd="8dp"
+                        android:visibility="gone" />
+
+                    <Button
+                        android:id="@+id/vod_btn_subs"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="💬 Subtítulos"
+                        android:textSize="11sp"
+                        android:backgroundTint="#1a2535"
+                        android:textColor="#7ab8cc"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
             </LinearLayout>
         </ScrollView>
 
@@ -346,6 +377,28 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center">
+
+            <Button
+                android:id="@+id/btn_audio"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="🔊 Audio"
+                android:textSize="11sp"
+                android:backgroundTint="#331a2535"
+                android:textColor="#7ab8cc"
+                android:layout_marginEnd="8dp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btn_subs"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="💬 Subs"
+                android:textSize="11sp"
+                android:backgroundTint="#331a2535"
+                android:textColor="#7ab8cc"
+                android:layout_marginEnd="8dp"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/btn_pip"
