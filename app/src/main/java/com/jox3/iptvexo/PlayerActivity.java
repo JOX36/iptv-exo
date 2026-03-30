@@ -1,6 +1,7 @@
 package com.jox3.iptvexo;
 
 import android.annotation.SuppressLint;
+import android.app.AlertDialog;
 import android.app.PictureInPictureParams;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -20,8 +21,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
+import androidx.media3.common.TrackGroup;
+import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -35,6 +39,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
+import java.util.List;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
@@ -50,7 +56,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout topBar, bottomBar, loadingOverlay;
     private TextView txtChannelName, txtStatus, txtEpg, txtLoading;
     private ImageButton btnBack, btnFav;
-    private Button btnPip, btnExternal, btnStop;
+    private Button btnPip, btnExternal, btnStop, btnAudio, btnSubs;
     private ProgressBar progress;
 
     // VOD views
@@ -58,10 +64,9 @@ public class PlayerActivity extends AppCompatActivity {
     private PlayerView vodPlayerView;
     private ImageButton vodBtnBack, vodBtnFav;
     private Button vodBtnPip, vodBtnExternal, vodBtnCopy, vodBtnStop, vodBtnFullscreen;
+    private Button vodBtnAudio, vodBtnSubs;
     private TextView vodTxtTitle, vodTxtFullTitle, vodTxtYear, vodTxtDuration, vodTxtRating, vodTxtPlot;
     private ScrollView vodScrollView;
-
-    // VOD fullscreen overlay views
     private LinearLayout vodFsTopBar, vodFsBottomBar;
     private TextView vodFsTitle;
     private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt;
@@ -109,6 +114,8 @@ public class PlayerActivity extends AppCompatActivity {
         btnPip         = findViewById(R.id.btn_pip);
         btnExternal    = findViewById(R.id.btn_external);
         btnStop        = findViewById(R.id.btn_stop);
+        btnAudio       = findViewById(R.id.btn_audio);
+        btnSubs        = findViewById(R.id.btn_subs);
 
         // VOD views
         vodLayout        = findViewById(R.id.vod_layout);
@@ -120,6 +127,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodBtnCopy       = findViewById(R.id.vod_btn_copy);
         vodBtnStop       = findViewById(R.id.vod_btn_stop);
         vodBtnFullscreen = findViewById(R.id.vod_btn_fullscreen);
+        vodBtnAudio      = findViewById(R.id.vod_btn_audio);
+        vodBtnSubs       = findViewById(R.id.vod_btn_subs);
         vodTxtTitle      = findViewById(R.id.vod_txt_title);
         vodTxtFullTitle  = findViewById(R.id.vod_txt_full_title);
         vodTxtYear       = findViewById(R.id.vod_txt_year);
@@ -127,14 +136,12 @@ public class PlayerActivity extends AppCompatActivity {
         vodTxtRating     = findViewById(R.id.vod_txt_rating);
         vodTxtPlot       = findViewById(R.id.vod_txt_plot);
         vodScrollView    = findViewById(R.id.vod_scroll);
-
-        // VOD fullscreen overlay
-        vodFsTopBar    = findViewById(R.id.vod_fs_top_bar);
-        vodFsBottomBar = findViewById(R.id.vod_fs_bottom_bar);
-        vodFsTitle     = findViewById(R.id.vod_fs_title);
-        vodFsBtnExit   = findViewById(R.id.vod_fs_btn_exit);
-        vodFsBtnPip    = findViewById(R.id.vod_fs_btn_pip);
-        vodFsBtnExt    = findViewById(R.id.vod_fs_btn_ext);
+        vodFsTopBar      = findViewById(R.id.vod_fs_top_bar);
+        vodFsBottomBar   = findViewById(R.id.vod_fs_bottom_bar);
+        vodFsTitle       = findViewById(R.id.vod_fs_title);
+        vodFsBtnExit     = findViewById(R.id.vod_fs_btn_exit);
+        vodFsBtnPip      = findViewById(R.id.vod_fs_btn_pip);
+        vodFsBtnExt      = findViewById(R.id.vod_fs_btn_ext);
 
         boolean isVod = "vod".equals(type) || "series".equals(type);
         if (isVod) setupVodMode();
@@ -154,6 +161,10 @@ public class PlayerActivity extends AppCompatActivity {
         btnFav.setOnClickListener(v -> toggleFav(btnFav));
         btnPip.setOnClickListener(v -> enterPip());
         btnExternal.setOnClickListener(v -> launchExternal());
+        btnAudio.setOnClickListener(v -> showAudioTracks());
+        btnSubs.setOnClickListener(v -> showSubtitleTracks());
+        btnAudio.setVisibility(View.GONE);
+        btnSubs.setVisibility(View.GONE);
         playerView.setOnClickListener(v -> toggleBars());
     }
 
@@ -170,6 +181,10 @@ public class PlayerActivity extends AppCompatActivity {
         vodTxtFullTitle.setText(name);
         vodTxtPlot.setText("Cargando información...");
         vodFsTitle.setText(name);
+        // Favorito siempre visible
+        vodBtnFav.setVisibility(View.VISIBLE);
+        vodBtnAudio.setVisibility(View.GONE);
+        vodBtnSubs.setVisibility(View.GONE);
 
         vodBtnBack.setOnClickListener(v -> finish());
         vodBtnStop.setOnClickListener(v -> finish());
@@ -178,17 +193,12 @@ public class PlayerActivity extends AppCompatActivity {
         vodBtnExternal.setOnClickListener(v -> launchExternal());
         vodBtnCopy.setOnClickListener(v -> copyUrl());
         vodBtnFullscreen.setOnClickListener(v -> enterVodFullscreen());
-
-        // Fullscreen overlay buttons
+        vodBtnAudio.setOnClickListener(v -> showAudioTracks());
+        vodBtnSubs.setOnClickListener(v -> showSubtitleTracks());
         vodFsBtnExit.setOnClickListener(v -> exitVodFullscreen());
         vodFsBtnPip.setOnClickListener(v -> enterPip());
         vodFsBtnExt.setOnClickListener(v -> launchExternal());
-
-        // Tap video to show/hide fullscreen controls
-        vodPlayerView.setOnClickListener(v -> {
-            if (isVodFullscreen) toggleVodFsBars();
-        });
-
+        vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
         fetchVodInfo();
     }
 
@@ -196,16 +206,10 @@ public class PlayerActivity extends AppCompatActivity {
         isVodFullscreen = true;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         vodScrollView.setVisibility(View.GONE);
-        vodBtnBack.setVisibility(View.GONE);
-        vodBtnFav.setVisibility(View.GONE);
-
-        // Expandir PlayerView a toda la pantalla
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
         lp.weight = 10;
         vodPlayerView.setLayoutParams(lp);
         vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-
-        // Mostrar overlay de fullscreen
         vodFsTopBar.setVisibility(View.VISIBLE);
         vodFsBottomBar.setVisibility(View.VISIBLE);
         scheduleHideVodFsBars();
@@ -215,14 +219,10 @@ public class PlayerActivity extends AppCompatActivity {
         isVodFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         vodScrollView.setVisibility(View.VISIBLE);
-        vodBtnBack.setVisibility(View.VISIBLE);
-        vodBtnFav.setVisibility(View.VISIBLE);
-
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
         lp.weight = 4;
         vodPlayerView.setLayoutParams(lp);
         vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
-
         vodFsTopBar.setVisibility(View.GONE);
         vodFsBottomBar.setVisibility(View.GONE);
         hideHandler.removeCallbacksAndMessages(null);
@@ -243,6 +243,67 @@ public class PlayerActivity extends AppCompatActivity {
         }, 4000);
     }
 
+    // ── Audio tracks ──
+    private void showAudioTracks() {
+        if (player == null) return;
+        Tracks tracks = player.getCurrentTracks();
+        List<String> labels = new ArrayList<>();
+        List<Integer> groupIndices = new ArrayList<>();
+        int groupIdx = 0;
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() == C.TRACK_TYPE_AUDIO) {
+                for (int i = 0; i < group.length; i++) {
+                    String lang = group.getTrackFormat(i).language;
+                    String label = (lang != null && !lang.isEmpty()) ? lang.toUpperCase() : "Pista " + (labels.size() + 1);
+                    labels.add(label);
+                    groupIndices.add(groupIdx);
+                }
+            }
+            groupIdx++;
+        }
+        if (labels.isEmpty()) { Toast.makeText(this, "Sin pistas de audio disponibles", Toast.LENGTH_SHORT).show(); return; }
+        new AlertDialog.Builder(this)
+            .setTitle("🔊 Seleccionar audio")
+            .setItems(labels.toArray(new String[0]), (d, which) -> {
+                player.setTrackSelectionParameters(
+                    player.getTrackSelectionParameters().buildUpon()
+                        .setPreferredAudioLanguage(labels.get(which)).build()
+                );
+            }).show();
+    }
+
+    // ── Subtitle tracks ──
+    private void showSubtitleTracks() {
+        if (player == null) return;
+        Tracks tracks = player.getCurrentTracks();
+        List<String> labels = new ArrayList<>();
+        labels.add("Ninguno");
+        for (Tracks.Group group : tracks.getGroups()) {
+            if (group.getType() == C.TRACK_TYPE_TEXT) {
+                for (int i = 0; i < group.length; i++) {
+                    String lang = group.getTrackFormat(i).language;
+                    labels.add((lang != null && !lang.isEmpty()) ? lang.toUpperCase() : "Sub " + labels.size());
+                }
+            }
+        }
+        if (labels.size() == 1) { Toast.makeText(this, "Sin subtítulos disponibles", Toast.LENGTH_SHORT).show(); return; }
+        new AlertDialog.Builder(this)
+            .setTitle("💬 Subtítulos")
+            .setItems(labels.toArray(new String[0]), (d, which) -> {
+                if (which == 0) {
+                    player.setTrackSelectionParameters(
+                        player.getTrackSelectionParameters().buildUpon()
+                            .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
+                    );
+                } else {
+                    player.setTrackSelectionParameters(
+                        player.getTrackSelectionParameters().buildUpon()
+                            .setPreferredTextLanguage(labels.get(which)).build()
+                    );
+                }
+            }).show();
+    }
+
     private void fetchVodInfo() {
         new Thread(() -> {
             try {
@@ -255,8 +316,7 @@ public class PlayerActivity extends AppCompatActivity {
                     "&password=" + pass + "&action=get_vod_info&vod_id=" + itemId;
                 URL u = new URL(apiUrl);
                 HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
+                conn.setConnectTimeout(8000); conn.setReadTimeout(8000);
                 BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
                 StringBuilder sb = new StringBuilder();
                 String line;
@@ -294,14 +354,14 @@ public class PlayerActivity extends AppCompatActivity {
             return new OkHttpClient.Builder()
                 .sslSocketFactory(sc.getSocketFactory(), tm)
                 .hostnameVerifier((h, s) -> true).build();
-        } catch (Exception e) {
-            return new OkHttpClient.Builder().build();
-        }
+        } catch (Exception e) { return new OkHttpClient.Builder().build(); }
     }
 
     private void initPlayer(PlayerView pv) {
         showLoading(true);
-        if (player != null) { player.release(); player = null; }
+        // ── AUDIO FIX: detener player anterior antes de crear nuevo ──
+        if (player != null) { player.stop(); player.release(); player = null; }
+
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
         player = new ExoPlayer.Builder(this)
             .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
@@ -311,6 +371,27 @@ public class PlayerActivity extends AppCompatActivity {
         player.prepare();
         player.play();
         player.addListener(new Player.Listener() {
+            @Override
+            public void onTracksChanged(Tracks tracks) {
+                // Mostrar botones de audio/subs solo si hay más de 1 pista
+                boolean hasAudio = false, hasSubs = false;
+                for (Tracks.Group g : tracks.getGroups()) {
+                    if (g.getType() == C.TRACK_TYPE_AUDIO && g.length > 1) hasAudio = true;
+                    if (g.getType() == C.TRACK_TYPE_TEXT && g.length > 0) hasSubs = true;
+                }
+                boolean fa = hasAudio, fs = hasSubs;
+                runOnUiThread(() -> {
+                    boolean isVod = "vod".equals(type) || "series".equals(type);
+                    if (isVod) {
+                        vodBtnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
+                        vodBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
+                    } else {
+                        btnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
+                        btnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
+                    }
+                });
+            }
+
             @Override
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
@@ -327,6 +408,7 @@ public class PlayerActivity extends AppCompatActivity {
                     } else showLoading(false);
                 }
             }
+
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException error) {
                 if ("live".equals(type) && retryCount < 3) {
@@ -364,8 +446,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void toggleFav(ImageButton btn) {
         isFav = !isFav;
-        favChanged = true;
-        favAdded = isFav;
+        favChanged = true; favAdded = isFav;
         btn.setImageResource(isFav ? android.R.drawable.btn_star_big_on : android.R.drawable.btn_star_big_off);
         Toast.makeText(this, isFav ? "⭐ Favorito guardado" : "Quitado de favoritos", Toast.LENGTH_SHORT).show();
     }
@@ -395,44 +476,26 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     public void onPictureInPictureModeChanged(boolean isInPiP) {
         super.onPictureInPictureModeChanged(isInPiP);
-        // En PiP: ocultar TODO — solo video puro
-        int vis = isInPiP ? View.GONE : View.VISIBLE;
         topBar.setVisibility(View.GONE);
         bottomBar.setVisibility(View.GONE);
         vodFsTopBar.setVisibility(View.GONE);
         vodFsBottomBar.setVisibility(View.GONE);
-        if ("vod".equals(type) || "series".equals(type)) {
+        boolean isVod = "vod".equals(type) || "series".equals(type);
+        if (isVod) {
             LinearLayout vodTopBar = findViewById(R.id.vod_top_bar);
             vodTopBar.setVisibility(isInPiP ? View.GONE : View.VISIBLE);
             vodScrollView.setVisibility(isInPiP ? View.GONE : (isVodFullscreen ? View.GONE : View.VISIBLE));
+            if (player != null) vodPlayerView.setUseController(!isInPiP);
+        } else {
+            if (player != null) playerView.setUseController(!isInPiP);
         }
-        PlayerView pv = "live".equals(type) ? playerView : vodPlayerView;
-        if (player != null) pv.setUseController(!isInPiP);
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        // Solo liberar si NO es PiP y la activity se está terminando
-        if (!isInPictureInPictureMode() && isFinishing()) {
-            if (player != null) { player.stop(); player.release(); player = null; }
-        } else if (!isInPictureInPictureMode()) {
-            // Pausar cuando va a background (ej: home button sin PiP)
-            if (player != null) player.pause();
-        }
-    }
-
-    @Override
-    protected void onStart() {
-        super.onStart();
-        // Reanudar si vuelve de background
-        if (player != null) player.play();
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         hideHandler.removeCallbacksAndMessages(null);
+        // ── AUDIO FIX: siempre detener al destruir ──
         if (player != null) { player.stop(); player.release(); player = null; }
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
@@ -447,5 +510,4 @@ public class PlayerActivity extends AppCompatActivity {
         if (isVodFullscreen) exitVodFullscreen();
         else super.onBackPressed();
     }
-                             }
-
+}
