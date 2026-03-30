@@ -866,14 +866,26 @@ function play(item){
     document.getElementById('nowBar').classList.add('visible');
     setStatus(item.type==='vod'?'vod':'live');
     updateFavBtn();
-    // Abrir PlayerActivity con todos los datos
+    // Pasar lista de canales para navegación (solo para live)
+    let channelsJson='[]';
+    let channelIndex=-1;
+    if(item.type==='live'&&S.channels&&S.channels.length>0){
+      try{
+        // Solo pasar url, name, id para no exceder límite
+        const slim=S.channels.map(c=>({url:c.url||'',name:c.name||'',id:c.id||'',type:c.type||'live',logo:c.logo||'',group:c.group||''}));
+        channelsJson=JSON.stringify(slim);
+        channelIndex=S.channels.findIndex(c=>String(c.id)===String(item.id));
+      }catch(e){channelsJson='[]';}
+    }
     AndroidPlayer.openPlayer(
       item.url||'',
       item.name||'',
       item.group||'',
       item.type||'live',
       item.logo||'',
-      String(item.id||'')
+      String(item.id||''),
+      channelsJson,
+      channelIndex
     );
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
