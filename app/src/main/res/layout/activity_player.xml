@@ -4,6 +4,7 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
+    <!-- LIVE: PlayerView fullscreen -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -19,7 +20,7 @@
         android:background="#0a0e14"
         android:visibility="gone">
 
-        <!-- Video 40% â€” sin topbar encima, el topbar es overlay transparente -->
+        <!-- Video 40% con topbar transparente encima -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -49,7 +50,7 @@
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@android:drawable/ic_media_previous"
                     android:tint="#00d4ff"
-                    android:contentDescription="AtrÃ¡s" />
+                    android:contentDescription="Atras" />
 
                 <TextView
                     android:id="@+id/vod_txt_title"
@@ -99,6 +100,7 @@
                     android:textStyle="bold"
                     android:layout_marginBottom="8dp" />
 
+                <!-- Metadatos: aÃ±o, duraciÃ³n, rating -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -139,6 +141,7 @@
 
                 </LinearLayout>
 
+                <!-- Sinopsis -->
                 <TextView
                     android:id="@+id/vod_txt_plot"
                     android:layout_width="match_parent"
@@ -148,6 +151,7 @@
                     android:lineSpacingMultiplier="1.4"
                     android:layout_marginBottom="14dp" />
 
+                <!-- Fila 1: Pantalla completa + PiP -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -176,6 +180,7 @@
 
                 </LinearLayout>
 
+                <!-- Fila 2: Externo + URL + Detener -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -197,7 +202,7 @@
                         android:id="@+id/vod_btn_copy"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="ðŸ“‹ URL"
+                        android:text="ðŸ“‹ Copiar URL"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -207,13 +212,14 @@
                         android:id="@+id/vod_btn_stop"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="â¹"
-                        android:textSize="13sp"
+                        android:text="â¹ Detener"
+                        android:textSize="11sp"
                         android:backgroundTint="#33ef4444"
                         android:textColor="#ef4444" />
 
                 </LinearLayout>
 
+                <!-- Fila 3: Audio + Subtitulos (ocultos hasta detectar pistas) -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -236,7 +242,7 @@
                         android:id="@+id/vod_btn_subs"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="ðŸ’¬ SubtÃ­tulos"
+                        android:text="ðŸ’¬ Subtitulos"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -320,7 +326,7 @@
             android:id="@+id/vod_fs_btn_url"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="ðŸ“‹ URL"
+            android:text="ðŸ“‹ Copiar URL"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -330,7 +336,7 @@
             android:id="@+id/vod_fs_btn_subs"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
-            android:text="ðŸ’¬ Subs"
+            android:text="ðŸ’¬ Subtitulos"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -338,7 +344,7 @@
 
     </LinearLayout>
 
-    <!-- LIVE top bar -->
+    <!-- LIVE top bar (tap para mostrar/ocultar) -->
     <LinearLayout
         android:id="@+id/top_bar"
         android:layout_width="match_parent"
@@ -357,7 +363,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@android:drawable/ic_media_previous"
             android:tint="#FFFFFF"
-            android:contentDescription="AtrÃ¡s" />
+            android:contentDescription="Atras" />
 
         <TextView
             android:id="@+id/txt_channel_name"
