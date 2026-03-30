@@ -24,7 +24,6 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
-import androidx.media3.common.TrackGroup;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
@@ -32,6 +31,7 @@ import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
 import androidx.media3.ui.PlayerView;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -69,11 +69,15 @@ public class PlayerActivity extends AppCompatActivity {
     private ScrollView vodScrollView;
     private LinearLayout vodFsTopBar, vodFsBottomBar;
     private TextView vodFsTitle;
-    private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt;
+    private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt, vodFsBtnUrl, vodFsBtnSubs;
 
+    // Channel data
     private String url, name, group, type, logo, itemId;
+    private List<JSONObject> channels = new ArrayList<>();
+    private int channelIndex = -1;
+
     private boolean isFav = false;
-    private boolean barsVisible = true;
+    private boolean barsVisible = false;
     private boolean favChanged = false;
     private boolean favAdded = false;
     private boolean isVodFullscreen = false;
@@ -92,12 +96,22 @@ public class PlayerActivity extends AppCompatActivity {
         );
         setContentView(R.layout.activity_player);
 
-        url    = getIntent().getStringExtra("url");
-        name   = getIntent().getStringExtra("name");
-        group  = getIntent().getStringExtra("group");
-        type   = getIntent().getStringExtra("type");
-        logo   = getIntent().getStringExtra("logo");
-        itemId = getIntent().getStringExtra("id");
+        url          = getIntent().getStringExtra("url");
+        name         = getIntent().getStringExtra("name");
+        group        = getIntent().getStringExtra("group");
+        type         = getIntent().getStringExtra("type");
+        logo         = getIntent().getStringExtra("logo");
+        itemId       = getIntent().getStringExtra("id");
+        channelIndex = getIntent().getIntExtra("channel_index", -1);
+
+        // Parse channel list
+        String channelsJson = getIntent().getStringExtra("channels_json");
+        if (channelsJson != null && !channelsJson.isEmpty()) {
+            try {
+                JSONArray arr = new JSONArray(channelsJson);
+                for (int i = 0; i < arr.length(); i++) channels.add(arr.getJSONObject(i));
+            } catch (Exception e) { channels = new ArrayList<>(); }
+        }
 
         // LIVE views
         playerView     = findViewById(R.id.player_view);
@@ -142,6 +156,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExit     = findViewById(R.id.vod_fs_btn_exit);
         vodFsBtnPip      = findViewById(R.id.vod_fs_btn_pip);
         vodFsBtnExt      = findViewById(R.id.vod_fs_btn_ext);
+        vodFsBtnUrl      = findViewById(R.id.vod_fs_btn_url);
+        vodFsBtnSubs     = findViewById(R.id.vod_fs_btn_subs);
 
         boolean isVod = "vod".equals(type) || "series".equals(type);
         if (isVod) setupVodMode();
@@ -165,6 +181,7 @@ public class PlayerActivity extends AppCompatActivity {
         btnSubs.setOnClickListener(v -> showSubtitleTracks());
         btnAudio.setVisibility(View.GONE);
         btnSubs.setVisibility(View.GONE);
+        // Tap para mostrar barras
         playerView.setOnClickListener(v -> toggleBars());
     }
 
@@ -181,10 +198,10 @@ public class PlayerActivity extends AppCompatActivity {
         vodTxtFullTitle.setText(name);
         vodTxtPlot.setText("Cargando información...");
         vodFsTitle.setText(name);
-        // Favorito siempre visible
         vodBtnFav.setVisibility(View.VISIBLE);
         vodBtnAudio.setVisibility(View.GONE);
         vodBtnSubs.setVisibility(View.GONE);
+        vodFsBtnSubs.setVisibility(View.GONE);
 
         vodBtnBack.setOnClickListener(v -> finish());
         vodBtnStop.setOnClickListener(v -> finish());
@@ -198,8 +215,32 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExit.setOnClickListener(v -> exitVodFullscreen());
         vodFsBtnPip.setOnClickListener(v -> enterPip());
         vodFsBtnExt.setOnClickListener(v -> launchExternal());
+        vodFsBtnUrl.setOnClickListener(v -> copyUrl());
+        vodFsBtnSubs.setOnClickListener(v -> showSubtitleTracks());
         vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
         fetchVodInfo();
+    }
+
+    // ── Canal siguiente/anterior ──
+    private void navigateChannel(int direction) {
+        if (channels.isEmpty() || channelIndex < 0) return;
+        int newIndex = channelIndex + direction;
+        if (newIndex < 0) newIndex = channels.size() - 1;
+        if (newIndex >= channels.size()) newIndex = 0;
+        try {
+            JSONObject ch = channels.get(newIndex);
+            channelIndex = newIndex;
+            url    = ch.optString("url", "");
+            name   = ch.optString("name", "");
+            itemId = ch.optString("id", "");
+            logo   = ch.optString("logo", "");
+            group  = ch.optString("group", "");
+            txtChannelName.setText(name);
+            retryCount = 0;
+            initPlayer(playerView);
+        } catch (Exception e) {
+            Toast.makeText(this, "Error al cambiar canal", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void enterVodFullscreen() {
@@ -243,46 +284,42 @@ public class PlayerActivity extends AppCompatActivity {
         }, 4000);
     }
 
-    // ── Audio tracks ──
     private void showAudioTracks() {
         if (player == null) return;
         Tracks tracks = player.getCurrentTracks();
         List<String> labels = new ArrayList<>();
-        List<Integer> groupIndices = new ArrayList<>();
-        int groupIdx = 0;
-        for (Tracks.Group group : tracks.getGroups()) {
-            if (group.getType() == C.TRACK_TYPE_AUDIO) {
-                for (int i = 0; i < group.length; i++) {
-                    String lang = group.getTrackFormat(i).language;
-                    String label = (lang != null && !lang.isEmpty()) ? lang.toUpperCase() : "Pista " + (labels.size() + 1);
-                    labels.add(label);
-                    groupIndices.add(groupIdx);
+        List<String> langs = new ArrayList<>();
+        for (Tracks.Group g : tracks.getGroups()) {
+            if (g.getType() == C.TRACK_TYPE_AUDIO) {
+                for (int i = 0; i < g.length; i++) {
+                    String lang = g.getTrackFormat(i).language;
+                    labels.add((lang != null && !lang.isEmpty()) ? lang.toUpperCase() : "Pista " + (labels.size() + 1));
+                    langs.add(lang != null ? lang : "");
                 }
             }
-            groupIdx++;
         }
-        if (labels.isEmpty()) { Toast.makeText(this, "Sin pistas de audio disponibles", Toast.LENGTH_SHORT).show(); return; }
+        if (labels.isEmpty()) { Toast.makeText(this, "Sin pistas de audio", Toast.LENGTH_SHORT).show(); return; }
         new AlertDialog.Builder(this)
             .setTitle("🔊 Seleccionar audio")
-            .setItems(labels.toArray(new String[0]), (d, which) -> {
+            .setItems(labels.toArray(new String[0]), (d, which) ->
                 player.setTrackSelectionParameters(
                     player.getTrackSelectionParameters().buildUpon()
-                        .setPreferredAudioLanguage(labels.get(which)).build()
-                );
-            }).show();
+                        .setPreferredAudioLanguage(langs.get(which)).build()
+                )).show();
     }
 
-    // ── Subtitle tracks ──
     private void showSubtitleTracks() {
         if (player == null) return;
         Tracks tracks = player.getCurrentTracks();
         List<String> labels = new ArrayList<>();
-        labels.add("Ninguno");
-        for (Tracks.Group group : tracks.getGroups()) {
-            if (group.getType() == C.TRACK_TYPE_TEXT) {
-                for (int i = 0; i < group.length; i++) {
-                    String lang = group.getTrackFormat(i).language;
+        List<String> langs = new ArrayList<>();
+        labels.add("Ninguno"); langs.add("");
+        for (Tracks.Group g : tracks.getGroups()) {
+            if (g.getType() == C.TRACK_TYPE_TEXT) {
+                for (int i = 0; i < g.length; i++) {
+                    String lang = g.getTrackFormat(i).language;
                     labels.add((lang != null && !lang.isEmpty()) ? lang.toUpperCase() : "Sub " + labels.size());
+                    langs.add(lang != null ? lang : "");
                 }
             }
         }
@@ -293,13 +330,11 @@ public class PlayerActivity extends AppCompatActivity {
                 if (which == 0) {
                     player.setTrackSelectionParameters(
                         player.getTrackSelectionParameters().buildUpon()
-                            .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT).build()
-                    );
+                            .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT).build());
                 } else {
                     player.setTrackSelectionParameters(
                         player.getTrackSelectionParameters().buildUpon()
-                            .setPreferredTextLanguage(labels.get(which)).build()
-                    );
+                            .setPreferredTextLanguage(langs.get(which)).build());
                 }
             }).show();
     }
@@ -359,7 +394,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void initPlayer(PlayerView pv) {
         showLoading(true);
-        // ── AUDIO FIX: detener player anterior antes de crear nuevo ──
+        // ── AUDIO FIX: detener siempre antes de crear nuevo player ──
         if (player != null) { player.stop(); player.release(); player = null; }
 
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
@@ -370,21 +405,24 @@ public class PlayerActivity extends AppCompatActivity {
         player.setMediaItem(MediaItem.fromUri(url));
         player.prepare();
         player.play();
+
         player.addListener(new Player.Listener() {
             @Override
             public void onTracksChanged(Tracks tracks) {
-                // Mostrar botones de audio/subs solo si hay más de 1 pista
                 boolean hasAudio = false, hasSubs = false;
+                int audioCount = 0;
                 for (Tracks.Group g : tracks.getGroups()) {
-                    if (g.getType() == C.TRACK_TYPE_AUDIO && g.length > 1) hasAudio = true;
+                    if (g.getType() == C.TRACK_TYPE_AUDIO) { audioCount += g.length; }
                     if (g.getType() == C.TRACK_TYPE_TEXT && g.length > 0) hasSubs = true;
                 }
+                hasAudio = audioCount > 1;
                 boolean fa = hasAudio, fs = hasSubs;
                 runOnUiThread(() -> {
                     boolean isVod = "vod".equals(type) || "series".equals(type);
                     if (isVod) {
                         vodBtnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
                         vodBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
+                        vodFsBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
                     } else {
                         btnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
                         btnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
@@ -495,7 +533,6 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         hideHandler.removeCallbacksAndMessages(null);
-        // ── AUDIO FIX: siempre detener al destruir ──
         if (player != null) { player.stop(); player.release(); player = null; }
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
@@ -509,5 +546,26 @@ public class PlayerActivity extends AppCompatActivity {
     public void onBackPressed() {
         if (isVodFullscreen) exitVodFullscreen();
         else super.onBackPressed();
+    }
+
+    // ── Swipe para cambiar canal en Live TV ──
+    private float swipeStartX = 0;
+
+    @Override
+    public boolean onTouchEvent(android.view.MotionEvent event) {
+        if (!"live".equals(type) || channels.isEmpty()) return super.onTouchEvent(event);
+        switch (event.getAction()) {
+            case android.view.MotionEvent.ACTION_DOWN:
+                swipeStartX = event.getX(); break;
+            case android.view.MotionEvent.ACTION_UP:
+                float diff = event.getX() - swipeStartX;
+                if (Math.abs(diff) > 150) {
+                    // Swipe izquierda = siguiente, derecha = anterior
+                    navigateChannel(diff < 0 ? 1 : -1);
+                    return true;
+                }
+                break;
+        }
+        return super.onTouchEvent(event);
     }
 }
