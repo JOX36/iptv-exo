@@ -29,7 +29,7 @@
         <!-- Reproductor -->
         <activity
             android:name=".PlayerActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="false"
             android:supportsPictureInPicture="true"
             android:launchMode="singleTop" />
