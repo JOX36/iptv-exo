@@ -53,6 +53,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ── Player global: se detiene siempre antes de crear uno nuevo ──
     private ExoPlayer player;
+    private static PlayerActivity activeInstance = null;
 
     // LIVE
     private PlayerView playerView;
@@ -100,6 +101,12 @@ public class PlayerActivity extends AppCompatActivity {
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+
+        // Detener instancia anterior si existe — fix audio doble
+        if (activeInstance != null && activeInstance != this) {
+            activeInstance.stopAndRelease();
+        }
+        activeInstance = this;
 
         setContentView(R.layout.activity_player);
 
@@ -378,11 +385,15 @@ public class PlayerActivity extends AppCompatActivity {
     // ══ VOD FULLSCREEN ══
     private void enterVodFullscreen() {
         isVodFullscreen = true;
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+        // Rotar sin recrear la Activity gracias a configChanges en Manifest
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         vodScroll.setVisibility(View.GONE);
+        // Expandir video al peso maximo
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
-        lp.weight = 10; vodPlayerView.setLayoutParams(lp);
+        lp.weight = 10; lp.height = 0; vodPlayerView.setLayoutParams(lp);
         vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        // Ocultar top bar del vod
+        vodTopBar.setVisibility(View.GONE);
         vodFsTop.setVisibility(View.VISIBLE);
         vodFsBottom.setVisibility(View.VISIBLE);
         scheduleHideVodFs();
@@ -393,8 +404,9 @@ public class PlayerActivity extends AppCompatActivity {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         vodScroll.setVisibility(View.VISIBLE);
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
-        lp.weight = 4; vodPlayerView.setLayoutParams(lp);
+        lp.weight = 4; lp.height = 0; vodPlayerView.setLayoutParams(lp);
         vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
+        vodTopBar.setVisibility(View.VISIBLE);
         vodFsTop.setVisibility(View.GONE);
         vodFsBottom.setVisibility(View.GONE);
     }
@@ -572,6 +584,7 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         stopAndRelease();
+        if (activeInstance == this) activeInstance = null;
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
         result.putExtra("fav_removed", favChanged && !favAdded);
