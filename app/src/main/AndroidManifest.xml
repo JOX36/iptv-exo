@@ -28,7 +28,7 @@
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="false"
-            android:supportsPictureInPicture="true"
+            android:supportsPictureInPicture="false"
             android:launchMode="standard" />
 
     </application>
