@@ -585,7 +585,7 @@ public class PlayerActivity extends AppCompatActivity {
     public void onPictureInPictureModeChanged(boolean inPiP) {
         super.onPictureInPictureModeChanged(inPiP);
         if (inPiP) {
-            // Entrando en PiP — ocultar todo, solo video puro
+            // Entrando en PiP — ocultar todo
             liveTopBar.setVisibility(View.GONE);
             liveBottomBar.setVisibility(View.GONE);
             vodFsTop.setVisibility(View.GONE);
@@ -597,9 +597,12 @@ public class PlayerActivity extends AppCompatActivity {
             } else {
                 playerView.setUseController(false);
             }
+            // Monitorear cierre de PiP en MIUI
+            startPipMonitor();
         } else {
-            // Saliendo de PiP — restaurar UI solamente
-            // NO resetear enteredPiP aquí — onStop lo necesita para detectar cierre con X
+            // Saliendo de PiP — restaurar UI
+            enteredPiP = false;
+            stopPipMonitor();
             if (isVodType()) {
                 vodTopBar.setVisibility(View.VISIBLE);
                 vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
@@ -607,6 +610,37 @@ public class PlayerActivity extends AppCompatActivity {
             } else {
                 playerView.setUseController(true);
             }
+        }
+    }
+
+    private Runnable pipMonitor = null;
+
+    private void startPipMonitor() {
+        pipMonitor = new Runnable() {
+            @Override
+            public void run() {
+                if (!enteredPiP) return;
+                // Si la ventana no es visible y no estamos en PiP activo = usuario cerró con X
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    if (!isInPictureInPictureMode() && enteredPiP) {
+                        runOnUiThread(() -> {
+                            stopAndRelease();
+                            enteredPiP = false;
+                            finish();
+                        });
+                        return;
+                    }
+                }
+                handler.postDelayed(this, 500);
+            }
+        };
+        handler.postDelayed(pipMonitor, 500);
+    }
+
+    private void stopPipMonitor() {
+        if (pipMonitor != null) {
+            handler.removeCallbacks(pipMonitor);
+            pipMonitor = null;
         }
     }
 
@@ -622,17 +656,21 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Reiniciar solo si viene de PiP (el usuario volvió a la app)
-        if (enteredPiP && player == null && url != null && !url.isEmpty()) {
+        // Si vuelve de PiP a la app, resetear flag y reiniciar si es necesario
+        if (enteredPiP) {
             enteredPiP = false;
-            initPlayer();
+            if (player == null && url != null && !url.isEmpty()) {
+                initPlayer();
+            }
         }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        if (enteredPiP && !isInPictureInPictureMode()) {
+        // En MIUI, isInPictureInPictureMode() puede no ser confiable
+        // Si enteredPiP=true y llegamos a onStop, el usuario cerró el PiP
+        if (enteredPiP) {
             stopAndRelease();
             enteredPiP = false;
             finish();
