@@ -276,6 +276,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodBtnFullscreen.setOnClickListener(v -> enterVodFullscreen());
         vodBtnAudio.setOnClickListener(v -> showAudioTracks());
         vodBtnSubs.setOnClickListener(v -> showSubtitleTracks());
+        vodBtnAudio.setOnClickListener(v -> showAudioTracks());
+        vodBtnSubs.setOnClickListener(v -> showSubtitleTracks());
 
         vodFsBtnExit.setOnClickListener(v -> exitVodFullscreen());
         vodFsBtnPip.setOnClickListener(v -> enterPip());
@@ -572,14 +574,46 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     public void onPictureInPictureModeChanged(boolean inPiP) {
         super.onPictureInPictureModeChanged(inPiP);
-        liveTopBar.setVisibility(View.GONE); liveBottomBar.setVisibility(View.GONE);
-        vodFsTop.setVisibility(View.GONE); vodFsBottom.setVisibility(View.GONE);
-        if (isVodType()) {
-            vodTopBar.setVisibility(inPiP ? View.GONE : View.VISIBLE);
-            vodScroll.setVisibility(inPiP ? View.GONE : (isVodFullscreen ? View.GONE : View.VISIBLE));
-            vodPlayerView.setUseController(!inPiP);
+        if (!inPiP) {
+            // Usuario salió de PiP — verificar si la app está en foreground
+            // Si no está visible, detener audio
+            if (!isChangingConfigurations()) {
+                // Volvió a la app normalmente — solo ocultar barras
+                liveTopBar.setVisibility(View.GONE);
+                liveBottomBar.setVisibility(View.GONE);
+                vodFsTop.setVisibility(View.GONE);
+                vodFsBottom.setVisibility(View.GONE);
+                if (isVodType()) {
+                    vodTopBar.setVisibility(View.VISIBLE);
+                    vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
+                    vodPlayerView.setUseController(true);
+                } else {
+                    playerView.setUseController(true);
+                }
+            }
         } else {
-            playerView.setUseController(!inPiP);
+            // Entrando en PiP — ocultar todo excepto el video
+            liveTopBar.setVisibility(View.GONE);
+            liveBottomBar.setVisibility(View.GONE);
+            vodFsTop.setVisibility(View.GONE);
+            vodFsBottom.setVisibility(View.GONE);
+            if (isVodType()) {
+                vodTopBar.setVisibility(View.GONE);
+                vodScroll.setVisibility(View.GONE);
+                vodPlayerView.setUseController(false);
+            } else {
+                playerView.setUseController(false);
+            }
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // Si salió de PiP cerrando (no volviendo a la app), detener audio
+        if (isInPictureInPictureMode()) return;
+        if (!isChangingConfigurations() && isFinishing()) {
+            stopAndRelease();
         }
     }
 
