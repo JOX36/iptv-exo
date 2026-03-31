@@ -745,26 +745,51 @@ async function startBackgroundIndex(){
   const SECS=['live','vod','series'];
   const catA={live:'get_live_categories',vod:'get_vod_categories',series:'get_series_categories'};
   const itemA={live:'get_live_streams',vod:'get_vod_streams',series:'get_series'};
-  let jobs=[];
-  for(const sec of SECS){try{if(S.cats[sec].length===0){const data=await xApi(catA[sec]);S.cats[sec]=(Array.isArray(data)?data:[]).map(c=>({id:c.category_id,name:c.category_name||'Sin nombre',loaded:false,items:[]}))}S.cats[sec].forEach(c=>jobs.push({sec,catId:c.id,catName:c.name}))}catch(e){}}
-  const total=jobs.length;let done=0;
-  for(const job of jobs){
-    if(!IDX.running)break;const{sec,catId,catName}=job;const cat=S.cats[sec].find(c=>c.id===catId);
-    if(!cat){done++;continue}
-    status.textContent=`Indexando ${sec==='live'?'📺':sec==='vod'?'🎬':'🎭'} ${catName}... (${done}/${total})`;
-    prog.style.width=`${Math.round((done/total)*100)}%`;
+
+  // Cargar todas las categorías primero
+  status.textContent='Cargando categorías...';
+  for(const sec of SECS){
     try{
-      if(!cat.loaded){
-        const d=await xApi(itemA[sec],`&category_id=${catId}`);
-        if(sec==='series') cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.series_id,name:s.name||'?',logo:s.cover||'',cover:s.cover||'',rating:s.rating||'',group:catName,type:'series'}));
-        else if(sec==='vod') cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',cover:s.stream_icon||'',rating:s.rating||'',group:catName,type:'vod',url:`${S.host}/movie/${S.user}/${S.pass}/${s.stream_id}.mp4`}));
-        else cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',group:catName,type:'live',url:`${S.host}/live/${S.user}/${S.pass}/${s.stream_id}.m3u8`}));
-        cat.loaded=true;
+      if(S.cats[sec].length===0){
+        const data=await xApi(catA[sec]);
+        S.cats[sec]=(Array.isArray(data)?data:[]).map(c=>({id:c.category_id,name:c.category_name||'Sin nombre',loaded:false,items:[]}));
       }
-      cat.items.forEach(i=>IDX.items.push({...i,_sec:sec}));
     }catch(e){}
-    done++;await new Promise(r=>setTimeout(r,10));
   }
+
+  // Estrategia: cargar TODO de una sola petición por sección (sin category_id)
+  // Esto es MUCHO más rápido que petición por categoría
+  let total=0,done=0;
+  const processAll=async(sec)=>{
+    try{
+      status.textContent=`Cargando ${sec==='live'?'📺 Canales':sec==='vod'?'🎬 Películas':'🎭 Series'}...`;
+      const d=await xApi(itemA[sec]); // sin category_id = trae TODO
+      const items=Array.isArray(d)?d:[];
+      // Distribuir en categorías
+      items.forEach(s=>{
+        let catId,item;
+        if(sec==='series'){
+          catId=s.category_id;
+          item={id:s.series_id,name:s.name||'?',logo:s.cover||'',cover:s.cover||'',rating:s.rating||'',group:'',type:'series'};
+        }else if(sec==='vod'){
+          catId=s.category_id;
+          item={id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',cover:s.stream_icon||'',rating:s.rating||'',group:'',type:'vod',url:`${S.host}/movie/${S.user}/${S.pass}/${s.stream_id}.mp4`};
+        }else{
+          catId=s.category_id;
+          item={id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',group:'',type:'live',url:`${S.host}/live/${S.user}/${S.pass}/${s.stream_id}.m3u8`};
+        }
+        const cat=S.cats[sec].find(c=>c.id==catId);
+        if(cat){item.group=cat.name;cat.items.push(item);cat.loaded=true;}
+        IDX.items.push({...item,_sec:sec});
+      });
+      done++;prog.style.width=`${Math.round((done/total)*100)}%`;
+    }catch(e){done++;prog.style.width=`${Math.round((done/total)*100)}%`;}
+  };
+
+  // Ejecutar las 3 secciones en paralelo
+  total=3;
+  await Promise.all(SECS.map(sec=>processAll(sec)));
+
   IDX.done=true;IDX.running=false;prog.style.width='100%';
   status.textContent=`✅ Índice completo — ${IDX.items.length.toLocaleString()} elementos`;
   setTimeout(()=>{bar.classList.add('hidden');status.classList.remove('visible')},3000);
@@ -867,14 +892,15 @@ function play(item){
     document.getElementById('nowBar').classList.remove('visible'); // ocultar now-bar al abrir reproductor nativo
     setStatus(item.type==='vod'?'vod':'live');
     updateFavBtn();
-    // Pasar lista de canales para live y series (para swipe/navegación)
+    // Pasar lista de canales para live (solo categoría actual, no todos)
     let channelsJson='[]';
     let channelIndex=-1;
-    if((item.type==='live'||item.type==='series')&&S.channels&&S.channels.length>0){
+    if(item.type==='live'&&S.channels&&S.channels.length>0){
       try{
-        const slim=S.channels.map(c=>({url:c.url||'',name:c.name||'',id:c.id||'',type:c.type||'live',logo:c.logo||'',group:c.group||''}));
+        // Limitar a máx 200 canales para no superar límite del Bundle de Android
+        const slim=S.channels.slice(0,200).map(c=>({url:c.url||'',name:c.name||'',id:String(c.id||''),type:'live',logo:c.logo||'',group:c.group||''}));
         channelsJson=JSON.stringify(slim);
-        channelIndex=S.channels.findIndex(c=>String(c.id)===String(item.id));
+        channelIndex=slim.findIndex(c=>String(c.id)===String(item.id));
       }catch(e){channelsJson='[]';}
     }
     AndroidPlayer.openPlayer(
