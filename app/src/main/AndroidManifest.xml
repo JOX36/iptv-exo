@@ -23,12 +23,12 @@
             </intent-filter>
         </activity>
 
-        <!-- launchMode="standard" = instancia nueva cada vez = audio se destruye correctamente -->
         <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
             android:exported="false"
-            android:supportsPictureInPicture="false"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="false"
             android:launchMode="standard" />
 
     </application>
