@@ -535,9 +535,14 @@ public class PlayerActivity extends AppCompatActivity {
         toast(isFav ? "Favorito guardado" : "Quitado de favoritos");
     }
 
+    private boolean enteredPiP = false;
+
     private void enterPip() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-            enterPictureInPictureMode(new PictureInPictureParams.Builder().setAspectRatio(new Rational(16,9)).build());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && player != null) {
+            enteredPiP = true;
+            enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                .setAspectRatio(new Rational(16, 9)).build());
+        }
     }
 
     private void launchExternal() {
@@ -588,38 +593,27 @@ public class PlayerActivity extends AppCompatActivity {
                 playerView.setUseController(false);
             }
         } else {
-            // Saliendo de PiP — dos casos:
-            // 1. Usuario volvió a la app (Activity visible) — restaurar UI
-            // 2. Usuario cerró la ventana PiP (Activity no visible) — detener audio
-            if (isFinishing()) {
-                // Caso 2: cerraron el PiP con X
-                stopAndRelease();
+            // Saliendo de PiP — restaurar UI
+            enteredPiP = false;
+            if (isVodType()) {
+                vodTopBar.setVisibility(View.VISIBLE);
+                vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
+                vodPlayerView.setUseController(true);
             } else {
-                // Caso 1: volvieron a la app
-                if (isVodType()) {
-                    vodTopBar.setVisibility(View.VISIBLE);
-                    vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
-                    vodPlayerView.setUseController(true);
-                } else {
-                    playerView.setUseController(true);
-                }
+                playerView.setUseController(true);
             }
         }
     }
 
     @Override
-    protected void onPause() {
-        super.onPause();
-        // onPause se llama tanto al ENTRAR en PiP como al SALIR
-        // Solo detener si está saliendo de PiP (ya estaba en PiP y ahora no)
-        // No hacer nada aquí — el manejo correcto está en onPictureInPictureModeChanged
-    }
-
-    @Override
     protected void onStop() {
         super.onStop();
-        if (!isChangingConfigurations() && isFinishing()) {
+        // Si el usuario cerró la ventana PiP con X,
+        // onStop se llama con enteredPiP=true y ya no estamos en PiP
+        if (enteredPiP && !isInPictureInPictureMode()) {
             stopAndRelease();
+            enteredPiP = false;
+            finish();
         }
     }
 
