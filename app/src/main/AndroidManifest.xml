@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:allowBackup="true"
@@ -11,6 +13,7 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
+        <!-- Catalogo principal -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize"
@@ -23,6 +26,7 @@
             </intent-filter>
         </activity>
 
+        <!-- Reproductor -->
         <activity
             android:name=".PlayerActivity"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
