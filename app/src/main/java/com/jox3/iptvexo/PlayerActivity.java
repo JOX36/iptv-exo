@@ -359,7 +359,12 @@ public class PlayerActivity extends AppCompatActivity {
     private void stopAndRelease() {
         handler.removeCallbacksAndMessages(null);
         if (player != null) {
+            // Desconectar PlayerView primero — evita que el audio siga por el surface
+            playerView.setPlayer(null);
+            vodPlayerView.setPlayer(null);
+            player.setPlayWhenReady(false);
             player.stop();
+            player.clearMediaItems();
             player.release();
             player = null;
         }
