@@ -574,25 +574,8 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     public void onPictureInPictureModeChanged(boolean inPiP) {
         super.onPictureInPictureModeChanged(inPiP);
-        if (!inPiP) {
-            // Usuario salió de PiP — verificar si la app está en foreground
-            // Si no está visible, detener audio
-            if (!isChangingConfigurations()) {
-                // Volvió a la app normalmente — solo ocultar barras
-                liveTopBar.setVisibility(View.GONE);
-                liveBottomBar.setVisibility(View.GONE);
-                vodFsTop.setVisibility(View.GONE);
-                vodFsBottom.setVisibility(View.GONE);
-                if (isVodType()) {
-                    vodTopBar.setVisibility(View.VISIBLE);
-                    vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
-                    vodPlayerView.setUseController(true);
-                } else {
-                    playerView.setUseController(true);
-                }
-            }
-        } else {
-            // Entrando en PiP — ocultar todo excepto el video
+        if (inPiP) {
+            // Entrando en PiP — ocultar todo, solo video puro
             liveTopBar.setVisibility(View.GONE);
             liveBottomBar.setVisibility(View.GONE);
             vodFsTop.setVisibility(View.GONE);
@@ -604,18 +587,32 @@ public class PlayerActivity extends AppCompatActivity {
             } else {
                 playerView.setUseController(false);
             }
+        } else {
+            // Saliendo de PiP — dos casos:
+            // 1. Usuario volvió a la app (Activity visible) — restaurar UI
+            // 2. Usuario cerró la ventana PiP (Activity no visible) — detener audio
+            if (isFinishing()) {
+                // Caso 2: cerraron el PiP con X
+                stopAndRelease();
+            } else {
+                // Caso 1: volvieron a la app
+                if (isVodType()) {
+                    vodTopBar.setVisibility(View.VISIBLE);
+                    vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
+                    vodPlayerView.setUseController(true);
+                } else {
+                    playerView.setUseController(true);
+                }
+            }
         }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        // Si estaba en PiP y el usuario cierra la ventana PiP,
-        // onPause se llama — detener el player
-        if (isInPictureInPictureMode()) {
-            stopAndRelease();
-            finish();
-        }
+        // onPause se llama tanto al ENTRAR en PiP como al SALIR
+        // Solo detener si está saliendo de PiP (ya estaba en PiP y ahora no)
+        // No hacer nada aquí — el manejo correcto está en onPictureInPictureModeChanged
     }
 
     @Override
