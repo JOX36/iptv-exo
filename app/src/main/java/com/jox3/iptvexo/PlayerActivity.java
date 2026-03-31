@@ -613,20 +613,18 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // Si no está entrando en PiP, detener el audio siempre al ir al background
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) {
-            return; // Está en PiP, no detener
-        }
-        if (!enteredPiP) {
-            stopAndRelease();
-        }
+        // Detener audio al ir al background EXCEPTO cuando entra a PiP
+        if (enteredPiP) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) return;
+        stopAndRelease();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // Si vuelve de background y no está en PiP, reiniciar player
-        if (!enteredPiP && player == null && url != null && !url.isEmpty()) {
+        // Reiniciar solo si viene de PiP (el usuario volvió a la app)
+        if (enteredPiP && player == null && url != null && !url.isEmpty()) {
+            enteredPiP = false;
             initPlayer();
         }
     }
