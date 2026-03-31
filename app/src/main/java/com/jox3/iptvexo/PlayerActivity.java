@@ -219,8 +219,8 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnAudio.setVisibility(View.GONE);
         liveBtnSubs.setVisibility(View.GONE);
 
-        liveBtnBack.setOnClickListener(v -> finish());
-        liveBtnStop.setOnClickListener(v -> finish());
+        liveBtnBack.setOnClickListener(v -> { stopAndRelease(); finish(); });
+        liveBtnStop.setOnClickListener(v -> { stopAndRelease(); finish(); });
         liveBtnFav.setOnClickListener(v -> toggleFav(liveBtnFav));
         liveBtnPip.setOnClickListener(v -> enterPip());
         liveBtnExt.setOnClickListener(v -> launchExternal());
@@ -267,8 +267,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodBtnSubs.setVisibility(View.GONE);
         vodFsBtnSubs.setVisibility(View.GONE);
 
-        vodBtnBack.setOnClickListener(v -> finish());
-        vodBtnStop.setOnClickListener(v -> finish());
+        vodBtnBack.setOnClickListener(v -> { stopAndRelease(); finish(); });
+        vodBtnStop.setOnClickListener(v -> { stopAndRelease(); finish(); });
         vodBtnFav.setOnClickListener(v -> toggleFav(vodBtnFav));
         vodBtnPip.setOnClickListener(v -> enterPip());
         vodBtnExt.setOnClickListener(v -> launchExternal());
@@ -385,15 +385,16 @@ public class PlayerActivity extends AppCompatActivity {
     // ══ VOD FULLSCREEN ══
     private void enterVodFullscreen() {
         isVodFullscreen = true;
-        // Rotar sin recrear la Activity gracias a configChanges en Manifest
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         vodScroll.setVisibility(View.GONE);
-        // Expandir video al peso maximo
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
-        lp.weight = 10; lp.height = 0; vodPlayerView.setLayoutParams(lp);
-        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
-        // Ocultar top bar del vod
         vodTopBar.setVisibility(View.GONE);
+        // El FrameLayout padre del vod_player_view tiene layout_weight=4 en el LinearLayout vod_layout
+        // Necesitamos cambiar el peso del FrameLayout, no del PlayerView
+        View videoFrame = (View) vodPlayerView.getParent();
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
+        lp.weight = 10; lp.height = 0;
+        videoFrame.setLayoutParams(lp);
+        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
         vodFsTop.setVisibility(View.VISIBLE);
         vodFsBottom.setVisibility(View.VISIBLE);
         scheduleHideVodFs();
@@ -403,10 +404,12 @@ public class PlayerActivity extends AppCompatActivity {
         isVodFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         vodScroll.setVisibility(View.VISIBLE);
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) vodPlayerView.getLayoutParams();
-        lp.weight = 4; lp.height = 0; vodPlayerView.setLayoutParams(lp);
-        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         vodTopBar.setVisibility(View.VISIBLE);
+        View videoFrame = (View) vodPlayerView.getParent();
+        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
+        lp.weight = 4; lp.height = 0;
+        videoFrame.setLayoutParams(lp);
+        vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
         vodFsTop.setVisibility(View.GONE);
         vodFsBottom.setVisibility(View.GONE);
     }
@@ -595,7 +598,11 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (isVodFullscreen) exitVodFullscreen();
-        else super.onBackPressed();
+        if (isVodFullscreen) {
+            exitVodFullscreen();
+        } else {
+            stopAndRelease();
+            finish();
+        }
     }
 }
