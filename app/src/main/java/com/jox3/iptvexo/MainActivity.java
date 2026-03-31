@@ -44,7 +44,7 @@ public class MainActivity extends AppCompatActivity {
         public void openPlayer(String url, String name, String group, String type,
                                String logo, String itemId, String channelsJson, int channelIndex) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            
             i.putExtra("url", url);
             i.putExtra("name", name);
             i.putExtra("group", group);
