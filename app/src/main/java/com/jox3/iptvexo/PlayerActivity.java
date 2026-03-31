@@ -608,10 +608,19 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        // Si estaba en PiP y el usuario cierra la ventana PiP,
+        // onPause se llama — detener el player
+        if (isInPictureInPictureMode()) {
+            stopAndRelease();
+            finish();
+        }
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
-        // Si salió de PiP cerrando (no volviendo a la app), detener audio
-        if (isInPictureInPictureMode()) return;
         if (!isChangingConfigurations() && isFinishing()) {
             stopAndRelease();
         }
