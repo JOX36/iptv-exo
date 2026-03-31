@@ -11,6 +11,123 @@
         android:layout_height="match_parent"
         android:background="#000000" />
 
+    <!-- LIVE top bar (tap para mostrar/ocultar) -->
+    <LinearLayout
+        android:id="@+id/live_top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="#CC000000"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <ImageButton
+            android:id="@+id/live_btn_back"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_media_previous"
+            android:tint="#FFFFFF"
+            android:contentDescription="Atras" />
+
+        <TextView
+            android:id="@+id/live_txt_name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:paddingStart="10dp" />
+
+        <TextView
+            android:id="@+id/live_txt_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#ff4444"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:paddingEnd="8dp" />
+
+        <ImageButton
+            android:id="@+id/live_btn_fav"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/btn_star_big_off"
+            android:contentDescription="Favorito" />
+
+    </LinearLayout>
+
+    <!-- LIVE bottom bar -->
+    <LinearLayout
+        android:id="@+id/live_bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#CC000000"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/live_btn_audio"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Audio"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/live_btn_subs"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Subs"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/live_btn_pip"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="PiP"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/live_btn_ext"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Externo"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/live_btn_stop"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Detener"
+            android:textSize="11sp"
+            android:backgroundTint="#55ef4444"
+            android:textColor="#ef4444" />
+
+    </LinearLayout>
+
     <!-- VOD/SERIES: layout vertical -->
     <LinearLayout
         android:id="@+id/vod_layout"
@@ -20,7 +137,7 @@
         android:background="#0a0e14"
         android:visibility="gone">
 
-        <!-- Video 40% con topbar transparente encima -->
+        <!-- Video 40% con topbar transparente -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
@@ -32,13 +149,12 @@
                 android:layout_height="match_parent"
                 android:background="#000000" />
 
-            <!-- Topbar transparente sobre el video -->
             <LinearLayout
                 android:id="@+id/vod_top_bar"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="top"
-                android:background="#99000000"
+                android:background="#AA000000"
                 android:orientation="horizontal"
                 android:padding="8dp"
                 android:gravity="center_vertical">
@@ -53,16 +169,16 @@
                     android:contentDescription="Atras" />
 
                 <TextView
-                    android:id="@+id/vod_txt_title"
+                    android:id="@+id/vod_txt_title_bar"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:textColor="#FFFFFF"
-                    android:textSize="12sp"
+                    android:textSize="11sp"
                     android:textStyle="bold"
                     android:ellipsize="end"
                     android:maxLines="1"
-                    android:paddingStart="8dp" />
+                    android:paddingStart="6dp" />
 
                 <ImageButton
                     android:id="@+id/vod_btn_fav"
@@ -70,8 +186,7 @@
                     android:layout_height="32dp"
                     android:background="?attr/selectableItemBackgroundBorderless"
                     android:src="@android:drawable/btn_star_big_off"
-                    android:contentDescription="Favorito"
-                    android:visibility="visible" />
+                    android:contentDescription="Favorito" />
 
             </LinearLayout>
 
@@ -92,15 +207,14 @@
                 android:padding="14dp">
 
                 <TextView
-                    android:id="@+id/vod_txt_full_title"
+                    android:id="@+id/vod_txt_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:textColor="#e0f4ff"
                     android:textSize="15sp"
                     android:textStyle="bold"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="6dp" />
 
-                <!-- Metadatos: aÃ±o, duraciÃ³n, rating -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -141,7 +255,6 @@
 
                 </LinearLayout>
 
-                <!-- Sinopsis -->
                 <TextView
                     android:id="@+id/vod_txt_plot"
                     android:layout_width="match_parent"
@@ -151,7 +264,7 @@
                     android:lineSpacingMultiplier="1.4"
                     android:layout_marginBottom="14dp" />
 
-                <!-- Fila 1: Pantalla completa + PiP -->
+                <!-- Fila 1 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -163,7 +276,7 @@
                         android:id="@+id/vod_btn_fullscreen"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="â›¶ Pantalla completa"
+                        android:text="Pantalla completa"
                         android:textSize="11sp"
                         android:backgroundTint="#1a3550"
                         android:textColor="#00d4ff"
@@ -180,7 +293,7 @@
 
                 </LinearLayout>
 
-                <!-- Fila 2: Externo + URL + Detener -->
+                <!-- Fila 2 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -189,10 +302,10 @@
                     android:layout_marginBottom="8dp">
 
                     <Button
-                        android:id="@+id/vod_btn_external"
+                        android:id="@+id/vod_btn_ext"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="ðŸ“² Externo"
+                        android:text="Externo"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -202,7 +315,7 @@
                         android:id="@+id/vod_btn_copy"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="ðŸ“‹ Copiar URL"
+                        android:text="Copiar URL"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -212,14 +325,14 @@
                         android:id="@+id/vod_btn_stop"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="â¹ Detener"
+                        android:text="Detener"
                         android:textSize="11sp"
-                        android:backgroundTint="#33ef4444"
+                        android:backgroundTint="#55ef4444"
                         android:textColor="#ef4444" />
 
                 </LinearLayout>
 
-                <!-- Fila 3: Audio + Subtitulos (ocultos hasta detectar pistas) -->
+                <!-- Fila 3 -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -231,7 +344,7 @@
                         android:id="@+id/vod_btn_audio"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="ðŸ”Š Audio"
+                        android:text="Audio"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -242,7 +355,7 @@
                         android:id="@+id/vod_btn_subs"
                         android:layout_width="wrap_content"
                         android:layout_height="36dp"
-                        android:text="ðŸ’¬ Subtitulos"
+                        android:text="Subtitulos"
                         android:textSize="11sp"
                         android:backgroundTint="#1a2535"
                         android:textColor="#7ab8cc"
@@ -255,57 +368,57 @@
 
     </LinearLayout>
 
-    <!-- VOD FULLSCREEN top overlay -->
+    <!-- VOD FULLSCREEN top -->
     <LinearLayout
-        android:id="@+id/vod_fs_top_bar"
+        android:id="@+id/vod_fs_top"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="top"
         android:background="#CC000000"
         android:orientation="horizontal"
-        android:padding="12dp"
+        android:padding="10dp"
         android:gravity="center_vertical"
         android:visibility="gone">
 
         <Button
             android:id="@+id/vod_fs_btn_exit"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="âœ• Salir"
+            android:layout_height="34dp"
+            android:text="Salir"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#00d4ff"
             android:layout_marginEnd="10dp" />
 
         <TextView
-            android:id="@+id/vod_fs_title"
+            android:id="@+id/vod_fs_txt_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:textColor="#FFFFFF"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold"
             android:ellipsize="end"
             android:maxLines="1" />
 
     </LinearLayout>
 
-    <!-- VOD FULLSCREEN bottom overlay -->
+    <!-- VOD FULLSCREEN bottom -->
     <LinearLayout
-        android:id="@+id/vod_fs_bottom_bar"
+        android:id="@+id/vod_fs_bottom"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="#CC000000"
         android:orientation="horizontal"
-        android:padding="12dp"
+        android:padding="10dp"
         android:gravity="center"
         android:visibility="gone">
 
         <Button
             android:id="@+id/vod_fs_btn_pip"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="34dp"
             android:text="PiP"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
@@ -315,8 +428,8 @@
         <Button
             android:id="@+id/vod_fs_btn_ext"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="ðŸ“² Externo"
+            android:layout_height="34dp"
+            android:text="Externo"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -325,8 +438,8 @@
         <Button
             android:id="@+id/vod_fs_btn_url"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="ðŸ“‹ Copiar URL"
+            android:layout_height="34dp"
+            android:text="Copiar URL"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -335,8 +448,8 @@
         <Button
             android:id="@+id/vod_fs_btn_subs"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:text="ðŸ’¬ Subtitulos"
+            android:layout_height="34dp"
+            android:text="Subtitulos"
             android:textSize="11sp"
             android:backgroundTint="#1a2535"
             android:textColor="#7ab8cc"
@@ -344,152 +457,20 @@
 
     </LinearLayout>
 
-    <!-- LIVE top bar (tap para mostrar/ocultar) -->
-    <LinearLayout
-        android:id="@+id/top_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top"
-        android:background="#88000000"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:visibility="gone">
-
-        <ImageButton
-            android:id="@+id/btn_back"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/ic_media_previous"
-            android:tint="#FFFFFF"
-            android:contentDescription="Atras" />
-
-        <TextView
-            android:id="@+id/txt_channel_name"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:paddingStart="8dp" />
-
-        <TextView
-            android:id="@+id/txt_status"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#00d4ff"
-            android:textSize="11sp"
-            android:textStyle="bold"
-            android:padding="4dp" />
-
-        <ImageButton
-            android:id="@+id/btn_fav"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@android:drawable/btn_star_big_off"
-            android:contentDescription="Favorito" />
-
-    </LinearLayout>
-
-    <!-- LIVE bottom bar -->
-    <LinearLayout
-        android:id="@+id/bottom_bar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:background="#88000000"
-        android:orientation="vertical"
-        android:padding="12dp"
-        android:visibility="gone">
-
-        <TextView
-            android:id="@+id/txt_epg"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#00d4ff"
-            android:textSize="12sp"
-            android:paddingBottom="8dp"
-            android:visibility="gone" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center">
-
-            <Button
-                android:id="@+id/btn_audio"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="ðŸ”Š Audio"
-                android:textSize="11sp"
-                android:backgroundTint="#331a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone" />
-
-            <Button
-                android:id="@+id/btn_subs"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="ðŸ’¬ Subs"
-                android:textSize="11sp"
-                android:backgroundTint="#331a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone" />
-
-            <Button
-                android:id="@+id/btn_pip"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="PiP"
-                android:textSize="11sp"
-                android:backgroundTint="#331a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp" />
-
-            <Button
-                android:id="@+id/btn_external"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="ðŸ“² Externo"
-                android:textSize="11sp"
-                android:backgroundTint="#331a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp" />
-
-            <Button
-                android:id="@+id/btn_stop"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="â¹ Detener"
-                android:textSize="11sp"
-                android:backgroundTint="#33ef4444"
-                android:textColor="#ef4444" />
-
-        </LinearLayout>
-
-    </LinearLayout>
-
-    <!-- Loading overlay -->
+    <!-- LOADING -->
     <LinearLayout
         android:id="@+id/loading_overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center"
         android:orientation="vertical"
-        android:background="#CC000000">
+        android:background="#CC000000"
+        android:visibility="gone">
 
         <ProgressBar
-            android:id="@+id/progress"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:id="@+id/progress_bar"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
             android:indeterminateTint="#00d4ff" />
 
         <TextView
