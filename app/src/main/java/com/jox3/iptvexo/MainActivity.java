@@ -77,9 +77,22 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private long backPressedTime = 0;
+
     @Override
     public void onBackPressed() {
-        if (webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
+        if (webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            // Confirmar salida con doble tap
+            if (System.currentTimeMillis() - backPressedTime < 2000) {
+                super.onBackPressed();
+            } else {
+                backPressedTime = System.currentTimeMillis();
+                android.widget.Toast.makeText(this,
+                    "Presiona atrás de nuevo para salir",
+                    android.widget.Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
