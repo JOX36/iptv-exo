@@ -593,8 +593,8 @@ public class PlayerActivity extends AppCompatActivity {
                 playerView.setUseController(false);
             }
         } else {
-            // Saliendo de PiP — restaurar UI
-            enteredPiP = false;
+            // Saliendo de PiP — restaurar UI solamente
+            // NO resetear enteredPiP aquí — onStop lo necesita para detectar cierre con X
             if (isVodType()) {
                 vodTopBar.setVisibility(View.VISIBLE);
                 vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
@@ -628,6 +628,41 @@ public class PlayerActivity extends AppCompatActivity {
         result.putExtra("item_id", itemId);
         result.putExtra("item_type", type);
         setResult(RESULT_OK, result);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        // Detener player actual antes de reproducir nuevo contenido
+        stopAndRelease();
+        setIntent(intent);
+        // Releer datos del nuevo intent
+        url          = intent.getStringExtra("url");
+        name         = intent.getStringExtra("name");
+        group        = intent.getStringExtra("group");
+        type         = intent.getStringExtra("type");
+        logo         = intent.getStringExtra("logo");
+        itemId       = intent.getStringExtra("id");
+        channelIndex = intent.getIntExtra("channel_index", -1);
+        channels.clear();
+        parseChannels(intent.getStringExtra("channels_json"));
+        retryCount = 0;
+        enteredPiP = false;
+        // Actualizar UI y reiniciar player
+        if (isVodType()) {
+            vodTxtTitleBar.setText(name);
+            vodTxtTitle.setText(name);
+            vodFsTxtTitle.setText(name);
+            vodTxtPlot.setText("Cargando informacion...");
+            vodTxtYear.setVisibility(View.GONE);
+            vodTxtDuration.setVisibility(View.GONE);
+            vodTxtRating.setVisibility(View.GONE);
+            fetchVodInfo();
+            initPlayer();
+        } else {
+            liveTxtName.setText(name);
+            initPlayer();
+        }
     }
 
     @Override
