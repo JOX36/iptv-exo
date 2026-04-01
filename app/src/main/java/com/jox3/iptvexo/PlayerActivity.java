@@ -247,6 +247,62 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
+    private void fetchEpg() {
+        if (itemId == null || itemId.isEmpty() || url == null) return;
+        new Thread(() -> {
+            try {
+                String[] p = url.split("/");
+                if (p.length < 6) return;
+                String api = p[0] + "//" + p[2] + "/player_api.php?username=" + p[3]
+                        + "&password=" + p[4] + "&action=get_short_epg&stream_id=" + itemId + "&limit=2";
+                // Extraer user/pass correctamente
+                // URL live: host/live/user/pass/id.m3u8
+                String user = p.length > 4 ? p[4] : "";
+                String pass = p.length > 5 ? p[5] : "";
+                api = p[0] + "//" + p[2] + "/player_api.php?username=" + user
+                        + "&password=" + pass + "&action=get_short_epg&stream_id=" + itemId + "&limit=2";
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(api).openConnection();
+                c.setConnectTimeout(6000); c.setReadTimeout(6000);
+                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                org.json.JSONObject json = new org.json.JSONObject(sb.toString());
+                org.json.JSONArray list = json.optJSONArray("epg_listings");
+                if (list == null || list.length() == 0) return;
+                java.util.Date now = new java.util.Date();
+                String epgNow = "", epgNext = "", epgTime = "";
+                int epgProgress = 0;
+                java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault());
+                for (int i = 0; i < list.length(); i++) {
+                    org.json.JSONObject e = list.getJSONObject(i);
+                    String title = e.optString("title", "");
+                    if (!title.isEmpty()) {
+                        try { title = new String(android.util.Base64.decode(title, android.util.Base64.DEFAULT)); } catch (Exception ex) {}
+                    }
+                    try {
+                        java.util.Date start = sdf.parse(e.optString("start", ""));
+                        java.util.Date end   = sdf.parse(e.optString("end", ""));
+                        if (start == null || end == null) continue;
+                        if (now.after(start) && now.before(end)) {
+                            epgNow = title;
+                            long dur = end.getTime() - start.getTime();
+                            long elapsed = now.getTime() - start.getTime();
+                            epgProgress = dur > 0 ? (int)((elapsed * 100) / dur) : 0;
+                            java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault());
+                            epgTime = fmt.format(start) + " – " + fmt.format(end);
+                        } else if (now.before(start) && !epgNow.isEmpty() && epgNext.isEmpty()) {
+                            epgNext = title;
+                        }
+                    } catch (Exception ex) {}
+                }
+                final String fNow = epgNow, fTime = epgTime, fNext = epgNext;
+                final int fProg = epgProgress;
+                runOnUiThread(() -> showEpg(fNow, fTime, fNext, fProg));
+            } catch (Exception e) { /* EPG no disponible */ }
+        }).start();
+    }
+
     // ══ SETUP LIVE ══
     private void setupLive() {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
@@ -379,7 +435,10 @@ public class PlayerActivity extends AppCompatActivity {
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     showLoading(false);
-                    if (!isVodType()) scheduleLiveHideBars();
+                    if (!isVodType()) {
+                        scheduleLiveHideBars();
+                        fetchEpg(); // cargar EPG al iniciar live TV
+                    }
                 } else if (state == Player.STATE_BUFFERING) {
                     showLoading(true);
                 } else if (!isVodType() && (state == Player.STATE_IDLE || state == Player.STATE_ENDED)) {
