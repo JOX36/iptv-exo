@@ -991,11 +991,7 @@ function play(item){
       item.logo||'',
       String(item.id||''),
       channelsJson,
-      channelIndex,
-      epgNow,
-      epgNext,
-      epgProgress,
-      epgTime
+      channelIndex
     );
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
