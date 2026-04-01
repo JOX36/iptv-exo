@@ -418,6 +418,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
         <div class="sec-tab active" id="secLive"   onclick="switchSec('live')">📺 Live</div>
         <div class="sec-tab"        id="secVod"    onclick="switchSec('vod')">🎬 VOD</div>
         <div class="sec-tab"        id="secSeries" onclick="switchSec('series')">🎭 Series</div>
+        <div class="sec-tab"        id="secInfo"   onclick="showAccountInfo()">ℹ️ Cuenta</div>
       </div>
     </div>
     <div class="topbar-row2">
@@ -537,9 +538,20 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 
 <!-- FULLSCREEN CONTROLS (fixed, encima del video nativo) -->
 <div class="fs-controls" id="fsControls">
-  <button class="fs-btn" onclick="toggleFsChPanel()">☰ Canales</button>
-  <span class="fs-epg-text" id="fsEpgText"></span>
-  <button class="fs-btn" onclick="doFullscreen()">✕ Salir</button>
+  <div style="display:flex;align-items:center;gap:8px;width:100%">
+    <button class="fs-btn" onclick="toggleFsChPanel()">☰ Canales</button>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="fs-epg-text" id="fsEpgNow" style="flex:1;font-size:.78rem"></span>
+        <span id="fsEpgTime" style="font-size:.68rem;color:rgba(0,212,255,.8);white-space:nowrap;flex-shrink:0"></span>
+      </div>
+      <div id="fsEpgProgressWrap" style="height:2px;background:rgba(255,255,255,.15);border-radius:2px;margin:4px 0;overflow:hidden;display:none">
+        <div id="fsEpgProgress" style="height:100%;background:linear-gradient(90deg,#00d4ff,#00ff88);border-radius:2px;transition:width .5s"></div>
+      </div>
+      <div id="fsEpgNext" style="font-size:.65rem;color:rgba(255,255,255,.5);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+    </div>
+    <button class="fs-btn" onclick="doFullscreen()">✕ Salir</button>
+  </div>
 </div>
 
 <!-- FULLSCREEN CHANNEL PANEL (fixed) -->
@@ -651,8 +663,65 @@ async function xApi(action,extra=''){
 
 // ══ SECTIONS ══
 function switchSec(sec){
+  // Desactivar tab info si estaba activo
+  document.getElementById('secInfo').classList.remove('active');
   loadSec(sec);
   if(window.innerWidth<=580){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('show')}
+}
+
+async function showAccountInfo(){
+  ['secLive','secVod','secSeries'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  document.getElementById('secInfo').classList.add('active');
+  setContent(`<div class="loading-ph"><div class="p-spinner"></div><p>Cargando información...</p></div>`);
+  try{
+    const data=await xApi('get_server_info');
+    const info=data?.user_info||{};
+    const expTs=parseInt(info.exp_date||0)*1000;
+    const expDate=expTs?new Date(expTs).toLocaleDateString('es',{day:'numeric',month:'long',year:'numeric'}):'Sin fecha';
+    const daysLeft=expTs?Math.max(0,Math.round((expTs-Date.now())/(86400000))):'—';
+    const daysColor=daysLeft<7?'#ef4444':daysLeft<30?'#ffc107':'#00ff88';
+    const conns=`${info.active_cons||0} / ${info.max_connections||'?'}`;
+    const status=info.status||'—';
+    setContent(`
+      <div style="max-width:400px;margin:20px auto;display:flex;flex-direction:column;gap:12px">
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
+          <div style="font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;color:var(--accent);margin-bottom:16px;letter-spacing:1px">👤 Información de Cuenta</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--muted);font-size:.8rem">Usuario</span>
+              <span style="font-weight:600;font-size:.85rem">${esc(S.user)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--muted);font-size:.8rem">Contraseña</span>
+              <span style="font-weight:600;font-size:.85rem">${esc(S.pass)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--muted);font-size:.8rem">Estado</span>
+              <span style="font-weight:600;font-size:.85rem;color:${status==='Active'?'#00ff88':'#ef4444'}">${status==='Active'?'✅ Activo':'❌ '+status}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--muted);font-size:.8rem">Vencimiento</span>
+              <span style="font-weight:600;font-size:.85rem">${expDate}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+              <span style="color:var(--muted);font-size:.8rem">Días restantes</span>
+              <span style="font-weight:700;font-size:1rem;color:${daysColor}">${daysLeft} días</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0">
+              <span style="color:var(--muted);font-size:.8rem">Conexiones</span>
+              <span style="font-weight:600;font-size:.85rem">${conns}</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+          <div style="font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--muted2);margin-bottom:12px">🌐 Servidor</div>
+          <div style="font-size:.75rem;color:var(--muted);word-break:break-all">${esc(S.host)}</div>
+        </div>
+      </div>
+    `);
+  }catch(e){
+    setContent(`<div class="empty"><div class="empty-icon">❌</div><p>No se pudo obtener información: ${e.message}</p></div>`);
+  }
 }
 async function loadSec(sec){
   S.sec=sec;
@@ -892,6 +961,17 @@ function play(item){
     document.getElementById('nowBar').classList.remove('visible'); // ocultar now-bar al abrir reproductor nativo
     setStatus(item.type==='vod'?'vod':'live');
     updateFavBtn();
+    // Extraer EPG actual si está disponible
+    let epgNow='', epgNext='', epgTime='', epgProgress=0;
+    if(item.type==='live'){
+      const epg=EPG_CACHE[item.id];
+      if(epg){
+        epgNow=epg.title||'';
+        epgNext=epg.nextTitle||'';
+        epgTime=epg.start||'';
+        epgProgress=epg.progress||0;
+      }
+    }
     // Pasar lista de canales para live (solo categoría actual, no todos)
     let channelsJson='[]';
     let channelIndex=-1;
@@ -911,7 +991,11 @@ function play(item){
       item.logo||'',
       String(item.id||''),
       channelsJson,
-      channelIndex
+      channelIndex,
+      epgNow,
+      epgNext,
+      epgProgress,
+      epgTime
     );
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
@@ -1099,9 +1183,19 @@ function renderEpgBar(){
   // EPG dentro del video (visible en fullscreen)
   const ovTitle=document.getElementById('vidEpgTitle');const ovTime=document.getElementById('vidEpgTime');const ov=document.getElementById('vidEpgOverlay');
   if(ovTitle){ovTitle.textContent=current.title;ovTime.textContent=`${fmt(current.start)} – ${fmt(current.end)}`;ov.classList.add('show')}
-  // Actualizar barra fullscreen si está activa
-  const fsEpg=document.getElementById('fsEpgText');
-  if(fsEpg) fsEpg.textContent=`▸ ${current.title}  ${fmt(current.start)}–${fmt(current.end)}`;
+  // Actualizar barra fullscreen con EPG completo
+  const fsNow=document.getElementById('fsEpgNow');
+  const fsTime=document.getElementById('fsEpgTime');
+  const fsProg=document.getElementById('fsEpgProgress');
+  const fsProgWrap=document.getElementById('fsEpgProgressWrap');
+  const fsNext=document.getElementById('fsEpgNext');
+  if(fsNow){
+    fsNow.textContent=current.title;
+    fsTime.textContent=`${fmt(current.start)} – ${fmt(current.end)}`;
+    fsProg.style.width=`${pct}%`;
+    fsProgWrap.style.display='block';
+    fsNext.textContent=next?`▶ A continuación: ${next.title} · ${fmt(next.start)}`:'';
+  }
 }
 async function openEpgModal(){
   if(!S.current||S.current.type!=='live')return;
@@ -1131,11 +1225,21 @@ function updateFsControls(){
   if(!ctrl)return;
   ctrl.classList.toggle('show',isFs);
   if(!isFs) closeFsChPanel();
-  // Actualizar EPG
+  // Actualizar EPG fullscreen
   if(isFs&&EPG.data?.length){
-    const now=new Date();const cur=EPG.data.find(e=>now>=e.start&&now<e.end);
+    const now=new Date();const cur=EPG.data.find(e=>now>=e.start&&now<e.end);const nxt=EPG.data.find(e=>e.start>now);
     const fmt=d=>d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});
-    if(cur) document.getElementById('fsEpgText').textContent=`▸ ${cur.title}  ${fmt(cur.start)}–${fmt(cur.end)}`;
+    if(cur){
+      const pct=Math.round(((now-cur.start)/(cur.end-cur.start))*100);
+      const fsNow=document.getElementById('fsEpgNow');
+      if(fsNow){
+        fsNow.textContent=cur.title;
+        document.getElementById('fsEpgTime').textContent=`${fmt(cur.start)} – ${fmt(cur.end)}`;
+        document.getElementById('fsEpgProgress').style.width=`${pct}%`;
+        document.getElementById('fsEpgProgressWrap').style.display='block';
+        document.getElementById('fsEpgNext').textContent=nxt?`▶ A continuación: ${nxt.title} · ${fmt(nxt.start)}`:'';
+      }
+    }
   }
 }
 document.addEventListener('fullscreenchange',updateFsControls);
