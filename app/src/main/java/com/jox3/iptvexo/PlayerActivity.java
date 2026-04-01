@@ -58,7 +58,10 @@ public class PlayerActivity extends AppCompatActivity {
     // LIVE
     private PlayerView playerView;
     private LinearLayout liveTopBar, liveBottomBar, loadingOverlay;
+    private LinearLayout liveEpgContainer;
     private TextView liveTxtName, liveTxtStatus, txtLoading;
+    private TextView liveEpgNow, liveEpgTime, liveEpgNext;
+    private ProgressBar liveEpgProgress;
     private ImageButton liveBtnBack, liveBtnFav;
     private Button liveBtnAudio, liveBtnSubs, liveBtnPip, liveBtnExt, liveBtnStop;
     private ProgressBar progressBar;
@@ -100,7 +103,13 @@ public class PlayerActivity extends AppCompatActivity {
                 | WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        // Borde a borde — eliminar barras negras laterales en notch/cutout
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
 
         // Detener instancia anterior si existe — fix audio doble
         if (activeInstance != null && activeInstance != this) {
@@ -120,11 +129,22 @@ public class PlayerActivity extends AppCompatActivity {
         channelIndex = getIntent().getIntExtra("channel_index", -1);
         parseChannels(getIntent().getStringExtra("channels_json"));
 
+        // EPG data
+        String epgNow  = getIntent().getStringExtra("epg_now");
+        String epgNext = getIntent().getStringExtra("epg_next");
+        int epgProgress = getIntent().getIntExtra("epg_progress", 0);
+        String epgTime = getIntent().getStringExtra("epg_time");
+
         bindViews();
         setEmojiLabels();
 
         if (isVodType()) setupVod();
         else setupLive();
+
+        // Mostrar EPG si hay datos (solo Live)
+        if (!isVodType() && epgNow != null && !epgNow.isEmpty()) {
+            showEpg(epgNow, epgTime, epgNext, epgProgress);
+        }
 
         initPlayer();
     }
@@ -158,6 +178,11 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnPip    = findViewById(R.id.live_btn_pip);
         liveBtnExt    = findViewById(R.id.live_btn_ext);
         liveBtnStop   = findViewById(R.id.live_btn_stop);
+        liveEpgContainer = findViewById(R.id.live_epg_container);
+        liveEpgNow    = findViewById(R.id.live_epg_now);
+        liveEpgTime   = findViewById(R.id.live_epg_time);
+        liveEpgNext   = findViewById(R.id.live_epg_next);
+        liveEpgProgress = findViewById(R.id.live_epg_progress);
 
         // VOD
         vodLayout      = findViewById(R.id.vod_layout);
@@ -209,10 +234,33 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnSubs.setText("\uD83D\uDCAC Subs");
     }
 
+    private void showEpg(String now, String time, String next, int progress) {
+        if (liveEpgContainer == null) return;
+        if (now != null && !now.isEmpty()) {
+            liveEpgContainer.setVisibility(View.VISIBLE);
+            liveEpgNow.setText(now);
+            liveEpgTime.setText(time != null ? time : "");
+            liveEpgNext.setText(next != null && !next.isEmpty() ? "▶ " + next : "");
+            liveEpgProgress.setProgress(progress);
+        } else {
+            liveEpgContainer.setVisibility(View.GONE);
+        }
+    }
+
     // ══ SETUP LIVE ══
     private void setupLive() {
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        // Extender a bordes completos — elimina barras negras laterales
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getWindow().getAttributes().layoutInDisplayCutoutMode =
+                android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+        }
+        getWindow().getDecorView().setSystemUiVisibility(
+            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+        );
         vodLayout.setVisibility(View.GONE);
         liveTxtName.setText(name);
         liveTxtStatus.setText("\u25CF EN VIVO");
