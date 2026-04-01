@@ -14,6 +14,12 @@
   --green:#00ff88;--yellow:#ffc107;
   --text:#e0f4ff;--muted:#4a7a8a;--muted2:#7ab8cc;--radius:8px;
 }
+body.theme-red{
+  --bg:#0e0a08;--bg2:#130c08;--bg3:#1a1008;--border:#2e1a10;
+  --accent:#ff6b35;--accent2:#ffaa3c;--blue:#ff6b35;
+  --green:#ffaa3c;--yellow:#ffc107;
+  --text:#ffe8d0;--muted:#7a4a2a;--muted2:#cc7a4a;
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg)}
 body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
@@ -424,6 +430,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
     <div class="topbar-row2">
       <button class="tb-btn" onclick="toggleSidebar()">☰</button>
       <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="doSearch(this.value)"></div>
+      <button class="tb-btn" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">🎨</button>
     </div>
     <div class="search-filters hidden" id="searchFilters" style="display:none!important"></div>
   </div>
@@ -634,8 +641,18 @@ async function doLogin(){
   let host=hostRaw,user=userIn,pass=passIn;
   try{
     const u=new URL(hostRaw);
-    if(u.searchParams.get('username')&&u.searchParams.get('password')){host=u.origin;user=u.searchParams.get('username');pass=u.searchParams.get('password')}
-    else{const p=u.pathname.split('/').filter(Boolean);if(p.length>=3){host=u.origin;user=p[1];pass=p[2]}}
+    // Formato get.php: http://host/get.php?username=x&password=y&type=m3u
+    if(u.searchParams.get('username')&&u.searchParams.get('password')){
+      host=u.origin;
+      user=u.searchParams.get('username');
+      pass=u.searchParams.get('password');
+    }
+    // Formato /live/user/pass/ o /user/pass/
+    else{
+      const p=u.pathname.split('/').filter(Boolean);
+      if(p.length>=3){host=u.origin;user=p[1];pass=p[2]}
+      else if(p.length>=2&&!userIn){host=u.origin;user=p[0];pass=p[1]}
+    }
   }catch(e){}
   if(!host||!user||!pass){toast('⚠️ Completa todos los campos');return}
   S.host=host;S.user=user;S.pass=pass;
@@ -1127,21 +1144,69 @@ function toggleSidebar(){
 
 // ══ ACCOUNT SELECTOR ══
 function renderAccBtn(){document.getElementById('accBtnHost').textContent=(S.host||'—').replace(/^https?:\/\//,'')}
+
+function toggleTheme(){
+  const isRed=document.body.classList.toggle('theme-red');
+  localStorage.setItem('iptv_theme', isRed?'red':'blue');
+  document.getElementById('themeBtn').textContent=isRed?'🔵':'🔴';
+}
+// Restaurar tema al cargar
+(function(){
+  if(localStorage.getItem('iptv_theme')==='red'){
+    document.body.classList.add('theme-red');
+    document.addEventListener('DOMContentLoaded',()=>{
+      const btn=document.getElementById('themeBtn');
+      if(btn) btn.textContent='🔵';
+    });
+  }
+})();
 function renderAccDrop(){
   const accs=lsGet(K.ACCS)||[];const curKey=`${S.host}|${S.user}`;
   document.getElementById('accDropList').innerHTML=accs.map(a=>{
     const isActive=`${a.host}|${a.user}`===curKey;const initial=(a.user||'?')[0].toUpperCase();
-    return `<div class="acc-item${isActive?' active':''}" onclick="switchAccount(${JSON.stringify(a).replace(/"/g,'&quot;')})"><div class="acc-avatar">${initial}</div><div class="acc-info"><div class="acc-info-host">${esc(a.host.replace(/^https?:\/\//,''))}</div><div class="acc-info-user">${esc(a.user)}</div></div>${isActive?'<div class="acc-active-dot"></div>':''}</div>`;
+    const aJson=JSON.stringify(a).replace(/"/g,'&quot;');
+    return `<div class="acc-item${isActive?' active':''}">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer" onclick="switchAccount(${aJson})">
+        <div class="acc-avatar">${initial}</div>
+        <div class="acc-info">
+          <div class="acc-info-host">${esc(a.host.replace(/^https?:\/\//,''))}</div>
+          <div class="acc-info-user">${esc(a.user)}</div>
+        </div>
+        ${isActive?'<div class="acc-active-dot"></div>':''}
+      </div>
+      <button onclick="deleteAccount(${aJson})" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:4px 8px;flex-shrink:0;opacity:.7" title="Eliminar">✕</button>
+    </div>`;
   }).join('')||'<div style="padding:8px 10px;font-size:.75rem;color:var(--muted)">Sin cuentas guardadas</div>';
+}
+function deleteAccount(a){
+  if(!confirm('¿Eliminar esta cuenta?\n'+a.host+'\n'+a.user)) return;
+  let accs=lsGet(K.ACCS)||[];
+  accs=accs.filter(x=>!(x.host===a.host&&x.user===a.user));
+  lsSet(K.ACCS,accs);
+  renderAccDrop();
+  toast('🗑️ Cuenta eliminada');
 }
 function toggleAccDrop(){const drop=document.getElementById('accDrop');const isOpen=drop.classList.contains('open');if(!isOpen){renderAccDrop();drop.classList.add('open')}else drop.classList.remove('open')}
 function closeAccDrop(){document.getElementById('accDrop').classList.remove('open')}
 async function switchAccount(a){
   closeAccDrop();if(a.host===S.host&&a.user===S.user){toast('✅ Ya estás en esta cuenta');return}
-  stopPlayer();S.host=a.host;S.user=a.user;S.pass=a.pass;S.cats={live:[],vod:[],series:[]};S.activeCat={live:null,vod:null,series:null};S.channels=[];S.current=null;IDX.items=[];IDX.done=false;IDX.running=false;
+  stopPlayer();
+  // Reset completo del estado
+  S.host=a.host;S.user=a.user;S.pass=a.pass;
+  S.cats={live:[],vod:[],series:[]};
+  S.activeCat={live:null,vod:null,series:null};
+  S.channels=[];S.current=null;
+  IDX.items=[];IDX.done=false;IDX.running=false;
+  // Reset sección a live
+  S.sec='live';
+  ['live','vod','series'].forEach(s=>document.getElementById('sec'+s.charAt(0).toUpperCase()+s.slice(1)).classList.toggle('active',s==='live'));
+  document.getElementById('secInfo')?.classList.remove('active');
+  document.getElementById('searchBox').value='';
   lsSet(K.LAST,{host:a.host,user:a.user,pass:a.pass});saveAcc();loadPersis();renderAccBtn();
   toast('🔄 Cambiando a '+a.host.replace(/^https?:\/\//,''));
-  await loadSec('live');setTimeout(()=>startBackgroundIndex(),1500);
+  setContent(`<div class="loading-ph"><div class="p-spinner"></div><p>Cargando ${a.host.replace(/^https?:\/\//,'')}...</p></div>`);
+  await loadSec('live');
+  setTimeout(()=>startBackgroundIndex(),1500);
 }
 
 // ══ EPG ══
