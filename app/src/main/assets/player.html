@@ -20,6 +20,18 @@ body.theme-red{
   --green:#ffaa3c;--yellow:#ffc107;
   --text:#ffe8d0;--muted:#7a4a2a;--muted2:#cc7a4a;
 }
+body.theme-white{
+  --bg:#f0f2f5;--bg2:#ffffff;--bg3:#e8eaed;--border:#d0d5dd;
+  --accent:#0066cc;--accent2:#00aa66;--blue:#0066cc;
+  --green:#00aa66;--yellow:#e6a800;
+  --text:#1a1a2e;--muted:#6b7280;--muted2:#374151;
+}
+body.theme-green{
+  --bg:#000a00;--bg2:#001200;--bg3:#001a00;--border:#003300;
+  --accent:#00ff41;--accent2:#00cc33;--blue:#00ff41;
+  --green:#00ff41;--yellow:#aaff00;
+  --text:#ccffcc;--muted:#1a5c1a;--muted2:#33cc33;
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg)}
 body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
@@ -1145,20 +1157,31 @@ function toggleSidebar(){
 // ══ ACCOUNT SELECTOR ══
 function renderAccBtn(){document.getElementById('accBtnHost').textContent=(S.host||'—').replace(/^https?:\/\//,'')}
 
+const THEMES=[
+  {cls:'',       btn:'🎨', label:'Azul oscuro'},
+  {cls:'theme-red',   btn:'🔴', label:'Rojo/Naranja'},
+  {cls:'theme-white', btn:'⚪', label:'Blanco'},
+  {cls:'theme-green', btn:'💚', label:'Verde Neón'},
+];
 function toggleTheme(){
-  const isRed=document.body.classList.toggle('theme-red');
-  localStorage.setItem('iptv_theme', isRed?'red':'blue');
-  document.getElementById('themeBtn').textContent=isRed?'🔵':'🔴';
+  const cur=localStorage.getItem('iptv_theme')||'';
+  const idx=THEMES.findIndex(t=>t.cls===cur);
+  const next=THEMES[(idx+1)%THEMES.length];
+  THEMES.forEach(t=>{ if(t.cls) document.body.classList.remove(t.cls); });
+  if(next.cls) document.body.classList.add(next.cls);
+  localStorage.setItem('iptv_theme',next.cls);
+  document.getElementById('themeBtn').textContent=next.btn;
+  toast('🎨 '+next.label);
 }
 // Restaurar tema al cargar
 (function(){
-  if(localStorage.getItem('iptv_theme')==='red'){
-    document.body.classList.add('theme-red');
-    document.addEventListener('DOMContentLoaded',()=>{
-      const btn=document.getElementById('themeBtn');
-      if(btn) btn.textContent='🔵';
-    });
-  }
+  const saved=localStorage.getItem('iptv_theme')||'';
+  const t=THEMES.find(x=>x.cls===saved);
+  if(t?.cls) document.body.classList.add(t.cls);
+  document.addEventListener('DOMContentLoaded',()=>{
+    const btn=document.getElementById('themeBtn');
+    if(btn&&t) btn.textContent=t.btn;
+  });
 })();
 function renderAccDrop(){
   const accs=lsGet(K.ACCS)||[];const curKey=`${S.host}|${S.user}`;
@@ -1178,13 +1201,23 @@ function renderAccDrop(){
     </div>`;
   }).join('')||'<div style="padding:8px 10px;font-size:.75rem;color:var(--muted)">Sin cuentas guardadas</div>';
 }
+let _deleteTarget=null;
 function deleteAccount(a){
-  if(!confirm('¿Eliminar esta cuenta?\n'+a.host+'\n'+a.user)) return;
-  let accs=lsGet(K.ACCS)||[];
-  accs=accs.filter(x=>!(x.host===a.host&&x.user===a.user));
-  lsSet(K.ACCS,accs);
-  renderAccDrop();
-  toast('🗑️ Cuenta eliminada');
+  const key=`${a.host}|${a.user}`;
+  if(_deleteTarget===key){
+    // Segunda vez — confirmar eliminación
+    let accs=lsGet(K.ACCS)||[];
+    accs=accs.filter(x=>!(x.host===a.host&&x.user===a.user));
+    lsSet(K.ACCS,accs);
+    _deleteTarget=null;
+    renderAccDrop();
+    toast('🗑️ Cuenta eliminada');
+  } else {
+    // Primera vez — pedir confirmación
+    _deleteTarget=key;
+    toast('⚠️ Toca ✕ de nuevo para confirmar eliminación');
+    setTimeout(()=>{ if(_deleteTarget===key) _deleteTarget=null; }, 3000);
+  }
 }
 function toggleAccDrop(){const drop=document.getElementById('accDrop');const isOpen=drop.classList.contains('open');if(!isOpen){renderAccDrop();drop.classList.add('open')}else drop.classList.remove('open')}
 function closeAccDrop(){document.getElementById('accDrop').classList.remove('open')}
