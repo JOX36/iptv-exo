@@ -70,10 +70,86 @@
         android:layout_height="wrap_content"
         android:layout_gravity="bottom"
         android:background="#CC000000"
-        android:orientation="horizontal"
+        android:orientation="vertical"
         android:padding="10dp"
-        android:gravity="center"
         android:visibility="gone">
+
+        <!-- EPG info row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone"
+            android:id="@+id/live_epg_container">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="3dp">
+
+                <TextView
+                    android:id="@+id/live_epg_badge"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="EN VIVO"
+                    android:textColor="#00d4ff"
+                    android:textSize="9sp"
+                    android:textStyle="bold"
+                    android:background="#221a2535"
+                    android:padding="3dp"
+                    android:layout_marginEnd="6dp" />
+
+                <TextView
+                    android:id="@+id/live_epg_now"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="#e0f4ff"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:ellipsize="end"
+                    android:maxLines="1" />
+
+                <TextView
+                    android:id="@+id/live_epg_time"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="#7ab8cc"
+                    android:textSize="10sp"
+                    android:layout_marginStart="8dp" />
+
+            </LinearLayout>
+
+            <ProgressBar
+                android:id="@+id/live_epg_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:progressTint="#00d4ff"
+                android:progressBackgroundTint="#1a2535"
+                android:max="100"
+                android:layout_marginBottom="3dp" />
+
+            <TextView
+                android:id="@+id/live_epg_next"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="#4a7a8a"
+                android:textSize="10sp"
+                android:ellipsize="end"
+                android:maxLines="1" />
+
+        </LinearLayout>
+
+        <!-- Buttons row -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center">
 
         <Button
             android:id="@+id/live_btn_audio"
@@ -125,6 +201,8 @@
             android:textSize="11sp"
             android:backgroundTint="#55ef4444"
             android:textColor="#ef4444" />
+
+        </LinearLayout>
 
     </LinearLayout>
 
