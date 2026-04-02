@@ -42,8 +42,7 @@ public class MainActivity extends AppCompatActivity {
     class Bridge {
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
-                               String logo, String itemId, String channelsJson, int channelIndex,
-                               String epgNow, String epgNext, int epgProgress, String epgTime) {
+                               String logo, String itemId, String channelsJson, int channelIndex) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
             i.putExtra("url", url);
             i.putExtra("name", name);
@@ -53,10 +52,6 @@ public class MainActivity extends AppCompatActivity {
             i.putExtra("id", itemId);
             i.putExtra("channel_index", channelIndex);
             i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
-            i.putExtra("epg_now", epgNow != null ? epgNow : "");
-            i.putExtra("epg_next", epgNext != null ? epgNext : "");
-            i.putExtra("epg_progress", epgProgress);
-            i.putExtra("epg_time", epgTime != null ? epgTime : "");
             startActivityForResult(i, 1001);
         }
 
