@@ -824,20 +824,8 @@ function renderItems(items,title,isSearch=false){
   const hdr=`<div class="sec-hdr"><h2>${esc(title)}</h2><small>${items.length} elementos</small></div>`;
   const grid=S.sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
   setContent(hdr+grid);
-  requestAnimationFrame(observeLazyImgs); // activar lazy loading
   if(S.sec==='live') setTimeout(()=>loadEpgForCards(items),800);
 }
-// ══ LAZY IMAGE LOADING ══
-const IMG_OBS = new IntersectionObserver((entries)=>{
-  entries.forEach(e=>{
-    if(e.isIntersecting){
-      const img=e.target;
-      if(img.dataset.src){img.src=img.dataset.src;delete img.dataset.src;}
-      IMG_OBS.unobserve(img);
-    }
-  });
-},{rootMargin:'100px'});
-
 function lazyImg(src,cls,fallback){
   if(!src) return fallback;
   return `<img class="${cls}" data-src="${esc(src)}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" loading="lazy" onload="if(this.dataset.src&&!this.complete){}" onerror="this.outerHTML='${fallback.replace(/'/g,'&apos;')}'">`;
@@ -850,7 +838,7 @@ function chCard(ch){
   const isAct=S.current?.id===ch.id&&S.current?.type===ch.type;
   const isFav=S.favs.has(fk(ch));const epg=EPG_CACHE[ch.id];
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
-  const imgEl=ch.logo?lazyImg(ch.logo,'ch-img','<div class=\\"ch-ph\\">📺</div>'):`<div class="ch-ph">📺</div>`;
+  const imgEl=ch.logo?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="ch-ph">📺</div>`;
   return `<div class="ch-card${isAct?' active':''}" data-id="${ch.id}" onclick='play(${js(ch)})'>
     ${qBadge}${imgEl}
     <div class="ch-name">${esc(ch.name)}</div>
@@ -862,7 +850,7 @@ function vodCard(ch){
   const isAct=S.current?.id===ch.id;const isFav=S.favs.has(fk(ch));
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
   const ph=S.sec==='series'?'🎭':'🎬';
-  const imgEl=ch.cover?lazyImg(ch.cover,'vod-thumb',`<div class=\\"vod-ph\\">${ph}</div>`):`<div class="vod-ph">${ph}</div>`;
+  const imgEl=ch.cover?`<img class="vod-thumb" src="${esc(ch.cover)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="vod-ph">${ph}</div>`;
   const onclick=ch.type==='series'?`play(${js(ch)})`:`openVodInfo(${js(ch)})`;
   return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'><div style="position:relative">${imgEl}${qBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div><button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
 }
