@@ -1,0 +1,329 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#000000">
+
+    <!-- Fila 1 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Celda 0 -->
+        <FrameLayout
+            android:id="@+id/cell_0"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#111111">
+
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/player_view_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <LinearLayout
+                android:id="@+id/overlay_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:background="#AA000000">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Toca para elegir canal"
+                    android:textColor="#AAFFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/focus_ring_0"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/label_0"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:background="#AA000000"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:padding="4dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/loading_0"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="#00d4ff"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#333333" />
+
+        <!-- Celda 1 -->
+        <FrameLayout
+            android:id="@+id/cell_1"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#111111">
+
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/player_view_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <LinearLayout
+                android:id="@+id/overlay_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:background="#AA000000">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Toca para elegir canal"
+                    android:textColor="#AAFFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/focus_ring_1"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/label_1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:background="#AA000000"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:padding="4dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/loading_1"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="#00d4ff"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#333333" />
+
+    <!-- Fila 2 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <!-- Celda 2 -->
+        <FrameLayout
+            android:id="@+id/cell_2"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#111111">
+
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/player_view_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <LinearLayout
+                android:id="@+id/overlay_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:background="#AA000000">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Toca para elegir canal"
+                    android:textColor="#AAFFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/focus_ring_2"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/label_2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:background="#AA000000"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:padding="4dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/loading_2"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="#00d4ff"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#333333" />
+
+        <!-- Celda 3 -->
+        <FrameLayout
+            android:id="@+id/cell_3"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="#111111">
+
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/player_view_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="#000000" />
+
+            <LinearLayout
+                android:id="@+id/overlay_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:orientation="vertical"
+                android:background="#AA000000">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Toca para elegir canal"
+                    android:textColor="#AAFFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <View
+                android:id="@+id/focus_ring_3"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/label_3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:background="#AA000000"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp"
+                android:padding="4dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:visibility="gone" />
+
+            <ProgressBar
+                android:id="@+id/loading_3"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="#00d4ff"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <!-- Barra inferior con controles -->
+    <LinearLayout
+        android:id="@+id/mv_bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#CC000000"
+        android:orientation="horizontal"
+        android:padding="6dp"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/mv_btn_2x2"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="2x2"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#00d4ff"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/mv_btn_2x1"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="2x1"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/mv_btn_mute_all"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="Silenciar todo"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/mv_btn_close"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="Salir"
+            android:textSize="11sp"
+            android:backgroundTint="#55ef4444"
+            android:textColor="#ef4444" />
+
+    </LinearLayout>
+
+</LinearLayout>
