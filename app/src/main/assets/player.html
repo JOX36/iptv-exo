@@ -47,7 +47,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .setup-logo p{color:var(--muted);font-size:.8rem;margin-top:4px}
 .sf{margin-bottom:14px}
 .sf label{display:block;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px}
-.sf input{width:100%;background:#0a0e14;border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Exo 2',sans-serif;font-size:.9rem;padding:11px 14px;outline:none;transition:border-color .2s}
+.sf input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Exo 2',sans-serif;font-size:.9rem;padding:11px 14px;outline:none;transition:border-color .2s}
 .sf input:focus{border-color:var(--accent)}
 .setup-btn{width:100%;margin-top:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:var(--radius);color:#0a0e14;cursor:pointer;font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;letter-spacing:1px;padding:13px;transition:opacity .2s}
 .setup-btn:hover{opacity:.88}
@@ -642,7 +642,7 @@ function initSetup(){
   const last=lsGet(K.LAST);
   if(last){document.getElementById('sHost').value=last.host||'';document.getElementById('sUser').value=last.user||'';document.getElementById('sPass').value=last.pass||''}
   const accs=lsGet(K.ACCS)||[];
-  document.getElementById('savedList').innerHTML=accs.map(a=>`<div class="saved-chip" onclick="fillAcc(${JSON.stringify(a).replace(/"/g,'&quot;')})"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.host)}</div><span style="flex-shrink:0;margin-left:8px">${esc(a.user)}</span></div>`).join('');
+  document.getElementById('savedList').innerHTML=accs.map(a=>`<div class="saved-chip" onclick="fillAcc(${JSON.stringify(a).replace(/"/g,'&quot;')})"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(cleanHost(a.host))}</div><span style="flex-shrink:0;margin-left:8px">${esc(a.user)}</span></div>`).join('');
 }
 function fillAcc(a){document.getElementById('sHost').value=a.host;document.getElementById('sUser').value=a.user;document.getElementById('sPass').value=a.pass}
 function showSetup(){IDX.items=[];IDX.done=false;IDX.running=false;document.getElementById('setupScreen').style.display='flex';document.getElementById('appScreen').style.display='none';initSetup()}
@@ -1155,7 +1155,13 @@ function toggleSidebar(){
 }
 
 // ══ ACCOUNT SELECTOR ══
-function renderAccBtn(){document.getElementById('accBtnHost').textContent=(S.host||'—').replace(/^https?:\/\//,'')}
+function renderAccBtn(){
+  document.getElementById('accBtnHost').textContent=cleanHost(S.host||'—');
+}
+// Muestra solo host:puerto, sin /get.php ni parámetros
+function cleanHost(h){
+  try{ return new URL(h).host; }catch(e){ return h.replace(/^https?:\/\//,'').split('/')[0]; }
+}
 
 const THEMES=[
   {cls:'',       btn:'🎨', label:'Azul oscuro'},
@@ -1192,7 +1198,7 @@ function renderAccDrop(){
       <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer" onclick="switchAccount(${aJson})">
         <div class="acc-avatar">${initial}</div>
         <div class="acc-info">
-          <div class="acc-info-host">${esc(a.host.replace(/^https?:\/\//,''))}</div>
+          <div class="acc-info-host">${esc(cleanHost(a.host))}</div>
           <div class="acc-info-user">${esc(a.user)}</div>
         </div>
         ${isActive?'<div class="acc-active-dot"></div>':''}
