@@ -344,7 +344,29 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .epg-modal-bg.hidden{display:none}
 .epg-modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px 16px 0 0;width:100%;max-width:680px;max-height:80vh;display:flex;flex-direction:column;animation:slideUp .25s ease}
 
-
+/* EPG GRILLA */
+.epg-grid-bg{position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:700;display:flex;flex-direction:column}
+.epg-grid-bg.hidden{display:none}
+.epg-grid-hdr{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg2);border-bottom:1px solid var(--border);flex-shrink:0}
+.epg-grid-hdr h3{font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700;flex:1}
+.epg-grid-hours{display:flex;overflow-x:auto;flex-shrink:0;background:var(--bg3);border-bottom:1px solid var(--border);scrollbar-width:none;position:sticky;top:0;z-index:10}
+.epg-grid-hours::-webkit-scrollbar{display:none}
+.epg-hour-label{min-width:120px;padding:6px 8px;font-size:.65rem;font-weight:700;color:var(--muted);text-align:center;border-right:1px solid var(--border);flex-shrink:0}
+.epg-hour-label.now{color:var(--accent)}
+.epg-grid-body{flex:1;overflow:auto}
+.epg-grid-row{display:flex;border-bottom:1px solid rgba(26,37,53,.5);min-height:48px}
+.epg-grid-ch{width:100px;flex-shrink:0;display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg2);border-right:1px solid var(--border);position:sticky;left:0;z-index:5;cursor:pointer}
+.epg-grid-ch:hover{background:var(--bg3)}
+.epg-grid-ch img{width:24px;height:24px;border-radius:3px;object-fit:contain;flex-shrink:0}
+.epg-grid-ch-name{font-size:.62rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.epg-grid-programs{display:flex;flex:1;position:relative;min-width:960px}
+.epg-program{position:absolute;top:2px;bottom:2px;background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:4px 6px;overflow:hidden;cursor:pointer;transition:background .15s}
+.epg-program:hover{background:rgba(0,212,255,.1);border-color:var(--accent)}
+.epg-program.now{background:rgba(0,212,255,.08);border-color:rgba(0,212,255,.4)}
+.epg-program-title{font-size:.62rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.epg-program-time{font-size:.55rem;color:var(--muted);margin-top:1px}
+.epg-now-line{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:6;pointer-events:none}
+.epg-now-line::before{content:'';position:absolute;top:0;left:-4px;width:10px;height:10px;border-radius:50%;background:var(--accent)}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .epg-modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
 .epg-modal-hdr h3{font-family:'Rajdhani',sans-serif;font-size:1.1rem;font-weight:700}
@@ -593,6 +615,15 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 <!-- EPG MODAL -->
 <div class="epg-modal-bg hidden" id="epgModal" onclick="if(event.target===this)this.classList.add('hidden')">
 
+  <div class="epg-modal">
+    <div class="epg-modal-hdr">
+      <h3>📅 <span id="epgModalTitle">Guía</span></h3>
+      <button class="modal-close" onclick="document.getElementById('epgModal').classList.add('hidden')">✕</button>
+    </div>
+    <div class="epg-modal-body" id="epgModalBody"></div>
+  </div>
+</div>
+
 <!-- SERIES MODAL -->
 <div class="modal-bg hidden" id="seriesModal" onclick="closeSeriesModal(event)">
   <div class="modal" id="seriesModalInner">
@@ -793,13 +824,33 @@ function renderItems(items,title,isSearch=false){
   const hdr=`<div class="sec-hdr"><h2>${esc(title)}</h2><small>${items.length} elementos</small></div>`;
   const grid=S.sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
   setContent(hdr+grid);
+  requestAnimationFrame(observeLazyImgs); // activar lazy loading
   if(S.sec==='live') setTimeout(()=>loadEpgForCards(items),800);
 }
+// ══ LAZY IMAGE LOADING ══
+const IMG_OBS = new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      const img=e.target;
+      if(img.dataset.src){img.src=img.dataset.src;delete img.dataset.src;}
+      IMG_OBS.unobserve(img);
+    }
+  });
+},{rootMargin:'100px'});
+
+function lazyImg(src,cls,fallback){
+  if(!src) return fallback;
+  return `<img class="${cls}" data-src="${esc(src)}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" loading="lazy" onload="if(this.dataset.src&&!this.complete){}" onerror="this.outerHTML='${fallback.replace(/'/g,'&apos;')}'">`;
+}
+function observeLazyImgs(){
+  document.querySelectorAll('img[data-src]').forEach(img=>IMG_OBS.observe(img));
+}
+
 function chCard(ch){
   const isAct=S.current?.id===ch.id&&S.current?.type===ch.type;
   const isFav=S.favs.has(fk(ch));const epg=EPG_CACHE[ch.id];
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
-  const imgEl=ch.logo?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="ch-ph">📺</div>`;
+  const imgEl=ch.logo?lazyImg(ch.logo,'ch-img','<div class=\\"ch-ph\\">📺</div>'):`<div class="ch-ph">📺</div>`;
   return `<div class="ch-card${isAct?' active':''}" data-id="${ch.id}" onclick='play(${js(ch)})'>
     ${qBadge}${imgEl}
     <div class="ch-name">${esc(ch.name)}</div>
@@ -811,7 +862,7 @@ function vodCard(ch){
   const isAct=S.current?.id===ch.id;const isFav=S.favs.has(fk(ch));
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
   const ph=S.sec==='series'?'🎭':'🎬';
-  const imgEl=ch.cover?`<img class="vod-thumb" src="${esc(ch.cover)}" loading="lazy" onerror="this.outerHTML='<div class=vod-ph>🎬</div>'">`:`<div class="vod-ph">${S.sec==='series'?'🎭':'🎬'}</div>`;
+  const imgEl=ch.cover?lazyImg(ch.cover,'vod-thumb',`<div class=\\"vod-ph\\">${ph}</div>`):`<div class="vod-ph">${ph}</div>`;
   const onclick=ch.type==='series'?`play(${js(ch)})`:`openVodInfo(${js(ch)})`;
   return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'><div style="position:relative">${imgEl}${qBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div><button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
 }
@@ -1531,7 +1582,121 @@ function initVodControls(){
   v.addEventListener('durationchange',()=>{document.getElementById('vcDuration').textContent=vcFmt(v.duration)});
 }
 
+// ══ EPG GRILLA ══
+const GRID_HOURS = 6; // horas a mostrar
+const GRID_PX_PER_MIN = 2; // 2px por minuto = 120px por hora
 
+async function openEpgGrid(){
+  document.getElementById('epgGrid').classList.remove('hidden');
+  const status = document.getElementById('epgGridStatus');
+  status.textContent = 'Cargando canales...';
+  // Tomar canales live de la categoría activa o del índice
+  let channels = S.channels.filter(c=>c.type==='live').slice(0,40);
+  if(!channels.length){
+    const allLive = IDX.items.filter(i=>i._sec==='live'||i.type==='live').slice(0,40);
+    channels = allLive;
+  }
+  if(!channels.length){ status.textContent='Sin canales live disponibles'; return; }
+  renderEpgGridLayout(channels);
+  status.textContent=`Cargando EPG (0/${channels.length})...`;
+  // Cargar EPG de todos los canales en paralelo por lotes
+  let loaded=0;
+  for(let i=0;i<channels.length;i+=5){
+    const batch=channels.slice(i,i+5);
+    await Promise.allSettled(batch.map(async ch=>{
+      try{
+        const d=await xApi('get_short_epg',`&stream_id=${ch.id}&limit=6`);
+        const list=d?.epg_listings||[];
+        EPG_GRID_DATA[ch.id]=list.map(e=>({
+          title:e.title?atob(e.title):'',
+          start:new Date(e.start.replace(' ','T')),
+          end:new Date(e.end.replace(' ','T'))
+        }));
+      }catch(e){}
+      loaded++;
+      status.textContent=`Cargando EPG (${loaded}/${channels.length})...`;
+    }));
+    renderEpgGridRows(channels);
+  }
+  status.textContent='';
+}
+
+const EPG_GRID_DATA={};
+let _epgGridChannels=[];
+
+function renderEpgGridLayout(channels){
+  _epgGridChannels=channels;
+  const now=new Date();
+  const startTime=new Date(now.getTime()-60*60*1000); // 1h antes
+  startTime.setMinutes(0,0,0);
+  const totalMins=GRID_HOURS*60+120;
+
+  // Horas
+  const hoursEl=document.getElementById('epgGridHours');
+  let hoursHtml='<div style="min-width:0;width:4px"></div>';
+  for(let m=0;m<totalMins;m+=30){
+    const t=new Date(startTime.getTime()+m*60000);
+    const isNow=Math.abs(t.getTime()-now.getTime())<30*60000;
+    hoursHtml+=`<div class="epg-hour-label${isNow?' now':''}" style="min-width:${30*GRID_PX_PER_MIN}px">${t.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</div>`;
+  }
+  hoursEl.innerHTML=hoursHtml;
+
+  // Canal col + rows skeleton
+  const chCol=document.getElementById('epgGridChCol');
+  chCol.innerHTML='<div style="height:32px;border-bottom:1px solid var(--border)"></div>'+
+    channels.map(ch=>`<div class="epg-grid-ch" style="height:48px" onclick="play(${js(ch)})">
+      ${ch.logo?`<img src="${esc(ch.logo)}" style="width:24px;height:24px;border-radius:3px;object-fit:contain" onerror="this.style.display='none'">`:''}
+      <div class="epg-grid-ch-name">${esc(ch.name)}</div>
+    </div>`).join('');
+
+  // Now line
+  const nowOffset=(now.getTime()-startTime.getTime())/60000*GRID_PX_PER_MIN;
+  document.getElementById('epgGridRows').innerHTML=
+    `<div style="position:relative;width:${totalMins*GRID_PX_PER_MIN}px">
+      <div class="epg-now-line" style="left:${nowOffset}px"></div>
+      <div id="epgGridPrograms"></div>
+    </div>`;
+
+  window._epgGridStart=startTime;
+  window._epgGridTotal=totalMins;
+  renderEpgGridRows(channels);
+}
+
+function renderEpgGridRows(channels){
+  const startTime=window._epgGridStart;
+  const totalMins=window._epgGridTotal;
+  const now=new Date();
+  let html='';
+  channels.forEach((ch,idx)=>{
+    const programs=EPG_GRID_DATA[ch.id]||[];
+    const top=idx*48;
+    let progHtml='';
+    programs.forEach(p=>{
+      const startOff=(p.start.getTime()-startTime.getTime())/60000;
+      const dur=(p.end.getTime()-p.start.getTime())/60000;
+      if(startOff+dur<0||startOff>totalMins) return;
+      const left=Math.max(0,startOff)*GRID_PX_PER_MIN;
+      const width=Math.min(dur,totalMins-Math.max(0,startOff))*GRID_PX_PER_MIN-2;
+      if(width<10) return;
+      const isCur=now>=p.start&&now<p.end;
+      progHtml+=`<div class="epg-program${isCur?' now':''}" style="left:${left}px;width:${width}px;top:${top+2}px;height:44px" onclick="play(${js(ch)})">
+        <div class="epg-program-title">${esc(p.title)}</div>
+        <div class="epg-program-time">${p.start.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'})}</div>
+      </div>`;
+    });
+    html+=progHtml;
+  });
+  const progEl=document.getElementById('epgGridPrograms');
+  if(progEl) progEl.innerHTML=`<div style="position:relative;height:${channels.length*48}px">${html}</div>`;
+  // Scroll al ahora
+  const nowOffset=(now.getTime()-window._epgGridStart.getTime())/60000*GRID_PX_PER_MIN;
+  const scroll=document.getElementById('epgGridScroll');
+  if(scroll&&scroll.scrollLeft===0) scroll.scrollLeft=Math.max(0,nowOffset-150);
+}
+
+function closeEpgGrid(){
+  document.getElementById('epgGrid').classList.add('hidden');
+}
 
 // ══ INIT ══
 initSetup();
