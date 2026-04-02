@@ -42,9 +42,9 @@ public class MainActivity extends AppCompatActivity {
     class Bridge {
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
-                               String logo, String itemId, String channelsJson, int channelIndex) {
+                               String logo, String itemId, String channelsJson, int channelIndex,
+                               String epgNow, String epgNext, int epgProgress, String epgTime) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
-            
             i.putExtra("url", url);
             i.putExtra("name", name);
             i.putExtra("group", group);
@@ -53,12 +53,25 @@ public class MainActivity extends AppCompatActivity {
             i.putExtra("id", itemId);
             i.putExtra("channel_index", channelIndex);
             i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
+            i.putExtra("epg_now", epgNow != null ? epgNow : "");
+            i.putExtra("epg_next", epgNext != null ? epgNext : "");
+            i.putExtra("epg_progress", epgProgress);
+            i.putExtra("epg_time", epgTime != null ? epgTime : "");
             startActivityForResult(i, 1001);
         }
 
         @JavascriptInterface public void playUrl(String url) {}
         @JavascriptInterface public void stop() {}
         @JavascriptInterface public void goFullscreen() {}
+
+        @JavascriptInterface
+        public void openMultiview(String url, String name, String channelsJson) {
+            Intent i = new Intent(MainActivity.this, MultiviewActivity.class);
+            i.putExtra("url", url);
+            i.putExtra("name", name);
+            i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
+            startActivity(i);
+        }
     }
 
     @Override
