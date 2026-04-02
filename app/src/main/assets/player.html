@@ -32,6 +32,12 @@ body.theme-green{
   --green:#00ff41;--yellow:#aaff00;
   --text:#ccffcc;--muted:#1a5c1a;--muted2:#33cc33;
 }
+body.theme-black{
+  --bg:#000000;--bg2:#0a0a0a;--bg3:#111111;--border:#2a2a2a;
+  --accent:#ffffff;--accent2:#cccccc;--blue:#ffffff;
+  --green:#aaaaaa;--yellow:#dddddd;
+  --text:#eeeeee;--muted:#555555;--muted2:#888888;
+}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg)}
 body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
@@ -1228,10 +1234,11 @@ function cleanHost(h){
 }
 
 const THEMES=[
-  {cls:'',       btn:'🎨', label:'Azul oscuro'},
+  {cls:'',            btn:'🎨', label:'Azul oscuro'},
   {cls:'theme-red',   btn:'🔴', label:'Rojo/Naranja'},
   {cls:'theme-white', btn:'⚪', label:'Blanco'},
   {cls:'theme-green', btn:'💚', label:'Verde Neón'},
+  {cls:'theme-black', btn:'⬛', label:'Negro minimal'},
 ];
 function toggleTheme(){
   const cur=localStorage.getItem('iptv_theme')||'';
