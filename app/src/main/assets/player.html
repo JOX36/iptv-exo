@@ -553,6 +553,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
           </div>
           <button class="vbtn" id="btnFav" onclick="toggleFavCurrent()">⭐ Favorito</button>
           <button class="vbtn" id="btnFs" onclick="goFullscreen()">⛶ Pantalla completa</button>
+          <button class="vbtn" id="btnMultiview" onclick="openMultiview()" style="display:none">⊞ Multi</button>
           <div class="drop-wrap" id="wrapExt">
             <button class="vbtn" id="btnExt" onclick="toggleDrop('dropExt')">▶ Reproductor</button>
             <div class="drop-menu" id="dropExt">
@@ -710,6 +711,8 @@ async function doLogin(){
     ['wrapAspect','wrapSpeed','btnFs','wrapExt'].forEach(id=>{
       const el=document.getElementById(id);if(el)el.style.display='none';
     });
+    // Mostrar botón multiview solo en Android
+    const mv=document.getElementById('btnMultiview');if(mv)mv.style.display='';
   }
 }
 
@@ -987,6 +990,18 @@ function goFullscreen(){
   }else{
     doFullscreen();
   }
+}
+function openMultiview(){
+  if(!S.current||S.current.type!=='live'){toast('⚠️ Solo disponible en Live TV');return}
+  if(typeof AndroidPlayer==='undefined'){toast('⚠️ Solo disponible en la app');return}
+  let channelsJson='[]';
+  if(S.channels&&S.channels.length>0){
+    try{
+      const slim=S.channels.slice(0,200).map(c=>({url:c.url||'',name:c.name||'',id:String(c.id||''),type:'live',logo:c.logo||'',group:c.group||''}));
+      channelsJson=JSON.stringify(slim);
+    }catch(e){}
+  }
+  AndroidPlayer.openMultiview(S.current.url||'',S.current.name||'',channelsJson);
 }
 function launchVLC(url,label=''){
   if(!url){toast('⚠️ Sin URL');return}
