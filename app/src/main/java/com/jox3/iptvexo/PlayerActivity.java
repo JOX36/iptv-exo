@@ -406,7 +406,22 @@ public class PlayerActivity extends AppCompatActivity {
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
                 .build();
         pv.setPlayer(player);
-        player.setMediaItem(MediaItem.fromUri(url));
+
+        // Para VOD: especificar tipo MIME según extensión — fix servidores con SSL/redirecciones
+        MediaItem mediaItem;
+        if (isVodType()) {
+            String mimeType = "video/mp4";
+            if (url.contains(".mkv")) mimeType = "video/x-matroska";
+            else if (url.contains(".ts")) mimeType = "video/mp2t";
+            else if (url.contains(".avi")) mimeType = "video/avi";
+            mediaItem = new MediaItem.Builder()
+                    .setUri(url)
+                    .setMimeType(mimeType)
+                    .build();
+        } else {
+            mediaItem = MediaItem.fromUri(url);
+        }
+        player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
 
