@@ -1687,10 +1687,320 @@ function closeEpgGrid(){
   document.getElementById('epgGrid').classList.add('hidden');
 }
 
+// ══ TV D-PAD NAVIGATION ══
+function initTvNav(){
+  // Detectar TV: Android TV o teclas D-pad
+  const isTV = navigator.userAgent.includes('TV') ||
+               navigator.userAgent.includes('SmartTV') ||
+               window.matchMedia('(hover:none) and (pointer:coarse)').matches;
+
+  // Activar modo TV con tecla D-pad o detección automática
+  let tvMode = localStorage.getItem('tv_mode') === '1' || isTV;
+  if(tvMode) enableTvMode();
+
+  // Zonas de navegación
+  // ZONA: 'setup' | 'tabs' | 'sidetabs' | 'cats' | 'content' | 'nowbar' | 'modal_series' | 'modal_vod' | 'modal_epg' | 'acc_drop'
+  let zone = 'tabs';
+  let focusedEl = null;
+
+  function enableTvMode(){
+    tvMode = true;
+    document.body.classList.add('tv-mode');
+    localStorage.setItem('tv_mode','1');
+  }
+
+  function getFocusables(z){
+    switch(z){
+      case 'setup':
+        return [...document.querySelectorAll('#setupScreen .sf input, #setupScreen .setup-btn, #setupScreen .saved-chip')].filter(isVisible);
+      case 'tabs':
+        return [...document.querySelectorAll('#secLive,#secVod,#secSeries,#secInfo')].filter(isVisible);
+      case 'sidetabs':
+        return [...document.querySelectorAll('#tabCat,#tabFav,#tabHist')].filter(isVisible);
+      case 'cats':
+        return [...document.querySelectorAll('#sideList .cat-item, #sideList .list-item')].filter(isVisible);
+      case 'content':
+        return [...document.querySelectorAll('#contentArea .ch-card, #contentArea .vod-card, #contentArea .list-item, #contentArea .ep-item, #contentArea .continue-item')].filter(isVisible);
+      case 'nowbar':
+        return [...document.querySelectorAll('.vbtn:not([style*="display:none"]):not([style*="display: none"])')].filter(isVisible);
+      case 'modal_series':
+        return [...document.querySelectorAll('#seriesModalInner .season-tab, #seriesModalInner .ep-item, #seriesModalInner .ep-btn, #seriesModalInner .modal-close')].filter(isVisible);
+      case 'modal_vod':
+        return [...document.querySelectorAll('#vodModalPlayBtn, #vodModal .vod-modal-ext, #vodModal .vod-modal-close')].filter(isVisible);
+      case 'modal_epg':
+        return [...document.querySelectorAll('#epgModal .epg-row, #epgModal .modal-close')].filter(isVisible);
+      case 'acc_drop':
+        return [...document.querySelectorAll('#accDropList .acc-item, .acc-drop-footer button')].filter(isVisible);
+      default: return [];
+    }
+  }
+
+  function isVisible(el){
+    if(!el) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 &&
+           getComputedStyle(el).visibility !== 'hidden' &&
+           getComputedStyle(el).display !== 'none';
+  }
+
+  function setFocus(el){
+    if(focusedEl) focusedEl.classList.remove('tv-focus');
+    focusedEl = el;
+    if(!el) return;
+    el.classList.add('tv-focus');
+    el.scrollIntoView({block:'nearest', inline:'nearest', behavior:'smooth'});
+  }
+
+  function focusFirst(z){
+    zone = z;
+    const items = getFocusables(z);
+    if(items.length) setFocus(items[0]);
+  }
+
+  function focusIdx(z, idx){
+    zone = z;
+    const items = getFocusables(z);
+    if(!items.length) return;
+    const i = Math.max(0, Math.min(idx, items.length-1));
+    setFocus(items[i]);
+  }
+
+  function currentIdx(){
+    if(!focusedEl) return -1;
+    return getFocusables(zone).indexOf(focusedEl);
+  }
+
+  function navigate(dir){
+    const items = getFocusables(zone);
+    if(!items.length){ focusFirst(zone); return; }
+    const idx = currentIdx();
+    if(idx === -1){ setFocus(items[0]); return; }
+
+    // Grids: navegar en 2D
+    if(zone === 'content'){
+      const el = items[idx];
+      const rect = el.getBoundingClientRect();
+      const colW = rect.width + 14;
+      const rowH = rect.height + 14;
+      const cols = Math.max(1, Math.round(
+        (el.closest('.ch-grid,.vod-grid')?.offsetWidth || colW) / colW
+      ));
+
+      if(dir === 'right') { if(idx+1 < items.length) setFocus(items[idx+1]); }
+      else if(dir === 'left') { if(idx-1 >= 0) setFocus(items[idx-1]); }
+      else if(dir === 'down') {
+        if(idx+cols < items.length) setFocus(items[idx+cols]);
+        else setFocus(items[items.length-1]);
+      }
+      else if(dir === 'up') {
+        if(idx-cols >= 0) setFocus(items[idx-cols]);
+        else { zone='cats'; focusIdx('cats', 0); }
+      }
+      return;
+    }
+
+    // Listas verticales
+    if(dir === 'down' || dir === 'right'){
+      if(idx+1 < items.length) setFocus(items[idx+1]);
+    } else if(dir === 'up' || dir === 'left'){
+      if(idx-1 >= 0) setFocus(items[idx-1]);
+    }
+  }
+
+  function activateFocused(){
+    if(!focusedEl) return;
+    // Inputs: no hacer nada especial
+    if(focusedEl.tagName === 'INPUT') { focusedEl.focus(); return; }
+    focusedEl.click();
+  }
+
+  // Transiciones de zona con flechas en los bordes
+  function handleZoneTransition(dir){
+    if(zone === 'tabs'){
+      if(dir === 'down') { zone = 'sidetabs'; focusFirst('sidetabs'); return true; }
+    }
+    if(zone === 'sidetabs'){
+      if(dir === 'up')   { zone = 'tabs'; focusFirst('tabs'); return true; }
+      if(dir === 'down') { zone = 'cats'; focusFirst('cats'); return true; }
+      if(dir === 'right'){ zone = 'content'; focusFirst('content'); return true; }
+    }
+    if(zone === 'cats'){
+      const items = getFocusables('cats');
+      const idx = currentIdx();
+      if(dir === 'up' && idx === 0){ zone = 'sidetabs'; focusFirst('sidetabs'); return true; }
+      if(dir === 'right'){ zone = 'content'; focusFirst('content'); return true; }
+    }
+    if(zone === 'content'){
+      const items = getFocusables('content');
+      const idx = currentIdx();
+      if(dir === 'left' && idx === 0){ zone = 'cats'; focusFirst('cats'); return true; }
+      if(dir === 'up' && idx < 4){ zone = 'tabs'; focusFirst('tabs'); return true; }
+      if(dir === 'down'){
+        // Si estamos en el último renglón, ir a nowbar si está visible
+        const nowBar = document.getElementById('nowBar');
+        if(nowBar && nowBar.classList.contains('visible') && idx >= items.length - 4){
+          zone = 'nowbar'; focusFirst('nowbar'); return true;
+        }
+      }
+    }
+    if(zone === 'nowbar'){
+      if(dir === 'up'){ zone = 'content'; focusFirst('content'); return true; }
+    }
+    if(zone === 'setup'){
+      // Sin transición de zona en setup
+    }
+    return false;
+  }
+
+  function handleBack(){
+    // Cerrar modal abierto
+    const vodModal = document.getElementById('vodModal');
+    if(vodModal && !vodModal.classList.contains('hidden')){
+      vodModal.classList.add('hidden'); zone='content'; focusFirst('content'); return;
+    }
+    const seriesModal = document.getElementById('seriesModal');
+    if(seriesModal && !seriesModal.classList.contains('hidden')){
+      closeSeriesModalForce(); zone='content'; focusFirst('content'); return;
+    }
+    const epgModal = document.getElementById('epgModal');
+    if(epgModal && !epgModal.classList.contains('hidden')){
+      epgModal.classList.add('hidden'); zone='content'; return;
+    }
+    const accDrop = document.getElementById('accDrop');
+    if(accDrop && accDrop.classList.contains('open')){
+      closeAccDrop(); zone='tabs'; focusFirst('tabs'); return;
+    }
+    // Desde content → volver a cats
+    if(zone === 'content'){ zone='cats'; focusFirst('cats'); return; }
+    if(zone === 'cats'){ zone='tabs'; focusFirst('tabs'); return; }
+    if(zone === 'nowbar'){ zone='content'; focusFirst('content'); return; }
+  }
+
+  // Escuchar teclado
+  document.addEventListener('keydown', e => {
+    // Activar modo TV con cualquier tecla D-pad
+    if(!tvMode && [37,38,39,40,13].includes(e.keyCode)){
+      enableTvMode();
+      focusFirst('tabs');
+    }
+    if(!tvMode) return;
+
+    // Detectar pantalla activa
+    const inSetup = document.getElementById('setupScreen').style.display !== 'none';
+    if(inSetup && zone !== 'setup'){ zone = 'setup'; focusFirst('setup'); }
+
+    // Modal abierto → redirigir zona
+    const vodModal = document.getElementById('vodModal');
+    if(vodModal && !vodModal.classList.contains('hidden') && zone !== 'modal_vod'){
+      zone = 'modal_vod'; focusFirst('modal_vod');
+    }
+    const seriesModal = document.getElementById('seriesModal');
+    if(seriesModal && !seriesModal.classList.contains('hidden') && zone !== 'modal_series'){
+      zone = 'modal_series'; focusFirst('modal_series');
+    }
+
+    switch(e.keyCode){
+      case 37: // ←
+        e.preventDefault();
+        if(!handleZoneTransition('left')) navigate('left');
+        break;
+      case 39: // →
+        e.preventDefault();
+        if(!handleZoneTransition('right')) navigate('right');
+        break;
+      case 38: // ↑
+        e.preventDefault();
+        if(!handleZoneTransition('up')) navigate('up');
+        break;
+      case 40: // ↓
+        e.preventDefault();
+        if(!handleZoneTransition('down')) navigate('down');
+        break;
+      case 13: // OK / Enter
+        e.preventDefault();
+        activateFocused();
+        // Después de activar contenido, actualizar foco en modal si se abrió
+        setTimeout(()=>{
+          const vm = document.getElementById('vodModal');
+          if(vm && !vm.classList.contains('hidden')){ zone='modal_vod'; focusFirst('modal_vod'); }
+          const sm = document.getElementById('seriesModal');
+          if(sm && !sm.classList.contains('hidden')){ zone='modal_series'; focusFirst('modal_series'); }
+        }, 300);
+        break;
+      case 8:   // Backspace
+      case 461: // Tecla atrás LG
+      case 10009: // Tecla atrás Samsung
+        e.preventDefault();
+        handleBack();
+        break;
+    }
+  });
+
+  // Inicializar foco al entrar a la app
+  document.addEventListener('appReady', ()=>{
+    if(tvMode) setTimeout(()=>focusFirst('tabs'), 500);
+  });
+
+  // Reenfocarse tras cargar contenido nuevo
+  const origRenderItems = window.renderItems;
+  if(typeof origRenderItems === 'function'){
+    window.renderItems = function(...args){
+      origRenderItems.apply(this, args);
+      if(tvMode) setTimeout(()=>{ zone='content'; focusFirst('content'); }, 200);
+    };
+  }
+
+  // Reenfocarse tras cambiar categoría
+  const origSelectCat = window.selectCat;
+  if(typeof origSelectCat === 'function'){
+    window.selectCat = function(...args){
+      origSelectCat.apply(this, args);
+      if(tvMode) setTimeout(()=>{ zone='content'; focusFirst('content'); }, 300);
+    };
+  }
+
+  // Exponer para debug
+  window._tvNav = { zone:()=>zone, focused:()=>focusedEl, focusFirst, setZone:(z)=>{zone=z;focusFirst(z);} };
+}
+
 // ══ INIT ══
 initSetup();
 initSwipe();
 initVodControls();
+initTvNav();
 </script>
+
+<!-- TV NAV CSS — solo activo en modo TV -->
+<style>
+/* Foco visible para navegación D-pad */
+body.tv-mode .tv-focus{outline:3px solid var(--accent)!important;outline-offset:2px!important;box-shadow:0 0 0 5px rgba(0,212,255,.25)!important;transform:scale(1.04)!important;z-index:10;position:relative;}
+body.tv-mode .sec-tab.tv-focus{background:var(--accent)!important;color:#0a0e14!important;transform:scale(1.08)!important;}
+body.tv-mode .cat-item.tv-focus{background:rgba(0,212,255,.18)!important;border-left:3px solid var(--accent)!important;}
+body.tv-mode .ch-card.tv-focus{border-color:var(--accent)!important;transform:scale(1.08)!important;box-shadow:0 0 0 3px rgba(0,212,255,.4),0 8px 24px rgba(0,212,255,.3)!important;}
+body.tv-mode .vod-card.tv-focus{border-color:var(--accent)!important;transform:scale(1.06)!important;box-shadow:0 0 0 3px rgba(0,212,255,.4)!important;}
+body.tv-mode .list-item.tv-focus{background:rgba(0,212,255,.1)!important;border-left:3px solid var(--accent)!important;padding-left:10px!important;}
+body.tv-mode .stab.tv-focus{color:var(--accent)!important;border-bottom-color:var(--accent)!important;}
+body.tv-mode .ep-item.tv-focus{border-color:var(--accent)!important;background:rgba(0,212,255,.08)!important;}
+body.tv-mode .season-tab.tv-focus{border-color:var(--accent)!important;color:var(--accent)!important;background:rgba(0,212,255,.12)!important;}
+body.tv-mode .vbtn.tv-focus{border-color:var(--accent)!important;color:var(--accent)!important;background:rgba(0,212,255,.15)!important;transform:scale(1.06)!important;}
+body.tv-mode .setup-btn.tv-focus{transform:scale(1.03)!important;box-shadow:0 0 0 3px rgba(0,212,255,.4)!important;}
+body.tv-mode .saved-chip.tv-focus{border-color:var(--accent)!important;color:var(--text)!important;background:rgba(0,212,255,.08)!important;}
+body.tv-mode .acc-item.tv-focus{background:rgba(0,212,255,.15)!important;border:1px solid var(--accent)!important;}
+body.tv-mode *{transition:outline .1s,box-shadow .1s,transform .15s,background .15s!important;}
+/* Cards más grandes en TV */
+body.tv-mode .ch-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))!important;gap:14px!important;}
+body.tv-mode .ch-card{padding:16px 12px!important;}
+body.tv-mode .ch-img{width:70px!important;height:70px!important;}
+body.tv-mode .ch-name{font-size:.85rem!important;}
+body.tv-mode .vod-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))!important;gap:14px!important;}
+body.tv-mode .vod-name{font-size:.82rem!important;}
+body.tv-mode .cat-item{padding:13px 14px!important;font-size:.88rem!important;}
+body.tv-mode .sec-tab{padding:8px 14px!important;font-size:.85rem!important;}
+body.tv-mode .stab{font-size:.75rem!important;padding:12px 4px!important;}
+/* Indicador TV mode */
+#tvModeIndicator{display:none;position:fixed;top:8px;right:8px;background:rgba(0,212,255,.2);border:1px solid var(--accent);border-radius:6px;padding:3px 8px;font-size:.65rem;color:var(--accent);z-index:9999;pointer-events:none}
+body.tv-mode #tvModeIndicator{display:block}
+</style>
+<div id="tvModeIndicator">📺 TV</div>
 </body>
 </html>
