@@ -32,14 +32,6 @@
             android:windowLayoutInDisplayCutoutMode="shortEdges"
             android:launchMode="standard" />
 
-        <activity
-            android:name=".MultiviewActivity"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation"
-            android:exported="false"
-            android:screenOrientation="landscape"
-            android:resizeableActivity="false"
-            android:windowLayoutInDisplayCutoutMode="shortEdges"
-            android:launchMode="standard" />
 
     </application>
 
