@@ -698,7 +698,13 @@ public class PlayerActivity extends AppCompatActivity {
             SSLContext sc = SSLContext.getInstance("TLS");
             sc.init(null, new TrustManager[]{tm}, new java.security.SecureRandom());
             return new OkHttpClient.Builder().sslSocketFactory(sc.getSocketFactory(), tm)
-                .hostnameVerifier((h, s) -> true).build();
+                .hostnameVerifier((h, s) -> true)
+                .addInterceptor(chain -> chain.proceed(
+                    chain.request().newBuilder()
+                        .header("User-Agent", "VLC/3.0.18 LibVLC/3.0.18")
+                        .build()
+                ))
+                .build();
         } catch (Exception e) { return new OkHttpClient.Builder().build(); }
     }
 
