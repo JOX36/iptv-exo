@@ -59,14 +59,6 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface public void stop() {}
         @JavascriptInterface public void goFullscreen() {}
 
-        @JavascriptInterface
-        public void openMultiview(String url, String name, String channelsJson) {
-            Intent i = new Intent(MainActivity.this, MultiviewActivity.class);
-            i.putExtra("url", url);
-            i.putExtra("name", name);
-            i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
-            startActivity(i);
-        }
     }
 
     @Override
