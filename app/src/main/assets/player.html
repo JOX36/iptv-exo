@@ -1310,9 +1310,13 @@ function toggleAccDrop(){const drop=document.getElementById('accDrop');const isO
 function closeAccDrop(){document.getElementById('accDrop').classList.remove('open')}
 async function switchAccount(a){
   closeAccDrop();
-  if(a.host===S.host&&a.user===S.user){toast('✅ Ya estás en esta cuenta');return}
+  // Comparar por clave única — fix para múltiples listas locales
+  const curKey = S.isLocal ? `local|${S.user}` : `${S.host}|${S.user}`;
+  const newKey = a.isLocal ? `local|${a.user}` : `${a.host}|${a.user}`;
+  if(curKey === newKey){toast('✅ Ya estás en esta cuenta');return}
   // Cuenta local
   if(a.isLocal){ loadLocalAccount(a); return; }
+  // Servidor normal
   stopPlayer();
   S.isLocal=false; S.localItems=[];
   S.host=a.host;S.user=a.user;S.pass=a.pass;
