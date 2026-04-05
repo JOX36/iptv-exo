@@ -2,6 +2,7 @@ package com.jox3.iptvexo;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
@@ -10,10 +11,15 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
+    private static final int REQ_PLAYER   = 1001;
+    private static final int REQ_M3U_FILE = 1002;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -40,6 +46,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     class Bridge {
+
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
                                String logo, String itemId, String channelsJson, int channelIndex) {
@@ -52,27 +59,81 @@ public class MainActivity extends AppCompatActivity {
             i.putExtra("id", itemId);
             i.putExtra("channel_index", channelIndex);
             i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
-            startActivityForResult(i, 1001);
+            startActivityForResult(i, REQ_PLAYER);
+        }
+
+        @JavascriptInterface
+        public void openFilePicker() {
+            // Abre el selector de archivos nativo para M3U/TXT
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "text/plain",
+                "audio/x-mpegurl",
+                "application/octet-stream",
+                "application/vnd.apple.mpegurl"
+            });
+            startActivityForResult(Intent.createChooser(i, "Seleccionar lista M3U"), REQ_M3U_FILE);
         }
 
         @JavascriptInterface public void playUrl(String url) {}
         @JavascriptInterface public void stop() {}
         @JavascriptInterface public void goFullscreen() {}
-
     }
 
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
-        if (req == 1001 && data != null) {
+
+        if (req == REQ_PLAYER && data != null) {
+            // Resultado del reproductor — favoritos
             boolean added   = data.getBooleanExtra("fav_added", false);
             boolean removed = data.getBooleanExtra("fav_removed", false);
             String id   = data.getStringExtra("item_id");
             String type = data.getStringExtra("item_type");
             if (id != null) {
                 String key = type + "_" + id;
-                if (added)   webView.evaluateJavascript("S.favs.add('"   + key + "');saveFavs();", null);
-                if (removed) webView.evaluateJavascript("S.favs.delete('"+ key + "');saveFavs();", null);
+                if (added)   webView.evaluateJavascript("S.favs.add('"    + key + "');saveFavs();", null);
+                if (removed) webView.evaluateJavascript("S.favs.delete('" + key + "');saveFavs();", null);
+            }
+        }
+
+        if (req == REQ_M3U_FILE && res == RESULT_OK && data != null) {
+            // Leer archivo M3U seleccionado
+            Uri uri = data.getData();
+            if (uri == null) return;
+            try {
+                InputStream is = getContentResolver().openInputStream(uri);
+                if (is == null) return;
+                BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                    // Limitar a 5MB para no saturar
+                    if (sb.length() > 5 * 1024 * 1024) break;
+                }
+                reader.close();
+                // Escapar para JS y enviar al WebView
+                String content = sb.toString()
+                    .replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("$", "\\$");
+                // Obtener nombre del archivo
+                String fileName = uri.getLastPathSegment();
+                if (fileName == null) fileName = "Lista local";
+                final String jsContent = content;
+                final String jsName = fileName.replace("'", "\\'");
+                webView.post(() ->
+                    webView.evaluateJavascript(
+                        "loadLocalM3U(`" + jsContent + "`, '" + jsName + "')", null
+                    )
+                );
+            } catch (Exception e) {
+                webView.post(() ->
+                    webView.evaluateJavascript("toast('❌ Error al leer el archivo')", null)
+                );
             }
         }
     }
@@ -84,7 +145,6 @@ public class MainActivity extends AppCompatActivity {
         if (webView.canGoBack()) {
             webView.goBack();
         } else {
-            // Confirmar salida con doble tap
             if (System.currentTimeMillis() - backPressedTime < 2000) {
                 super.onBackPressed();
             } else {
