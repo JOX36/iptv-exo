@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
@@ -9,7 +10,9 @@
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#000000" />
+        android:background="#000000"
+        app:use_controller="false"
+        app:resize_mode="fill" />
 
     <!-- LIVE top bar (tap para mostrar/ocultar) -->
     <LinearLayout
@@ -225,7 +228,9 @@
                 android:id="@+id/vod_player_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#000000" />
+                android:background="#000000"
+                app:use_controller="false"
+                app:resize_mode="fit" />
 
             <LinearLayout
                 android:id="@+id/vod_top_bar"
