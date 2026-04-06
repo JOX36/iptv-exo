@@ -2,14 +2,12 @@ package com.jox3.iptvexo;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
-import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.PictureInPictureParams;
 import android.content.ClipData;
 import android.content.ClipboardManager;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.media.AudioManager;
@@ -17,9 +15,11 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
-import android.support.v4.media.MediaMetadataCompat;
-import android.support.v4.media.session.MediaSessionCompat;
-import android.support.v4.media.session.PlaybackStateCompat;
+import androidx.media.session.MediaSessionCompat;
+import androidx.media.session.PlaybackStateCompat;
+import androidx.media.MediaMetadataCompat;
+
+
 import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
@@ -36,6 +36,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
+
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
@@ -224,6 +225,22 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+
+        // Handle notification control actions
+        String action = intent.getAction();
+        if (action != null) {
+            switch (action) {
+                case "jox3.PLAY":
+                    if (player != null) {
+                        if (player.isPlaying()) player.pause(); else player.play();
+                    }
+                    return;
+                case "jox3.PREV": navigateChannel(-1); return;
+                case "jox3.NEXT": navigateChannel(1);  return;
+                case "jox3.STOP": stopAndRelease(); finish(); return;
+            }
+        }
+
         stopAndRelease();
         setIntent(intent);
 
@@ -394,9 +411,11 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private PendingIntent buildActionPi(String action, int reqCode) {
-        Intent i = new Intent(action);
-        i.setPackage(getPackageName());
-        return PendingIntent.getBroadcast(this, reqCode, i,
+        // Use activity intent with extras - simpler than BroadcastReceiver
+        Intent i = new Intent(this, PlayerActivity.class);
+        i.setAction(action);
+        i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        return PendingIntent.getActivity(this, reqCode, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
