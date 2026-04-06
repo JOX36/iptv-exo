@@ -148,17 +148,31 @@ public class PlayerActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_FULLSCREEN
-                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
-        getWindow().getDecorView().setSystemUiVisibility(
+                | WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        // Android 11+ — ocultar insets del sistema completamente
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            getWindow().setDecorFitsSystemWindows(false);
+            android.view.WindowInsetsController wic = getWindow().getInsetsController();
+            if (wic != null) {
+                wic.hide(android.view.WindowInsets.Type.systemBars());
+                wic.setSystemBarsBehavior(
+                    android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        }
 
         if (activeInstance != null && activeInstance != this) {
             activeInstance.stopAndRelease();
+            // Si la instancia anterior estaba en PiP, cerrarla completamente
+            if (activeInstance.isInPictureInPictureMode()) {
+                activeInstance.finish();
+            }
         }
         activeInstance = this;
 
@@ -206,29 +220,41 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
-        // En MIUI/Xiaomi onDestroy no siempre se llama — parar audio aquí
-        // Solo si no estamos en PiP
-        if (!isInPictureInPictureMode()) {
+        // Fix MIUI: parar audio al minimizar
+        // No parar si estamos entrando a PiP o ya estamos dentro de PiP
+        if (!enteredPiP && !isInPictureInPictureMode()) {
             if (player != null) player.pause();
+        }
+        // Resetear flag una vez confirmado que estamos en PiP
+        if (enteredPiP && isInPictureInPictureMode()) {
+            enteredPiP = false;
         }
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // Reanudar solo si no entramos en PiP
-        if (!isInPictureInPictureMode() && player != null) {
+        // Reanudar al volver a la app
+        if (player != null && !isInPictureInPictureMode()) {
             player.play();
         }
+    }
     }
 
     @Override
     protected void onStop() {
         super.onStop();
-        // Cerrar PiP con X — detectado por enteredPiP + ya no estamos en PiP
+        // Caso 1: usuario cerró PiP con el botón X
         if (enteredPiP && !isInPictureInPictureMode()) {
             stopAndRelease();
             enteredPiP = false;
+            finish();
+            return;
+        }
+        // Caso 2: esta instancia está en PiP pero ya hay otro player activo
+        // → parar audio para evitar sonido doble
+        if (isInPictureInPictureMode() && activeInstance != this) {
+            stopAndRelease();
             finish();
         }
     }
