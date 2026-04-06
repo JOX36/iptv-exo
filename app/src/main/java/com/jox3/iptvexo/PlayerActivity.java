@@ -60,6 +60,9 @@ import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import okhttp3.OkHttpClient;
 
 @UnstableApi
@@ -133,6 +136,7 @@ public class PlayerActivity extends AppCompatActivity {
     private long   seekStartPos      = 0;
 
     private enum GestureMode { NONE, BRIGHTNESS, VOLUME, SEEK }
+    private BroadcastReceiver notifReceiver;
     private GestureMode gestureMode = GestureMode.NONE;
 
     // ─────────────────────────────────────────────
@@ -169,6 +173,7 @@ public class PlayerActivity extends AppCompatActivity {
         httpClient   = buildHttpClient();
 
         createNotificationChannel();
+        registerNotifReceiver();
         bindViews();
         setEmojiLabels();
 
@@ -183,6 +188,7 @@ public class PlayerActivity extends AppCompatActivity {
         super.onDestroy();
         stopAndRelease();
         cancelNotification();
+        unregisterNotifReceiver();
         if (activeInstance == this) activeInstance = null;
 
         Intent result = new Intent();
@@ -206,30 +212,6 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-
-        // Manejar acciones de los botones de la notificación
-        String action = intent.getAction();
-        if (action != null) {
-            switch (action) {
-                case ACTION_PLAY:
-                    if (player != null) {
-                        if (player.isPlaying()) player.pause();
-                        else player.play();
-                        showNotification(player.isPlaying());
-                    }
-                    return;
-                case ACTION_PREV:
-                    navigateChannel(-1);
-                    return;
-                case ACTION_NEXT:
-                    navigateChannel(1);
-                    return;
-                case ACTION_STOP:
-                    stopAndRelease();
-                    finish();
-                    return;
-            }
-        }
 
         stopAndRelease();
         setIntent(intent);
@@ -348,11 +330,49 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private PendingIntent buildNotifAction(String action, int reqCode) {
-        Intent i = new Intent(this, PlayerActivity.class);
-        i.setAction(action);
-        i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-        return PendingIntent.getActivity(this, reqCode, i,
+        Intent i = new Intent(action);
+        i.setPackage(getPackageName());
+        return PendingIntent.getBroadcast(this, reqCode, i,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    private void registerNotifReceiver() {
+        notifReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context ctx, Intent intent) {
+                String action = intent.getAction();
+                if (action == null) return;
+                switch (action) {
+                    case ACTION_PLAY:
+                        if (player != null) {
+                            if (player.isPlaying()) player.pause();
+                            else player.play();
+                            showNotification(player.isPlaying());
+                        }
+                        break;
+                    case ACTION_PREV: navigateChannel(-1); break;
+                    case ACTION_NEXT: navigateChannel(1);  break;
+                    case ACTION_STOP: stopAndRelease(); finish(); break;
+                }
+            }
+        };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(ACTION_PLAY);
+        filter.addAction(ACTION_PREV);
+        filter.addAction(ACTION_NEXT);
+        filter.addAction(ACTION_STOP);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(notifReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(notifReceiver, filter);
+        }
+    }
+
+    private void unregisterNotifReceiver() {
+        if (notifReceiver != null) {
+            try { unregisterReceiver(notifReceiver); } catch (Exception ignored) {}
+            notifReceiver = null;
+        }
     }
 
     private void cancelNotification() {
@@ -649,6 +669,7 @@ public class PlayerActivity extends AppCompatActivity {
                 .build();
 
         pv.setPlayer(player);
+        pv.setUseController(false); // controles propios, no los de ExoPlayer
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
