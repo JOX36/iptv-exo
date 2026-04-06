@@ -239,7 +239,6 @@ public class PlayerActivity extends AppCompatActivity {
             player.play();
         }
     }
-    }
 
     @Override
     protected void onStop() {
