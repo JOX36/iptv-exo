@@ -148,10 +148,14 @@ public class PlayerActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_FULLSCREEN);
+                | WindowManager.LayoutParams.FLAG_FULLSCREEN
+                | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
         getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+                View.SYSTEM_UI_FLAG_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
 
         if (activeInstance != null && activeInstance != this) {
             activeInstance.stopAndRelease();
@@ -200,8 +204,28 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        // En MIUI/Xiaomi onDestroy no siempre se llama — parar audio aquí
+        // Solo si no estamos en PiP
+        if (!isInPictureInPictureMode()) {
+            if (player != null) player.pause();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Reanudar solo si no entramos en PiP
+        if (!isInPictureInPictureMode() && player != null) {
+            player.play();
+        }
+    }
+
+    @Override
     protected void onStop() {
         super.onStop();
+        // Cerrar PiP con X — detectado por enteredPiP + ya no estamos en PiP
         if (enteredPiP && !isInPictureInPictureMode()) {
             stopAndRelease();
             enteredPiP = false;
@@ -669,7 +693,11 @@ public class PlayerActivity extends AppCompatActivity {
                 .build();
 
         pv.setPlayer(player);
-        pv.setUseController(false); // controles propios, no los de ExoPlayer
+        pv.setUseController(false);
+        // Forzar fill para evitar barras negras laterales
+        if (!isVodType()) {
+            playerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
+        }
         player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
