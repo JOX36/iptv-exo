@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:fitsSystemWindows="false"
-    android:clipToPadding="false"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#000000">
@@ -12,10 +9,7 @@
         android:id="@+id/player_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#000000"
-        android:fitsSystemWindows="false"
-        app:use_controller="false"
-        app:resize_mode="fill" />
+        android:background="#000000" />
 
     <!-- LIVE top bar (tap para mostrar/ocultar) -->
     <LinearLayout
@@ -157,56 +151,56 @@
             android:orientation="horizontal"
             android:gravity="center">
 
-            <Button
-                android:id="@+id/live_btn_audio"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:text="Audio"
-                android:textSize="11sp"
-                android:backgroundTint="#1a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone" />
+        <Button
+            android:id="@+id/live_btn_audio"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Audio"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone" />
 
-            <Button
-                android:id="@+id/live_btn_subs"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:text="Subs"
-                android:textSize="11sp"
-                android:backgroundTint="#1a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone" />
+        <Button
+            android:id="@+id/live_btn_subs"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Subs"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone" />
 
-            <Button
-                android:id="@+id/live_btn_pip"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:text="PiP"
-                android:textSize="11sp"
-                android:backgroundTint="#1a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp" />
+        <Button
+            android:id="@+id/live_btn_pip"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="PiP"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
 
-            <Button
-                android:id="@+id/live_btn_ext"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:text="Externo"
-                android:textSize="11sp"
-                android:backgroundTint="#1a2535"
-                android:textColor="#7ab8cc"
-                android:layout_marginEnd="8dp" />
+        <Button
+            android:id="@+id/live_btn_ext"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Externo"
+            android:textSize="11sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#7ab8cc"
+            android:layout_marginEnd="8dp" />
 
-            <Button
-                android:id="@+id/live_btn_stop"
-                android:layout_width="wrap_content"
-                android:layout_height="34dp"
-                android:text="Detener"
-                android:textSize="11sp"
-                android:backgroundTint="#55ef4444"
-                android:textColor="#ef4444" />
+        <Button
+            android:id="@+id/live_btn_stop"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="Detener"
+            android:textSize="11sp"
+            android:backgroundTint="#55ef4444"
+            android:textColor="#ef4444" />
 
         </LinearLayout>
 
@@ -231,9 +225,7 @@
                 android:id="@+id/vod_player_view"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
-                android:background="#000000"
-                app:use_controller="false"
-                app:resize_mode="fit" />
+                android:background="#000000" />
 
             <LinearLayout
                 android:id="@+id/vod_top_bar"
@@ -569,19 +561,5 @@
             android:layout_marginTop="12dp" />
 
     </LinearLayout>
-
-    <!-- GESTURE OVERLAY — indicador central de brillo/volumen/seek -->
-    <TextView
-        android:id="@+id/gesture_overlay"
-        android:layout_width="120dp"
-        android:layout_height="48dp"
-        android:layout_gravity="center"
-        android:gravity="center"
-        android:background="#BB000000"
-        android:textColor="#FFFFFF"
-        android:textSize="18sp"
-        android:textStyle="bold"
-        android:fontFamily="monospace"
-        android:visibility="gone" />
 
 </FrameLayout>
