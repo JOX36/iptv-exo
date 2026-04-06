@@ -15,11 +15,6 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
-import androidx.media.session.MediaSessionCompat;
-import androidx.media.session.PlaybackStateCompat;
-import androidx.media.MediaMetadataCompat;
-
-
 import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
@@ -36,9 +31,9 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
-
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.MediaMetadata;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
@@ -74,15 +69,16 @@ public class PlayerActivity extends AppCompatActivity {
     private static final String NOTIF_CHANNEL_ID = "jox3_player";
     private static final int    NOTIF_ID         = 1001;
     private static final String USER_AGENT       = "VLC/3.0.0 LibVLC/3.0.0";
+    private static final String ACTION_PLAY      = "jox3.PLAY";
+    private static final String ACTION_PREV      = "jox3.PREV";
+    private static final String ACTION_NEXT      = "jox3.NEXT";
+    private static final String ACTION_STOP      = "jox3.STOP";
 
     // ── Player global ──
     private ExoPlayer player;
     private static PlayerActivity activeInstance = null;
 
-    // ── MediaSession ──
-    private MediaSessionCompat mediaSession;
-
-    // ── OkHttpClient compartido (se crea una sola vez) ──
+    // ── HTTP Client ──
     private OkHttpClient httpClient;
 
     // ── LIVE views ──
@@ -92,6 +88,7 @@ public class PlayerActivity extends AppCompatActivity {
     private ImageButton liveBtnBack, liveBtnFav;
     private Button liveBtnAudio, liveBtnSubs, liveBtnPip, liveBtnExt, liveBtnStop;
     private ProgressBar progressBar;
+    private TextView gestureOverlay;
 
     // ── VOD views ──
     private LinearLayout vodLayout;
@@ -109,7 +106,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView vodFsTxtTitle;
     private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt, vodFsBtnUrl, vodFsBtnSubs;
 
-    // ── Datos del intent ──
+    // ── Datos ──
     private String url, name, group, type, logo, itemId;
     private List<JSONObject> channels = new ArrayList<>();
     private int channelIndex = -1;
@@ -126,17 +123,17 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler handler = new Handler();
     private GestureDetector gestureDetector;
 
-    // ── Gestos: brillo y volumen ──
+    // ── Gestos táctiles ──
     private AudioManager audioManager;
-    private float        initialBrightness = -1f;
-    private int          initialVolume     = -1;
-    private float        gestureStartY     = -1f;
-    private float        gestureStartX     = -1f;
-    private boolean      gestureActive     = false;
+    private float  initialBrightness = -1f;
+    private int    initialVolume     = -1;
+    private float  gestureStartX     = -1f;
+    private float  gestureStartY     = -1f;
+    private boolean gestureActive    = false;
+    private long   seekStartPos      = 0;
+
     private enum GestureMode { NONE, BRIGHTNESS, VOLUME, SEEK }
-    private GestureMode  gestureMode = GestureMode.NONE;
-    private long         seekStartPos = 0;
-    private TextView     gestureOverlay; // indicador central de gesto
+    private GestureMode gestureMode = GestureMode.NONE;
 
     // ─────────────────────────────────────────────
     //  LIFECYCLE
@@ -146,14 +143,12 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Pantalla siempre encendida y fullscreen
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
 
-        // Detener instancia anterior — evita audio doble
         if (activeInstance != null && activeInstance != this) {
             activeInstance.stopAndRelease();
         }
@@ -161,7 +156,6 @@ public class PlayerActivity extends AppCompatActivity {
 
         setContentView(R.layout.activity_player);
 
-        // Leer intent
         url          = getIntent().getStringExtra("url");
         name         = getIntent().getStringExtra("name");
         group        = getIntent().getStringExtra("group");
@@ -171,18 +165,10 @@ public class PlayerActivity extends AppCompatActivity {
         channelIndex = getIntent().getIntExtra("channel_index", -1);
         parseChannels(getIntent().getStringExtra("channels_json"));
 
-        // Servicios del sistema
         audioManager = (AudioManager) getSystemService(AUDIO_SERVICE);
+        httpClient   = buildHttpClient();
 
-        // Cliente HTTP reutilizable con User-Agent VLC
-        httpClient = buildHttpClient();
-
-        // Crear canal de notificación (Android 8+)
         createNotificationChannel();
-
-        // MediaSession
-        initMediaSession();
-
         bindViews();
         setEmojiLabels();
 
@@ -197,10 +183,6 @@ public class PlayerActivity extends AppCompatActivity {
         super.onDestroy();
         stopAndRelease();
         cancelNotification();
-        if (mediaSession != null) {
-            mediaSession.setActive(false);
-            mediaSession.release();
-        }
         if (activeInstance == this) activeInstance = null;
 
         Intent result = new Intent();
@@ -214,7 +196,6 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        // Cerrar PiP con el botón X → stopAndRelease
         if (enteredPiP && !isInPictureInPictureMode()) {
             stopAndRelease();
             enteredPiP = false;
@@ -226,18 +207,27 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
 
-        // Handle notification control actions
+        // Manejar acciones de los botones de la notificación
         String action = intent.getAction();
         if (action != null) {
             switch (action) {
-                case "jox3.PLAY":
+                case ACTION_PLAY:
                     if (player != null) {
-                        if (player.isPlaying()) player.pause(); else player.play();
+                        if (player.isPlaying()) player.pause();
+                        else player.play();
+                        showNotification(player.isPlaying());
                     }
                     return;
-                case "jox3.PREV": navigateChannel(-1); return;
-                case "jox3.NEXT": navigateChannel(1);  return;
-                case "jox3.STOP": stopAndRelease(); finish(); return;
+                case ACTION_PREV:
+                    navigateChannel(-1);
+                    return;
+                case ACTION_NEXT:
+                    navigateChannel(1);
+                    return;
+                case ACTION_STOP:
+                    stopAndRelease();
+                    finish();
+                    return;
             }
         }
 
@@ -309,56 +299,8 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     // ─────────────────────────────────────────────
-    //  MEDIASESSION + NOTIFICACIÓN
+    //  NOTIFICACIÓN MULTIMEDIA (sin MediaSession)
     // ─────────────────────────────────────────────
-
-    private void initMediaSession() {
-        mediaSession = new MediaSessionCompat(this, "JOX3TV");
-        mediaSession.setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS
-                | MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS);
-
-        mediaSession.setCallback(new MediaSessionCompat.Callback() {
-            @Override public void onPlay()  { if (player != null) player.play(); }
-            @Override public void onPause() { if (player != null) player.pause(); }
-            @Override public void onStop()  { stopAndRelease(); finish(); }
-            @Override public void onSkipToNext()     { navigateChannel(1);  }
-            @Override public void onSkipToPrevious() { navigateChannel(-1); }
-            @Override public void onSeekTo(long pos) { if (player != null) player.seekTo(pos); }
-        });
-        mediaSession.setActive(true);
-    }
-
-    private void updateMediaSession(boolean playing) {
-        if (mediaSession == null) return;
-
-        PlaybackStateCompat.Builder stateBuilder = new PlaybackStateCompat.Builder()
-                .setActions(
-                        PlaybackStateCompat.ACTION_PLAY |
-                        PlaybackStateCompat.ACTION_PAUSE |
-                        PlaybackStateCompat.ACTION_STOP |
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT |
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS |
-                        PlaybackStateCompat.ACTION_SEEK_TO
-                )
-                .setState(
-                        playing ? PlaybackStateCompat.STATE_PLAYING : PlaybackStateCompat.STATE_PAUSED,
-                        player != null ? player.getCurrentPosition() : 0,
-                        playing ? 1f : 0f
-                );
-        mediaSession.setPlaybackState(stateBuilder.build());
-
-        MediaMetadataCompat.Builder metaBuilder = new MediaMetadataCompat.Builder()
-                .putString(MediaMetadataCompat.METADATA_KEY_TITLE, name != null ? name : "")
-                .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, group != null ? group : "JOX3 TV")
-                .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "JOX3 TV");
-
-        if (player != null && player.getDuration() > 0) {
-            metaBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, player.getDuration());
-        }
-        mediaSession.setMetadata(metaBuilder.build());
-
-        showNotification(playing);
-    }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -367,23 +309,21 @@ public class PlayerActivity extends AppCompatActivity {
                     NotificationManager.IMPORTANCE_LOW);
             ch.setDescription("Controles de reproducción IPTV");
             ch.setShowBadge(false);
-            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(ch);
+            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE))
+                    .createNotificationChannel(ch);
         }
     }
 
     private void showNotification(boolean playing) {
-        if (mediaSession == null) return;
-
         Intent openIntent = new Intent(this, PlayerActivity.class);
         openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent openPi = PendingIntent.getActivity(this, 0, openIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
-        // Intents para acciones
-        PendingIntent prevPi  = buildActionPi("jox3.PREV",  0);
-        PendingIntent playPi  = buildActionPi("jox3.PLAY",  1);
-        PendingIntent nextPi  = buildActionPi("jox3.NEXT",  2);
-        PendingIntent stopPi  = buildActionPi("jox3.STOP",  3);
+        PendingIntent prevPi = buildNotifAction(ACTION_PREV, 1);
+        PendingIntent playPi = buildNotifAction(ACTION_PLAY, 2);
+        PendingIntent nextPi = buildNotifAction(ACTION_NEXT, 3);
+        PendingIntent stopPi = buildNotifAction(ACTION_STOP, 4);
 
         String subtitle = (group != null && !group.isEmpty()) ? group : "JOX3 TV";
 
@@ -395,9 +335,6 @@ public class PlayerActivity extends AppCompatActivity {
                 .setOngoing(playing)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setSilent(true)
-                .setStyle(new androidx.media.app.NotificationCompat.MediaStyle()
-                        .setMediaSession(mediaSession.getSessionToken())
-                        .setShowActionsInCompactView(0, 1, 2))
                 .addAction(android.R.drawable.ic_media_previous, "Anterior", prevPi)
                 .addAction(playing
                         ? android.R.drawable.ic_media_pause
@@ -410,8 +347,7 @@ public class PlayerActivity extends AppCompatActivity {
                 .notify(NOTIF_ID, nb.build());
     }
 
-    private PendingIntent buildActionPi(String action, int reqCode) {
-        // Use activity intent with extras - simpler than BroadcastReceiver
+    private PendingIntent buildNotifAction(String action, int reqCode) {
         Intent i = new Intent(this, PlayerActivity.class);
         i.setAction(action);
         i.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -424,7 +360,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     // ─────────────────────────────────────────────
-    //  SETUP VISTAS
+    //  VISTAS
     // ─────────────────────────────────────────────
 
     private void bindViews() {
@@ -514,15 +450,15 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnAudio.setOnClickListener(v -> showAudioTracks());
         liveBtnSubs.setOnClickListener(v -> showSubtitleTracks());
 
-        setupLiveGestures();
+        setupGestures();
     }
 
     // ─────────────────────────────────────────────
-    //  GESTOS TÁCTILES (brillo / volumen / seek)
+    //  GESTOS TÁCTILES
     // ─────────────────────────────────────────────
 
     @SuppressLint("ClickableViewAccessibility")
-    private void setupLiveGestures() {
+    private void setupGestures() {
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onFling(MotionEvent e1, MotionEvent e2, float vX, float vY) {
@@ -551,11 +487,11 @@ public class PlayerActivity extends AppCompatActivity {
     private void handleSlideGesture(MotionEvent event, int width, int height) {
         switch (event.getAction()) {
             case MotionEvent.ACTION_DOWN:
-                gestureStartX   = event.getX();
-                gestureStartY   = event.getY();
-                gestureActive   = false;
-                gestureMode     = GestureMode.NONE;
-                initialVolume   = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                gestureStartX     = event.getX();
+                gestureStartY     = event.getY();
+                gestureActive     = false;
+                gestureMode       = GestureMode.NONE;
+                initialVolume     = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                 initialBrightness = getScreenBrightness();
                 if (player != null) seekStartPos = player.getCurrentPosition();
                 break;
@@ -564,22 +500,18 @@ public class PlayerActivity extends AppCompatActivity {
                 float dx = event.getX() - gestureStartX;
                 float dy = event.getY() - gestureStartY;
 
-                // Determinar modo de gesto al superar umbral
                 if (!gestureActive && (Math.abs(dx) > 20 || Math.abs(dy) > 20)) {
                     gestureActive = true;
                     if (Math.abs(dx) > Math.abs(dy) * 1.5f) {
-                        // Horizontal → seek (solo VOD)
                         gestureMode = isVodType() ? GestureMode.SEEK : GestureMode.NONE;
                     } else {
-                        // Vertical → brillo (izquierda) o volumen (derecha)
                         gestureMode = gestureStartX < width / 2f
                                 ? GestureMode.BRIGHTNESS : GestureMode.VOLUME;
                     }
                 }
-
                 if (!gestureActive) break;
 
-                float delta = -(dy / height); // subir = positivo
+                float delta = -(dy / height);
 
                 if (gestureMode == GestureMode.VOLUME) {
                     int maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
@@ -622,8 +554,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private float getScreenBrightness() {
-        Window w = getWindow();
-        float br = w.getAttributes().screenBrightness;
+        float br = getWindow().getAttributes().screenBrightness;
         if (br < 0) {
             try {
                 br = Settings.System.getInt(getContentResolver(),
@@ -701,15 +632,24 @@ public class PlayerActivity extends AppCompatActivity {
         showLoading(true);
         retryCount = 0;
 
-        PlayerView pv = isVodType() ? vodPlayerView : playerView;
+        // Establecer metadata para notificación
+        MediaItem mediaItem = new MediaItem.Builder()
+                .setUri(url)
+                .setMediaMetadata(new MediaMetadata.Builder()
+                        .setTitle(name)
+                        .setArtist(group != null ? group : "JOX3 TV")
+                        .build())
+                .build();
 
+        PlayerView pv = isVodType() ? vodPlayerView : playerView;
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(httpClient);
+
         player = new ExoPlayer.Builder(this)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
                 .build();
 
         pv.setPlayer(player);
-        player.setMediaItem(MediaItem.fromUri(url));
+        player.setMediaItem(mediaItem);
         player.prepare();
         player.play();
 
@@ -738,7 +678,7 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override
             public void onIsPlayingChanged(boolean isPlaying) {
-                updateMediaSession(isPlaying);
+                showNotification(isPlaying);
             }
 
             @Override
@@ -757,7 +697,10 @@ public class PlayerActivity extends AppCompatActivity {
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
                 if (!isVodType()) retryLive();
-                else { showLoading(false); toast("Error al reproducir"); }
+                else {
+                    showLoading(false);
+                    toast("Error al reproducir");
+                }
             }
         });
     }
@@ -768,7 +711,6 @@ public class PlayerActivity extends AppCompatActivity {
             runOnUiThread(() ->
                     txtLoading.setText("Reconectando (" + retryCount + "/3)..."));
             showLoading(true);
-            // Retry sin recrear todo el player — solo seek al inicio
             handler.postDelayed(() -> {
                 if (player != null) {
                     player.stop();
@@ -827,7 +769,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodScroll.setVisibility(View.GONE);
         vodTopBar.setVisibility(View.GONE);
         View videoFrame = (View) vodPlayerView.getParent();
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
+        LinearLayout.LayoutParams lp =
+                (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
         lp.weight = 10; lp.height = 0;
         videoFrame.setLayoutParams(lp);
         vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FILL);
@@ -842,7 +785,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodScroll.setVisibility(View.VISIBLE);
         vodTopBar.setVisibility(View.VISIBLE);
         View videoFrame = (View) vodPlayerView.getParent();
-        LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
+        LinearLayout.LayoutParams lp =
+                (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
         lp.weight = 4; lp.height = 0;
         videoFrame.setLayoutParams(lp);
         vodPlayerView.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT);
@@ -911,8 +855,11 @@ public class PlayerActivity extends AppCompatActivity {
         if (labels.isEmpty()) { toast("Sin pistas de audio"); return; }
         new AlertDialog.Builder(this).setTitle("Seleccionar audio")
                 .setItems(labels.toArray(new String[0]), (d, w) ->
-                        player.setTrackSelectionParameters(player.getTrackSelectionParameters()
-                                .buildUpon().setPreferredAudioLanguage(langs.get(w)).build()))
+                        player.setTrackSelectionParameters(
+                                player.getTrackSelectionParameters()
+                                        .buildUpon()
+                                        .setPreferredAudioLanguage(langs.get(w))
+                                        .build()))
                 .show();
     }
 
@@ -934,12 +881,17 @@ public class PlayerActivity extends AppCompatActivity {
         new AlertDialog.Builder(this).setTitle("Subtítulos")
                 .setItems(labels.toArray(new String[0]), (d, w) -> {
                     if (w == 0)
-                        player.setTrackSelectionParameters(player.getTrackSelectionParameters()
-                                .buildUpon()
-                                .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT).build());
+                        player.setTrackSelectionParameters(
+                                player.getTrackSelectionParameters()
+                                        .buildUpon()
+                                        .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                        .build());
                     else
-                        player.setTrackSelectionParameters(player.getTrackSelectionParameters()
-                                .buildUpon().setPreferredTextLanguage(langs.get(w)).build());
+                        player.setTrackSelectionParameters(
+                                player.getTrackSelectionParameters()
+                                        .buildUpon()
+                                        .setPreferredTextLanguage(langs.get(w))
+                                        .build());
                 }).show();
     }
 
@@ -950,7 +902,6 @@ public class PlayerActivity extends AppCompatActivity {
     private void fetchVodInfo() {
         new Thread(() -> {
             try {
-                // Parsing robusto: funciona con cualquier formato de URL Xtream
                 String apiUrl = buildVodInfoUrl(url, itemId);
                 if (apiUrl == null) return;
 
@@ -999,7 +950,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     /**
      * Construye la URL de la API VOD de forma robusta.
-     * Soporta formatos:
+     * Soporta:
      *   http://host:port/movie/user/pass/ID.ext
      *   http://host:port/series/user/pass/ID.ext
      *   http://host:port/get.php?username=u&password=p&...
@@ -1008,17 +959,16 @@ public class PlayerActivity extends AppCompatActivity {
         if (streamUrl == null || streamUrl.isEmpty()) return null;
         try {
             URL u = new URL(streamUrl);
-            String host   = u.getProtocol() + "://" + u.getHost()
+            String host  = u.getProtocol() + "://" + u.getHost()
                     + (u.getPort() != -1 ? ":" + u.getPort() : "");
-            String path   = u.getPath();   // /movie/user/pass/ID.ext
-            String query  = u.getQuery();  // username=u&password=p&...
+            String path  = u.getPath();
+            String query = u.getQuery();
 
             String username = null, password = null;
 
-            // Caso 1: /movie/user/pass/ID.ext  o  /series/user/pass/...
+            // Caso 1: /movie/user/pass/ID.ext
             if (path != null && (path.contains("/movie/") || path.contains("/series/"))) {
                 String[] parts = path.split("/");
-                // parts[0]="" parts[1]="movie" parts[2]=user parts[3]=pass parts[4]=ID
                 if (parts.length >= 4) {
                     username = parts[2];
                     password = parts[3];
@@ -1038,8 +988,8 @@ public class PlayerActivity extends AppCompatActivity {
 
             if (username == null || password == null) return null;
 
-            // Usar itemId si está disponible, si no extraerlo de la URL
-            String id = (vodId != null && !vodId.isEmpty()) ? vodId : extractIdFromPath(path);
+            String id = (vodId != null && !vodId.isEmpty())
+                    ? vodId : extractIdFromPath(path);
             if (id == null) return null;
 
             String action = (type != null && type.equals("series"))
@@ -1055,12 +1005,9 @@ public class PlayerActivity extends AppCompatActivity {
 
     private String extractIdFromPath(String path) {
         if (path == null) return null;
-        // Último segmento sin extensión: /movie/user/pass/12345.mp4 → "12345"
         int slash = path.lastIndexOf('/');
         int dot   = path.lastIndexOf('.');
-        if (slash >= 0 && dot > slash) {
-            return path.substring(slash + 1, dot);
-        }
+        if (slash >= 0 && dot > slash) return path.substring(slash + 1, dot);
         return null;
     }
 
@@ -1124,7 +1071,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     // ─────────────────────────────────────────────
-    //  HTTP CLIENT — User-Agent VLC + SSL permisivo
+    //  HTTP CLIENT
     // ─────────────────────────────────────────────
 
     @SuppressLint("TrustAllX509TrustManager")
