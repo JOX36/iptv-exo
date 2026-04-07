@@ -794,28 +794,24 @@ async function doLogin(){
 }
 
 // ══ API ══
-// Fetch via Java bridge (evita CORS en otros dispositivos)
-window._fetchCallbacks = {};
-function javaBridgeFetch(url){
-  return new Promise((resolve, reject)=>{
-    const id = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    window._fetchCallbacks[id] = (err, data)=>{
-      delete window._fetchCallbacks[id];
-      if(err) reject(new Error(err));
-      else resolve(data);
-    };
-    AndroidPlayer.fetchUrl(url, id);
-  });
+// Puerto del proxy local Java
+let PROXY_PORT = 7788;
+if(typeof AndroidPlayer !== 'undefined' && AndroidPlayer.getProxyPort){
+  PROXY_PORT = AndroidPlayer.getProxyPort();
 }
 
-async function xApi(action,extra=''){
-  const url=`${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
-  // Usar bridge Java si está disponible — evita "Failed to fetch" por CORS
-  if(typeof AndroidPlayer!=='undefined' && AndroidPlayer.fetchUrl){
-    const text = await javaBridgeFetch(url);
-    return JSON.parse(text);
+// Fetch via proxy local — evita CORS en todos los dispositivos Android
+async function xApi(action, extra=''){
+  const targetUrl = `${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
+  // En Android usar proxy local que bypasea CORS y SSL
+  if(typeof AndroidPlayer !== 'undefined'){
+    const proxyUrl = `http://localhost:${PROXY_PORT}/proxy?url=${encodeURIComponent(targetUrl)}`;
+    const r = await fetch(proxyUrl);
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
   }
-  const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}});
+  // Fuera de Android — fetch directo
+  const r = await fetch(targetUrl, {headers:{'User-Agent':'Mozilla/5.0'}});
   if(!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
