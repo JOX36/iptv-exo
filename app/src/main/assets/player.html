@@ -310,6 +310,9 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .vod-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,212,255,.18)}
 .vod-card:active{transform:translateY(0);transition:transform .1s}
 .vod-card.active{border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,212,255,.3)}
+.vod-prog-bar{position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,.1)}
+.vod-prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:0 2px 2px 0}
+.vod-seen-badge{position:absolute;top:4px;right:4px;background:rgba(0,255,136,.85);color:#0a0e14;font-size:.52rem;font-weight:800;padding:2px 5px;border-radius:3px;pointer-events:none}
 .vod-thumb{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--bg3);display:block}
 .vod-ph{width:100%;aspect-ratio:2/3;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:2.2rem;color:var(--muted)}
 .vod-info{padding:7px 8px}
@@ -696,7 +699,28 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 <script>
 // ══ STATE ══
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
-const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3'};
+const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3'};
+
+// ── Progreso VOD ──
+function saveVodProgress(id, position, duration){
+  const prog = lsGet(K.PROG) || {};
+  prog[id] = {pos: position, dur: duration, ts: Date.now()};
+  lsSet(K.PROG, prog);
+}
+function getVodProgress(id){
+  const prog = lsGet(K.PROG) || {};
+  return prog[id] || null;
+}
+function clearVodProgress(id){
+  const prog = lsGet(K.PROG) || {};
+  delete prog[id];
+  lsSet(K.PROG, prog);
+}
+function vodProgressPct(id){
+  const p = getVodProgress(id);
+  if(!p || !p.dur) return 0;
+  return Math.min(100, Math.round((p.pos / p.dur) * 100));
+}
 
 // ══ STORAGE ══
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch{return null}}
@@ -958,7 +982,11 @@ function vodCard(ch){
   const ph=S.sec==='series'?'🎭':'🎬';
   const imgEl=ch.cover?`<img class="vod-thumb" src="${esc(ch.cover)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="vod-ph">${ph}</div>`;
   const onclick=ch.type==='series'?`play(${js(ch)})`:`openVodInfo(${js(ch)})`;
-  return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'><div style="position:relative">${imgEl}${qBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div><button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
+  // Progreso
+  const pct=vodProgressPct(ch.id);
+  const progBar=pct>0?`<div class="vod-prog-bar"><div class="vod-prog-fill" style="width:${pct}%"></div></div>`:'';
+  const seenBadge=pct>=95?`<span class="vod-seen-badge">✓ Vista</span>`:'';
+  return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'><div style="position:relative">${imgEl}${qBadge}${seenBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div>${progBar}<button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
 }
 function renderSide(){
   const el=document.getElementById('sideList');const t=S.sTab;
@@ -1951,6 +1979,8 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
       const thumb = item.cover || item.logo || '';
       const badgeCls = item.type==='live'?'live':'vod';
       const badgeTxt = item.type==='live'?'LIVE':item.type==='series'?'SERIE':'VOD';
+      const pct = (item.type==='vod'||item.type==='series') ? vodProgressPct(item.id) : 0;
+      const progHtml = pct>0 ? `<div class="home-cont-prog"><div class="home-cont-prog-fill" style="width:${pct}%"></div></div>` : '';
       html += `<div class="home-cont-card" onclick='play(${js(item)})'>
         <span class="home-cont-badge ${badgeCls}">${badgeTxt}</span>
         ${thumb
@@ -1959,6 +1989,7 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
         <div class="home-cont-thumb-ph" ${thumb?'style="display:none"':''}>
           ${item.type==='live'?'📺':item.type==='series'?'🎭':'🎬'}
         </div>
+        ${progHtml}
         <div class="home-cont-name">${esc(item.name)}</div>
       </div>`;
     });
