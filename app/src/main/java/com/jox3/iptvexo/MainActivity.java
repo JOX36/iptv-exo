@@ -107,6 +107,8 @@ public class MainActivity extends AppCompatActivity {
                             throw e1;
                         }
                         result = doFetch(altUrl);
+                        // Notificar al WebView el protocolo correcto
+                        updateHostProtocol(altUrl);
                     } catch (Exception e2) {
                         error = e1.getMessage() != null ? e1.getMessage() : "Error de red";
                     }
@@ -147,6 +149,20 @@ public class MainActivity extends AppCompatActivity {
             resp.close();
             if (body.isEmpty()) throw new Exception("Empty response");
             return body;
+        }
+
+        // Detectar protocolo correcto del host y notificar al WebView
+        private void updateHostProtocol(final String workingUrl) {
+            try {
+                java.net.URL u = new java.net.URL(workingUrl);
+                final String correctHost = u.getProtocol() + "://" + u.getHost() +
+                    (u.getPort() > 0 ? ":" + u.getPort() : "");
+                webView.post(() ->
+                    webView.evaluateJavascript(
+                        "if(S&&S.host&&S.host!=='" + correctHost + "'){S.host='" + correctHost + "';}", null
+                    )
+                );
+            } catch (Exception ignored) {}
         }
 
         @JavascriptInterface
