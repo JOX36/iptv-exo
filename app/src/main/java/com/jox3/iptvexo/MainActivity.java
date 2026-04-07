@@ -82,6 +82,69 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface public void playUrl(String url) {}
         @JavascriptInterface public void stop() {}
         @JavascriptInterface public void goFullscreen() {}
+
+        // Solución CORS — Java hace la petición HTTP y devuelve el resultado al WebView
+        @JavascriptInterface
+        public void fetchUrl(String url, String callbackId) {
+            new Thread(() -> {
+                String result = null;
+                String error = null;
+                try {
+                    okhttp3.OkHttpClient client = buildUnsafeOkHttp();
+                    okhttp3.Request req = new okhttp3.Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "Mozilla/5.0")
+                        .build();
+                    okhttp3.Response resp = client.newCall(req).execute();
+                    if (resp.isSuccessful() && resp.body() != null) {
+                        result = resp.body().string();
+                    } else {
+                        error = "HTTP " + resp.code();
+                    }
+                    resp.close();
+                } catch (Exception e) {
+                    error = e.getMessage();
+                }
+                final String finalResult = result;
+                final String finalError  = error;
+                webView.post(() -> {
+                    if (finalResult != null) {
+                        String escaped = finalResult
+                            .replace("\\", "\\\\")
+                            .replace("`", "\\`")
+                            .replace("$", "\\$");
+                        webView.evaluateJavascript(
+                            "window._fetchCallbacks && window._fetchCallbacks['" + callbackId + "'] && window._fetchCallbacks['" + callbackId + "'](null, `" + escaped + "`)", null
+                        );
+                    } else {
+                        webView.evaluateJavascript(
+                            "window._fetchCallbacks && window._fetchCallbacks['" + callbackId + "'] && window._fetchCallbacks['" + callbackId + "']('" + finalError + "', null)", null
+                        );
+                    }
+                });
+            }).start();
+        }
+
+        @SuppressLint("TrustAllX509TrustManager")
+        private okhttp3.OkHttpClient buildUnsafeOkHttp() {
+            try {
+                javax.net.ssl.X509TrustManager tm = new javax.net.ssl.X509TrustManager() {
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] c, String a) {}
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[0]; }
+                };
+                javax.net.ssl.SSLContext sc = javax.net.ssl.SSLContext.getInstance("TLS");
+                sc.init(null, new javax.net.ssl.TrustManager[]{tm}, new java.security.SecureRandom());
+                return new okhttp3.OkHttpClient.Builder()
+                    .sslSocketFactory(sc.getSocketFactory(), tm)
+                    .hostnameVerifier((h, s) -> true)
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+            } catch (Exception e) {
+                return new okhttp3.OkHttpClient.Builder().build();
+            }
+        }
     }
 
     @Override
