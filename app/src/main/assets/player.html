@@ -794,24 +794,9 @@ async function doLogin(){
 }
 
 // ══ API ══
-// Puerto del proxy local Java
-let PROXY_PORT = 7788;
-if(typeof AndroidPlayer !== 'undefined' && AndroidPlayer.getProxyPort){
-  PROXY_PORT = AndroidPlayer.getProxyPort();
-}
-
-// Fetch via proxy local — evita CORS en todos los dispositivos Android
 async function xApi(action, extra=''){
-  const targetUrl = `${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
-  // En Android usar proxy local que bypasea CORS y SSL
-  if(typeof AndroidPlayer !== 'undefined'){
-    const proxyUrl = `http://localhost:${PROXY_PORT}/proxy?url=${encodeURIComponent(targetUrl)}`;
-    const r = await fetch(proxyUrl);
-    if(!r.ok) throw new Error(`HTTP ${r.status}`);
-    return r.json();
-  }
-  // Fuera de Android — fetch directo
-  const r = await fetch(targetUrl, {headers:{'User-Agent':'Mozilla/5.0'}});
+  const url=`${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
+  const r = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0'}});
   if(!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
 }
