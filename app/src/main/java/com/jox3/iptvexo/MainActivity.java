@@ -84,7 +84,16 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    // Almacén temporal de resultados grandes — evita OOM al pasar JSON en evaluateJavascript
+    private final java.util.concurrent.ConcurrentHashMap<String, String> resultStore =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     class Bridge {
+
+        @JavascriptInterface
+        public String getResult(String callbackId) {
+            return resultStore.remove(callbackId); // devuelve y elimina
+        }
 
         // ── Petición API desde Java — solución definitiva Android 15 ──
         @JavascriptInterface
@@ -117,16 +126,15 @@ public class MainActivity extends AppCompatActivity {
                 final String finalResult = result;
                 final String finalError  = error;
 
+                // Guardar resultado en objeto accesible desde JS — evita OOM de evaluateJavascript
                 webView.post(() -> {
                     String js;
                     if (finalResult != null) {
-                        String escaped = finalResult
-                            .replace("\\", "\\\\")
-                            .replace("'", "\\'")
-                            .replace("\n", "\\n")
-                            .replace("\r", "");
+                        // Guardar en objeto puente en lugar de pasar como string literal
+                        resultStore.put(callbackId, finalResult);
                         js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
-                             "window._jcb['" + callbackId + "'](null,'" + escaped + "');" +
+                             "var _d=AndroidPlayer.getResult('" + callbackId + "');" +
+                             "window._jcb['" + callbackId + "'](null,_d);" +
                              "delete window._jcb['" + callbackId + "'];}";
                     } else {
                         js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
