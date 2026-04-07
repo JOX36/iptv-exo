@@ -794,8 +794,27 @@ async function doLogin(){
 }
 
 // ══ API ══
+// Fetch via Java bridge (evita CORS en otros dispositivos)
+window._fetchCallbacks = {};
+function javaBridgeFetch(url){
+  return new Promise((resolve, reject)=>{
+    const id = 'cb_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    window._fetchCallbacks[id] = (err, data)=>{
+      delete window._fetchCallbacks[id];
+      if(err) reject(new Error(err));
+      else resolve(data);
+    };
+    AndroidPlayer.fetchUrl(url, id);
+  });
+}
+
 async function xApi(action,extra=''){
   const url=`${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
+  // Usar bridge Java si está disponible — evita "Failed to fetch" por CORS
+  if(typeof AndroidPlayer!=='undefined' && AndroidPlayer.fetchUrl){
+    const text = await javaBridgeFetch(url);
+    return JSON.parse(text);
+  }
   const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0'}});
   if(!r.ok) throw new Error(`HTTP ${r.status}`);
   return r.json();
