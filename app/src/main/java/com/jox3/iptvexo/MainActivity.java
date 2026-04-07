@@ -7,22 +7,17 @@ import android.net.http.SslError;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
-import android.webkit.WebResourceRequest;
-import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.BufferedReader;
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.SSLContext;
@@ -58,61 +53,14 @@ public class MainActivity extends AppCompatActivity {
         ws.setAllowFileAccessFromFileURLs(true);
 
         webView.setWebViewClient(new WebViewClient() {
-
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.proceed();
-            }
-
-            // ── INTERCEPTAR PETICIONES — solución definitiva CORS ──
-            @Override
-            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                String url = request.getUrl().toString();
-                // Interceptar solo peticiones a player_api.php
-                if (url.contains("player_api.php")) {
-                    return fetchViaJava(url);
-                }
-                return super.shouldInterceptRequest(view, request);
             }
         });
 
         webView.addJavascriptInterface(new Bridge(), "AndroidPlayer");
         webView.loadUrl("file:///android_asset/player.html");
-    }
-
-    // Hacer la petición desde Java y devolver como WebResourceResponse
-    private WebResourceResponse fetchViaJava(String url) {
-        try {
-            Request req = new Request.Builder()
-                .url(url)
-                .header("User-Agent", "Mozilla/5.0")
-                .build();
-            Response resp = httpClient.newCall(req).execute();
-            byte[] body = resp.body() != null ? resp.body().bytes() : new byte[0];
-            resp.close();
-
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Access-Control-Allow-Origin", "*");
-            headers.put("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            headers.put("Content-Type", "application/json; charset=utf-8");
-
-            return new WebResourceResponse(
-                "application/json",
-                "utf-8",
-                200,
-                "OK",
-                headers,
-                new ByteArrayInputStream(body)
-            );
-        } catch (Exception e) {
-            byte[] err = ("Error: " + e.getMessage()).getBytes();
-            Map<String, String> headers = new HashMap<>();
-            headers.put("Access-Control-Allow-Origin", "*");
-            return new WebResourceResponse(
-                "text/plain", "utf-8", 500, "Error",
-                headers, new ByteArrayInputStream(err)
-            );
-        }
     }
 
     @SuppressLint("TrustAllX509TrustManager")
@@ -137,6 +85,54 @@ public class MainActivity extends AppCompatActivity {
     }
 
     class Bridge {
+
+        // ── Petición API desde Java — solución definitiva Android 15 ──
+        @JavascriptInterface
+        public void fetchUrl(final String url, final String callbackId) {
+            new Thread(() -> {
+                String result = null;
+                String error  = null;
+                try {
+                    Request req = new Request.Builder()
+                        .url(url)
+                        .header("User-Agent", "Mozilla/5.0")
+                        .header("Accept", "application/json")
+                        .build();
+                    Response resp = httpClient.newCall(req).execute();
+                    if (resp.body() != null) {
+                        result = resp.body().string();
+                    } else {
+                        error = "Empty response";
+                    }
+                    resp.close();
+                } catch (Exception e) {
+                    error = e.getMessage() != null ? e.getMessage() : "Unknown error";
+                }
+
+                final String finalResult = result;
+                final String finalError  = error;
+
+                webView.post(() -> {
+                    String js;
+                    if (finalResult != null) {
+                        // Escapar para pasar como string JS seguro
+                        String escaped = finalResult
+                            .replace("\\", "\\\\")
+                            .replace("'", "\\'")
+                            .replace("\n", "\\n")
+                            .replace("\r", "");
+                        js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
+                             "window._jcb['" + callbackId + "'](null,'" + escaped + "');" +
+                             "delete window._jcb['" + callbackId + "'];}";
+                    } else {
+                        js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
+                             "window._jcb['" + callbackId + "']('" + finalError + "',null);" +
+                             "delete window._jcb['" + callbackId + "'];}";
+                    }
+                    webView.evaluateJavascript(js, null);
+                });
+            }).start();
+        }
 
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
