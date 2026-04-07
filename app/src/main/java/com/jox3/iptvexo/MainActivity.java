@@ -93,20 +93,23 @@ public class MainActivity extends AppCompatActivity {
                 String result = null;
                 String error  = null;
                 try {
-                    Request req = new Request.Builder()
-                        .url(url)
-                        .header("User-Agent", "Mozilla/5.0")
-                        .header("Accept", "application/json")
-                        .build();
-                    Response resp = httpClient.newCall(req).execute();
-                    if (resp.body() != null) {
-                        result = resp.body().string();
-                    } else {
-                        error = "Empty response";
+                    // Intentar con la URL original
+                    result = doFetch(url);
+                } catch (Exception e1) {
+                    // Si falla, intentar con el protocolo alternativo HTTP/HTTPS
+                    try {
+                        String altUrl;
+                        if (url.startsWith("https://")) {
+                            altUrl = "http://" + url.substring(8);
+                        } else if (url.startsWith("http://")) {
+                            altUrl = "https://" + url.substring(7);
+                        } else {
+                            throw e1;
+                        }
+                        result = doFetch(altUrl);
+                    } catch (Exception e2) {
+                        error = e1.getMessage() != null ? e1.getMessage() : "Error de red";
                     }
-                    resp.close();
-                } catch (Exception e) {
-                    error = e.getMessage() != null ? e.getMessage() : "Unknown error";
                 }
 
                 final String finalResult = result;
@@ -115,7 +118,6 @@ public class MainActivity extends AppCompatActivity {
                 webView.post(() -> {
                     String js;
                     if (finalResult != null) {
-                        // Escapar para pasar como string JS seguro
                         String escaped = finalResult
                             .replace("\\", "\\\\")
                             .replace("'", "\\'")
@@ -132,6 +134,19 @@ public class MainActivity extends AppCompatActivity {
                     webView.evaluateJavascript(js, null);
                 });
             }).start();
+        }
+
+        private String doFetch(String url) throws Exception {
+            Request req = new Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .header("Accept", "application/json, */*")
+                .build();
+            Response resp = httpClient.newCall(req).execute();
+            String body = resp.body() != null ? resp.body().string() : "";
+            resp.close();
+            if (body.isEmpty()) throw new Exception("Empty response");
+            return body;
         }
 
         @JavascriptInterface
