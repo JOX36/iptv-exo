@@ -377,6 +377,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .home-cont-badge{position:absolute;top:4px;left:4px;font-size:.5rem;font-weight:700;padding:2px 5px;border-radius:3px;text-transform:uppercase}
 .home-cont-badge.live{background:rgba(239,68,68,.85);color:#fff}
 .home-cont-badge.vod{background:rgba(33,150,243,.75);color:#fff}
+.home-cont-badge.series{background:rgba(156,39,176,.85);color:#fff}
 
 /* Card VOD tendencia */
 .home-vod-card{flex-shrink:0;width:100px;cursor:pointer;position:relative}
@@ -725,7 +726,22 @@ function vodProgressPct(id){
 // ══ STORAGE ══
 function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch{return null}}
 function lsSet(k,v){localStorage.setItem(k,JSON.stringify(v))}
-function loadPersis(){S.favs=new Set(lsGet(K.FAVS)||[]);S.history=lsGet(K.HIST)||[]}
+function loadPersis(){
+  S.favs=new Set(lsGet(K.FAVS)||[]);
+  S.history=lsGet(K.HIST)||[];
+  // Sincronizar progreso VOD desde Java SharedPreferences
+  if(typeof AndroidPlayer!=='undefined' && AndroidPlayer.getAllVodProgress){
+    try{
+      const javaProgress = JSON.parse(AndroidPlayer.getAllVodProgress());
+      const stored = lsGet(K.PROG) || {};
+      // Merge — Java tiene la fuente de verdad
+      Object.entries(javaProgress).forEach(([id, val])=>{
+        stored[id] = {pos: val.pos, dur: val.dur, ts: Date.now()};
+      });
+      lsSet(K.PROG, stored);
+    }catch(e){}
+  }
+}
 function saveFavs(){lsSet(K.FAVS,[...S.favs])}
 function saveHist(){lsSet(K.HIST,S.history.slice(0,60))}
 function saveAcc(){
@@ -1977,7 +1993,7 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
     hist.slice(0,12).forEach(h=>{
       const item = h.item;
       const thumb = item.cover || item.logo || '';
-      const badgeCls = item.type==='live'?'live':'vod';
+      const badgeCls = item.type==='live'?'live':item.type==='series'?'series':'vod';
       const badgeTxt = item.type==='live'?'LIVE':item.type==='series'?'SERIE':'VOD';
       const pct = (item.type==='vod'||item.type==='series') ? vodProgressPct(item.id) : 0;
       const progHtml = pct>0 ? `<div class="home-cont-prog"><div class="home-cont-prog-fill" style="width:${pct}%"></div></div>` : '';
