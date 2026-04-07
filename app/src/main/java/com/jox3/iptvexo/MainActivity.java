@@ -7,22 +7,23 @@ import android.net.http.SslError;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -37,9 +38,6 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     private static final int REQ_PLAYER   = 1001;
     private static final int REQ_M3U_FILE = 1002;
-    private static final int PROXY_PORT   = 7788;
-    private ServerSocket proxyServer;
-    private ExecutorService proxyPool;
     private OkHttpClient httpClient;
 
     @SuppressLint({"SetJavaScriptEnabled","TrustAllX509TrustManager"})
@@ -48,11 +46,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // Construir cliente HTTP con SSL bypass
         httpClient = buildUnsafeClient();
-
-        // Iniciar proxy local
-        startProxy();
 
         webView = findViewById(R.id.webview);
         WebSettings ws = webView.getSettings();
@@ -64,9 +58,21 @@ public class MainActivity extends AppCompatActivity {
         ws.setAllowFileAccessFromFileURLs(true);
 
         webView.setWebViewClient(new WebViewClient() {
+
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.proceed();
+            }
+
+            // ── INTERCEPTAR PETICIONES — solución definitiva CORS ──
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                // Interceptar solo peticiones a player_api.php
+                if (url.contains("player_api.php")) {
+                    return fetchViaJava(url);
+                }
+                return super.shouldInterceptRequest(view, request);
             }
         });
 
@@ -74,86 +80,39 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl("file:///android_asset/player.html");
     }
 
-    // ── PROXY LOCAL ──────────────────────────────────────────────
-    private void startProxy() {
-        proxyPool = Executors.newCachedThreadPool();
-        proxyPool.execute(() -> {
-            try {
-                proxyServer = new ServerSocket(PROXY_PORT);
-                while (!proxyServer.isClosed()) {
-                    try {
-                        Socket client = proxyServer.accept();
-                        proxyPool.execute(() -> handleProxyRequest(client));
-                    } catch (IOException ignored) {}
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        });
-    }
-
-    private void handleProxyRequest(Socket client) {
+    // Hacer la petición desde Java y devolver como WebResourceResponse
+    private WebResourceResponse fetchViaJava(String url) {
         try {
-            BufferedReader reader = new BufferedReader(
-                new InputStreamReader(client.getInputStream())
-            );
-            String requestLine = reader.readLine();
-            if (requestLine == null) { client.close(); return; }
-
-            // Formato: GET /proxy?url=http%3A%2F%2F... HTTP/1.1
-            // Usar indexOf para no partir en espacios de la URL
-            int firstSpace = requestLine.indexOf(' ');
-            int lastSpace  = requestLine.lastIndexOf(' ');
-            if (firstSpace < 0 || firstSpace == lastSpace) { client.close(); return; }
-
-            String path = requestLine.substring(firstSpace + 1, lastSpace);
-            String targetUrl = null;
-
-            if (path.startsWith("/proxy?url=")) {
-                String encoded = path.substring("/proxy?url=".length());
-                targetUrl = java.net.URLDecoder.decode(encoded, "UTF-8");
-            }
-
-            if (targetUrl == null || targetUrl.isEmpty()) {
-                sendProxyError(client, 400, "Bad Request - no URL");
-                return;
-            }
-
-            // Hacer la petición al servidor real
             Request req = new Request.Builder()
-                .url(targetUrl)
-                .header("User-Agent", "VLC/3.0.18 LibVLC/3.0.18")
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0")
                 .build();
-
             Response resp = httpClient.newCall(req).execute();
             byte[] body = resp.body() != null ? resp.body().bytes() : new byte[0];
-
-            // Responder al WebView con CORS headers
-            OutputStream out = client.getOutputStream();
-            String headers = "HTTP/1.1 " + resp.code() + " OK\r\n" +
-                "Content-Type: application/json; charset=utf-8\r\n" +
-                "Access-Control-Allow-Origin: *\r\n" +
-                "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n" +
-                "Content-Length: " + body.length + "\r\n" +
-                "Connection: close\r\n\r\n";
-            out.write(headers.getBytes("UTF-8"));
-            out.write(body);
-            out.flush();
             resp.close();
-        } catch (Exception e) {
-            try { sendProxyError(client, 500, e.getMessage()); } catch (Exception ignored) {}
-        } finally {
-            try { client.close(); } catch (IOException ignored) {}
-        }
-    }
 
-    private void sendProxyError(Socket client, int code, String msg) throws IOException {
-        String resp = "HTTP/1.1 " + code + " Error\r\n" +
-            "Content-Type: text/plain\r\n" +
-            "Access-Control-Allow-Origin: *\r\n" +
-            "Content-Length: " + (msg != null ? msg.length() : 0) + "\r\n\r\n" +
-            (msg != null ? msg : "");
-        client.getOutputStream().write(resp.getBytes("UTF-8"));
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Access-Control-Allow-Origin", "*");
+            headers.put("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+            headers.put("Content-Type", "application/json; charset=utf-8");
+
+            return new WebResourceResponse(
+                "application/json",
+                "utf-8",
+                200,
+                "OK",
+                headers,
+                new ByteArrayInputStream(body)
+            );
+        } catch (Exception e) {
+            byte[] err = ("Error: " + e.getMessage()).getBytes();
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Access-Control-Allow-Origin", "*");
+            return new WebResourceResponse(
+                "text/plain", "utf-8", 500, "Error",
+                headers, new ByteArrayInputStream(err)
+            );
+        }
     }
 
     @SuppressLint("TrustAllX509TrustManager")
@@ -169,15 +128,14 @@ public class MainActivity extends AppCompatActivity {
             return new OkHttpClient.Builder()
                 .sslSocketFactory(sc.getSocketFactory(), tm)
                 .hostnameVerifier((h, s) -> true)
-                .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
                 .build();
         } catch (Exception e) {
             return new OkHttpClient.Builder().build();
         }
     }
 
-    // ── BRIDGE ───────────────────────────────────────────────────
     class Bridge {
 
         @JavascriptInterface
@@ -207,15 +165,11 @@ public class MainActivity extends AppCompatActivity {
             startActivityForResult(Intent.createChooser(i, "Seleccionar lista M3U"), REQ_M3U_FILE);
         }
 
-        @JavascriptInterface
-        public int getProxyPort() { return PROXY_PORT; }
-
         @JavascriptInterface public void playUrl(String url) {}
         @JavascriptInterface public void stop() {}
         @JavascriptInterface public void goFullscreen() {}
     }
 
-    // ── ACTIVITY RESULTS ─────────────────────────────────────────
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
@@ -265,14 +219,6 @@ public class MainActivity extends AppCompatActivity {
                 );
             }
         }
-    }
-
-    // ── LIFECYCLE ────────────────────────────────────────────────
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try { if (proxyServer != null) proxyServer.close(); } catch (IOException ignored) {}
-        if (proxyPool != null) proxyPool.shutdownNow();
     }
 
     private long backPressedTime = 0;
