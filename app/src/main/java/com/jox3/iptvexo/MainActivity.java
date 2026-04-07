@@ -206,10 +206,18 @@ public class MainActivity extends AppCompatActivity {
             boolean removed = data.getBooleanExtra("fav_removed", false);
             String id   = data.getStringExtra("item_id");
             String type = data.getStringExtra("item_type");
+            long position = data.getLongExtra("vod_position", 0);
+            long duration = data.getLongExtra("vod_duration", 0);
             if (id != null) {
                 String key = type + "_" + id;
                 if (added)   webView.evaluateJavascript("S.favs.add('"    + key + "');saveFavs();", null);
                 if (removed) webView.evaluateJavascript("S.favs.delete('" + key + "');saveFavs();", null);
+                // Guardar progreso VOD en localStorage del WebView
+                if (position > 0 && duration > 0) {
+                    webView.evaluateJavascript(
+                        "saveVodProgress('" + id + "'," + position + "," + duration + ");", null
+                    );
+                }
             }
         }
 
