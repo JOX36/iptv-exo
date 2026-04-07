@@ -95,6 +95,12 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler handler = new Handler();
     private GestureDetector gestureDetector;
 
+    // Progreso VOD
+    private static final String PREFS_PROGRESS = "vod_progress";
+    private long savedPosition = 0; // posición a restaurar
+    private final Handler progressHandler = new Handler();
+    private Runnable progressSaver;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -146,7 +152,17 @@ public class PlayerActivity extends AppCompatActivity {
             showEpg(epgNow, epgTime, epgNext, epgProgress);
         }
 
-        initPlayer();
+        // VOD — verificar si hay posición guardada
+        if (isVodType() && itemId != null && !itemId.isEmpty()) {
+            savedPosition = getVodProgress(itemId);
+            if (savedPosition > 5000) { // más de 5 segundos guardados
+                askContinueOrRestart();
+            } else {
+                initPlayer();
+            }
+        } else {
+            initPlayer();
+        }
     }
 
     private void parseChannels(String json) {
@@ -452,7 +468,15 @@ public class PlayerActivity extends AppCompatActivity {
                     showLoading(false);
                     if (!isVodType()) {
                         scheduleLiveHideBars();
-                        fetchEpg(); // cargar EPG al iniciar live TV
+                        fetchEpg();
+                    } else {
+                        // Buscar posición guardada en el primer STATE_READY
+                        if (savedPosition > 0) {
+                            player.seekTo(savedPosition);
+                            savedPosition = 0; // resetear para no buscar de nuevo
+                        }
+                        stopProgressSaver(); // detener cualquier timer anterior
+                        startProgressSaver();
                     }
                 } else if (state == Player.STATE_BUFFERING) {
                     showLoading(true);
@@ -480,6 +504,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void stopAndRelease() {
         handler.removeCallbacksAndMessages(null);
+        stopProgressSaver();
         if (player != null) {
             // Desconectar PlayerView primero — evita que el audio siga por el surface
             playerView.setPlayer(null);
@@ -708,6 +733,78 @@ public class PlayerActivity extends AppCompatActivity {
         } catch (Exception e) { return new OkHttpClient.Builder().build(); }
     }
 
+    // ══ PROGRESO VOD ══
+    private void askContinueOrRestart() {
+        long mins = savedPosition / 60000;
+        long secs = (savedPosition % 60000) / 1000;
+        String timeStr = mins > 0 ? mins + "m " + secs + "s" : secs + "s";
+        new android.app.AlertDialog.Builder(this)
+            .setTitle(name)
+            .setMessage("¿Continuar desde " + timeStr + "?")
+            .setPositiveButton("▶ Continuar", (d, w) -> {
+                initPlayer(); // el seek se hace en STATE_READY via seekOnReady flag
+            })
+            .setNegativeButton("⏮ Empezar de nuevo", (d, w) -> {
+                savedPosition = 0;
+                clearVodProgress(itemId);
+                initPlayer();
+            })
+            .setCancelable(false)
+            .show();
+    }
+
+    private void startProgressSaver() {
+        if (!isVodType() || itemId == null) return;
+        progressSaver = new Runnable() {
+            @Override public void run() {
+                if (player != null && player.isPlaying()) {
+                    long pos = player.getCurrentPosition();
+                    long dur = player.getDuration();
+                    if (pos > 5000 && dur > 0) {
+                        // Si superó el 95% marcar como vista completa
+                        if ((float) pos / dur > 0.95f) {
+                            clearVodProgress(itemId);
+                        } else {
+                            saveVodProgress(itemId, pos, dur);
+                        }
+                    }
+                }
+                progressHandler.postDelayed(this, 10000); // cada 10 segundos
+            }
+        };
+        progressHandler.postDelayed(progressSaver, 10000);
+    }
+
+    private void stopProgressSaver() {
+        if (progressSaver != null) {
+            progressHandler.removeCallbacks(progressSaver);
+            progressSaver = null;
+        }
+    }
+
+    private void saveVodProgress(String id, long position, long duration) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
+        prefs.edit()
+            .putLong("pos_" + id, position)
+            .putLong("dur_" + id, duration)
+            .apply();
+    }
+
+    private long getVodProgress(String id) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
+        return prefs.getLong("pos_" + id, 0);
+    }
+
+    private long getVodDuration(String id) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
+        return prefs.getLong("dur_" + id, 0);
+    }
+
+    private void clearVodProgress(String id) {
+        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
+        prefs.edit().remove("pos_" + id).remove("dur_" + id).apply();
+    }
+
     // ══ LIFECYCLE ══
     @Override
     public void onPictureInPictureModeChanged(boolean inPiP) {
@@ -807,13 +904,27 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        stopProgressSaver();
+        // Guardar posición final antes de salir
+        if (isVodType() && player != null && itemId != null) {
+            long pos = player.getCurrentPosition();
+            long dur = player.getDuration();
+            if (pos > 5000 && dur > 0 && (float)pos/dur < 0.95f) {
+                saveVodProgress(itemId, pos, dur);
+            }
+        }
         stopAndRelease();
         if (activeInstance == this) activeInstance = null;
+        // Devolver resultado al MainActivity
+        long retPos = isVodType() && itemId != null ? getVodProgress(itemId) : 0;
+        long retDur = isVodType() && itemId != null ? getVodDuration(itemId) : 0;
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
         result.putExtra("fav_removed", favChanged && !favAdded);
         result.putExtra("item_id", itemId);
         result.putExtra("item_type", type);
+        result.putExtra("vod_position", retPos);
+        result.putExtra("vod_duration", retDur);
         setResult(RESULT_OK, result);
     }
 
@@ -835,8 +946,13 @@ public class PlayerActivity extends AppCompatActivity {
         parseChannels(intent.getStringExtra("channels_json"));
         retryCount = 0;
         enteredPiP = false;
+        savedPosition = 0; // resetear posición guardada al cambiar de contenido
         // Actualizar UI y reiniciar player
         if (isVodType()) {
+            // Verificar si hay posición guardada para el nuevo item
+            if (itemId != null && !itemId.isEmpty()) {
+                savedPosition = getVodProgress(itemId);
+            }
             vodTxtTitleBar.setText(name);
             vodTxtTitle.setText(name);
             vodFsTxtTitle.setText(name);
