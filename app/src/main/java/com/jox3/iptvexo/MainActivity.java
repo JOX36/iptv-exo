@@ -95,6 +95,31 @@ public class MainActivity extends AppCompatActivity {
             return resultStore.remove(callbackId); // devuelve y elimina
         }
 
+        // Devolver progreso guardado en SharedPreferences al WebView
+        @JavascriptInterface
+        public String getAllVodProgress() {
+            android.content.SharedPreferences prefs =
+                getSharedPreferences("vod_progress", MODE_PRIVATE);
+            java.util.Map<String, ?> all = prefs.getAll();
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (java.util.Map.Entry<String, ?> entry : all.entrySet()) {
+                String key = entry.getKey();
+                if (!key.startsWith("pos_")) continue;
+                String id = key.substring(4);
+                long pos = prefs.getLong("pos_" + id, 0);
+                long dur = prefs.getLong("dur_" + id, 0);
+                if (pos > 0 && dur > 0) {
+                    if (!first) sb.append(",");
+                    sb.append("\"").append(id).append("\":{\"pos\":").append(pos)
+                      .append(",\"dur\":").append(dur).append("}");
+                    first = false;
+                }
+            }
+            sb.append("}");
+            return sb.toString();
+        }
+
         // ── Petición API desde Java — solución definitiva Android 15 ──
         @JavascriptInterface
         public void fetchUrl(final String url, final String callbackId) {
