@@ -97,24 +97,25 @@ public class MainActivity extends AppCompatActivity {
             BufferedReader reader = new BufferedReader(
                 new InputStreamReader(client.getInputStream())
             );
-            // Leer primera línea: GET /http://servidor/... HTTP/1.1
             String requestLine = reader.readLine();
             if (requestLine == null) { client.close(); return; }
 
-            String[] parts = requestLine.split(" ");
-            if (parts.length < 2) { client.close(); return; }
+            // Formato: GET /proxy?url=http%3A%2F%2F... HTTP/1.1
+            // Usar indexOf para no partir en espacios de la URL
+            int firstSpace = requestLine.indexOf(' ');
+            int lastSpace  = requestLine.lastIndexOf(' ');
+            if (firstSpace < 0 || firstSpace == lastSpace) { client.close(); return; }
 
-            // La URL real viene después de /proxy?url=
-            String path = parts[1];
+            String path = requestLine.substring(firstSpace + 1, lastSpace);
             String targetUrl = null;
+
             if (path.startsWith("/proxy?url=")) {
-                targetUrl = java.net.URLDecoder.decode(
-                    path.substring("/proxy?url=".length()), "UTF-8"
-                );
+                String encoded = path.substring("/proxy?url=".length());
+                targetUrl = java.net.URLDecoder.decode(encoded, "UTF-8");
             }
 
-            if (targetUrl == null) {
-                sendProxyError(client, 400, "Bad Request");
+            if (targetUrl == null || targetUrl.isEmpty()) {
+                sendProxyError(client, 400, "Bad Request - no URL");
                 return;
             }
 
