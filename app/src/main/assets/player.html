@@ -794,11 +794,34 @@ async function doLogin(){
 }
 
 // ══ API ══
+// ── API — usa bridge Java en Android para evitar bloqueo CORS Android 15 ──
+window._jcb = {}; // Java callbacks
+function javaFetch(url){
+  return new Promise((resolve, reject)=>{
+    const id = 'j' + Date.now() + Math.random().toString(36).slice(2);
+    window._jcb[id] = (err, data) => {
+      if(err) reject(new Error(err));
+      else resolve(data);
+    };
+    AndroidPlayer.fetchUrl(url, id);
+  });
+}
+
 async function xApi(action, extra=''){
-  const url=`${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
-  const r = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0'}});
-  if(!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
+  const url = `${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
+  try {
+    // Android — usar bridge Java (funciona en todos los dispositivos)
+    if(typeof AndroidPlayer !== 'undefined'){
+      const text = await javaFetch(url);
+      return JSON.parse(text);
+    }
+    // Navegador web — fetch directo
+    const r = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0'}});
+    if(!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  } catch(e) {
+    throw new Error(e.message || 'Error de red');
+  }
 }
 
 // ══ SECTIONS ══
