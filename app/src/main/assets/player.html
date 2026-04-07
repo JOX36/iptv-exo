@@ -707,6 +707,8 @@ function saveVodProgress(id, position, duration){
   const prog = lsGet(K.PROG) || {};
   prog[id] = {pos: position, dur: duration, ts: Date.now()};
   lsSet(K.PROG, prog);
+  // Refrescar home si está activo para mostrar barra actualizada
+  if(S.sec === 'home') setTimeout(showHome, 200);
 }
 function getVodProgress(id){
   const prog = lsGet(K.PROG) || {};
@@ -1887,6 +1889,18 @@ async function showHome(){
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
 
+  // Sincronizar progreso desde Java antes de renderizar
+  if(typeof AndroidPlayer!=='undefined' && AndroidPlayer.getAllVodProgress){
+    try{
+      const javaProgress = JSON.parse(AndroidPlayer.getAllVodProgress());
+      const stored = lsGet(K.PROG) || {};
+      Object.entries(javaProgress).forEach(([id, val])=>{
+        stored[id] = {pos: val.pos, dur: val.dur, ts: Date.now()};
+      });
+      lsSet(K.PROG, stored);
+    }catch(e){}
+  }
+
   // Mostrar historial inmediatamente mientras cargan las miniaturas
   renderHome([], [], [], []);
 
@@ -1993,8 +2007,9 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
     hist.slice(0,12).forEach(h=>{
       const item = h.item;
       const thumb = item.cover || item.logo || '';
-      const badgeCls = item.type==='live'?'live':item.type==='series'?'series':'vod';
-      const badgeTxt = item.type==='live'?'LIVE':item.type==='series'?'SERIE':'VOD';
+      const isSeries = item.type==='series' || item._isSeries;
+      const badgeCls = item.type==='live'?'live':isSeries?'series':'vod';
+      const badgeTxt = item.type==='live'?'LIVE':isSeries?'SERIE':'VOD';
       const pct = (item.type==='vod'||item.type==='series') ? vodProgressPct(item.id) : 0;
       const progHtml = pct>0 ? `<div class="home-cont-prog"><div class="home-cont-prog-fill" style="width:${pct}%"></div></div>` : '';
       html += `<div class="home-cont-card" onclick='play(${js(item)})'>
@@ -2003,7 +2018,7 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
           ?`<img class="home-cont-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
           :''}
         <div class="home-cont-thumb-ph" ${thumb?'style="display:none"':''}>
-          ${item.type==='live'?'📺':item.type==='series'?'🎭':'🎬'}
+          ${item.type==='live'?'📺':isSeries?'🎭':'🎬'}
         </div>
         ${progHtml}
         <div class="home-cont-name">${esc(item.name)}</div>
