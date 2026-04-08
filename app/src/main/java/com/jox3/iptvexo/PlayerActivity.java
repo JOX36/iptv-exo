@@ -488,7 +488,12 @@ public class PlayerActivity extends AppCompatActivity {
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
                 if (!isVodType()) retry();
-                else { showLoading(false); toast("Error al reproducir"); }
+                else {
+                    showLoading(false);
+                    // ExoPlayer falló en VOD — intentar con VLC automáticamente
+                    toast("\uD83D\uDCFA Abriendo en reproductor externo...");
+                    handler.postDelayed(() -> launchExternal(), 800);
+                }
             }
         });
     }
@@ -698,12 +703,24 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void launchExternal() {
+        // Intentar VLC primero
         try {
-            Intent i = new Intent(Intent.ACTION_VIEW);
-            i.setDataAndType(android.net.Uri.parse(url), "video/*");
-            i.setPackage("org.videolan.vlc");
-            startActivity(i);
-        } catch (Exception e) { copyUrl(); }
+            Intent vlc = new Intent(Intent.ACTION_VIEW);
+            vlc.setDataAndType(android.net.Uri.parse(url), "video/*");
+            vlc.setPackage("org.videolan.vlc");
+            startActivity(vlc);
+            return;
+        } catch (Exception ignored) {}
+        // Si VLC no está — abrir con cualquier reproductor instalado
+        try {
+            Intent any = new Intent(Intent.ACTION_VIEW);
+            any.setDataAndType(android.net.Uri.parse(url), "video/*");
+            startActivity(Intent.createChooser(any, "Abrir con..."));
+        } catch (Exception e) {
+            // Ningún reproductor — copiar URL
+            copyUrl();
+            toast("\uD83D\uDCCB URL copiada \u2014 pega en tu reproductor");
+        }
     }
 
     private void copyUrl() {
