@@ -1150,6 +1150,7 @@ function launchVLC(url,label=''){
 // ══ PLAYER ══
 let liveRetryTimer=null;
 function play(item){
+  toast(`PLAY: type=${item.type} series=${!!item._isSeries} url=${!!(item.url)}`, 4000);
   if(item.type==='series'){openSeries(item);return}
   const vid=document.getElementById('vid');
   S.current=item;
