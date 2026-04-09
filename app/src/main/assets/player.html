@@ -1196,6 +1196,10 @@ function play(item){
         channelIndex=slim.findIndex(c=>String(c.id)===String(item.id));
       }catch(e){channelsJson='[]';}
     }
+    // DEBUG — ver propiedades del item
+    if(item.type==='vod' || item.type==='series'){
+      toast(`type=${item.type} _isSeries=${item._isSeries} id=${item.id}`, 5000);
+    }
     // Pasar lista de episodios para series (reproducción continua)
     let episodesJson='[]';
     let episodeIndex=-1;
