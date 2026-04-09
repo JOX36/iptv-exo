@@ -562,6 +562,20 @@
 
     </LinearLayout>
 
+    <!-- DEBUG OVERLAY — temporal para diagnóstico -->
+    <TextView
+        android:id="@+id/debug_overlay"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="8dp"
+        android:background="#AA000000"
+        android:textColor="#00FF88"
+        android:textSize="10sp"
+        android:padding="6dp"
+        android:fontFamily="monospace"
+        android:visibility="gone" />
+
     <!-- SIGUIENTE EPISODIO — overlay cuenta regresiva -->
     <LinearLayout
         android:id="@+id/next_ep_overlay"
