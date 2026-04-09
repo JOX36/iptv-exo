@@ -849,11 +849,14 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ══ REPRODUCCIÓN CONTINUA SERIES ══
     private boolean isSeriesType() {
-        // Es serie si channels_json tiene items con _isSeries=true
         if (channels.isEmpty()) return false;
         try {
-            return channels.get(0).optBoolean("_isSeries", false);
-        } catch (Exception e) { return false; }
+            // Cualquier item de la lista con _isSeries=true confirma que es serie
+            for (int i = 0; i < Math.min(channels.size(), 3); i++) {
+                if (channels.get(i).optBoolean("_isSeries", false)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private void onEpisodeEnded() {
