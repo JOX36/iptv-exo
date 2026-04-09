@@ -1191,11 +1191,20 @@ function play(item){
     let channelIndex=-1;
     if(item.type==='live'&&S.channels&&S.channels.length>0){
       try{
-        // Limitar a máx 200 canales para no superar límite del Bundle de Android
         const slim=S.channels.slice(0,200).map(c=>({url:c.url||'',name:c.name||'',id:String(c.id||''),type:'live',logo:c.logo||'',group:c.group||''}));
         channelsJson=JSON.stringify(slim);
         channelIndex=slim.findIndex(c=>String(c.id)===String(item.id));
       }catch(e){channelsJson='[]';}
+    }
+    // Pasar lista de episodios para series (reproducción continua)
+    let episodesJson='[]';
+    let episodeIndex=-1;
+    if(item._isSeries && seriesData?.flatEps){
+      try{
+        const slim=seriesData.flatEps.map(e=>({url:e.url||'',name:e.name||'',id:String(e.id||''),type:'vod',logo:e.thumb||'',group:e.group||'',_isSeries:true}));
+        episodesJson=JSON.stringify(slim);
+        episodeIndex=seriesData.flatIdx>=0?seriesData.flatIdx:slim.findIndex(e=>String(e.id)===String(item.id));
+      }catch(e){episodesJson='[]';}
     }
     AndroidPlayer.openPlayer(
       item.url||'',
@@ -1204,8 +1213,8 @@ function play(item){
       item.type||'live',
       item.logo||'',
       String(item.id||''),
-      channelsJson,
-      channelIndex
+      item._isSeries ? episodesJson : channelsJson,
+      item._isSeries ? episodeIndex : channelIndex
     );
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
@@ -1667,7 +1676,37 @@ function playEpisodeByIdx(idx){
   if(!seriesData?.currentEps)return;
   const ep=seriesData.currentEps[idx];if(!ep)return;
   toast('▶ '+ep.name,3000);closeSeriesModalForce();
+  // Construir lista plana de todos los episodios de todas las temporadas
+  _buildFlatEpList(idx);
   play(ep);
+}
+
+// Construir lista plana ordenada por temporada para reproducción continua
+function _buildFlatEpList(currentIdx){
+  if(!seriesData) return;
+  const seasonKeys = Object.keys(seriesData.seasons).sort((a,b)=>parseInt(a)-parseInt(b));
+  const allEps = [];
+  seasonKeys.forEach(sk=>{
+    const eps = seriesData.seasons[sk] || [];
+    eps.forEach(ep=>{
+      const epNum = ep.episode_num||ep.id||'?';
+      const title = ep.title||`Episodio ${epNum}`;
+      const ext   = ep.container_extension||'mkv';
+      const url   = `${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
+      allEps.push({
+        id:String(ep.id), name:`${seriesData.item.name} · T${sk}E${epNum} - ${title}`,
+        logo:ep.info?.movie_image||'', group:seriesData.item.group||'',
+        type:'vod', url, epNum, season:sk, title,
+        thumb:ep.info?.movie_image||'', _isSeries:true
+      });
+    });
+  });
+  // Encontrar índice del episodio actual en la lista plana
+  const curEp = seriesData.currentEps[currentIdx];
+  const flatIdx = allEps.findIndex(e=>e.id===curEp?.id);
+  // Guardar en seriesData para acceso desde play()
+  seriesData.flatEps = allEps;
+  seriesData.flatIdx = flatIdx >= 0 ? flatIdx : 0;
 }
 function openEpExtByIdx(idx){
   if(!seriesData?.currentEps)return;
