@@ -700,7 +700,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 <script>
 // ══ STATE ══
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
-const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3'};
+const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3'};
 
 // ── Progreso VOD ──
 function saveVodProgress(id, position, duration){
@@ -1199,28 +1199,47 @@ function play(item){
     // Pasar lista de episodios para series (reproducción continua)
     let episodesJson='[]';
     let episodeIndex=-1;
-    if(item._isSeries && seriesData){
-      // Asegurar lista plana construida
-      if(!seriesData.flatEps){
-        const seasonKeys=Object.keys(seriesData.seasons).sort((a,b)=>parseInt(a)-parseInt(b));
-        const allEps=[];
-        seasonKeys.forEach(sk=>{
-          (seriesData.seasons[sk]||[]).forEach(ep=>{
-            const epNum=ep.episode_num||ep.id||'?';
-            const title=ep.title||`Episodio ${epNum}`;
-            const ext=ep.container_extension||'mkv';
-            const url=`${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
-            allEps.push({id:String(ep.id),name:`${seriesData.item.name} · T${sk}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,thumb:ep.info?.movie_image||'',_isSeries:true});
+    if(item._isSeries){
+      let flatEps = null;
+      let flatIdx = -1;
+      if(seriesData){
+        // Viene del modal — construir si no existe
+        if(!seriesData.flatEps){
+          const seasonKeys=Object.keys(seriesData.seasons).sort((a,b)=>parseInt(a)-parseInt(b));
+          const allEps=[];
+          seasonKeys.forEach(sk=>{
+            (seriesData.seasons[sk]||[]).forEach(ep=>{
+              const epNum=ep.episode_num||ep.id||'?';
+              const title=ep.title||`Episodio ${epNum}`;
+              const ext=ep.container_extension||'mkv';
+              const url=`${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
+              allEps.push({id:String(ep.id),name:`${seriesData.item.name} · T${sk}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,thumb:ep.info?.movie_image||'',_isSeries:true});
+            });
           });
-        });
-        seriesData.flatEps=allEps;
-        seriesData.flatIdx=allEps.findIndex(e=>e.id===String(item.id));
+          seriesData.flatEps=allEps;
+          seriesData.flatIdx=allEps.findIndex(e=>e.id===String(item.id));
+        }
+        flatEps = seriesData.flatEps;
+        flatIdx = seriesData.flatIdx;
+      } else {
+        // Viene del historial/Home — recuperar del localStorage
+        try{
+          const epLists = lsGet(K.EPLIST) || {};
+          // Buscar la serie que contiene este episodio
+          for(const seriesId of Object.keys(epLists)){
+            const list = epLists[seriesId].eps || [];
+            const idx = list.findIndex(e=>String(e.id)===String(item.id));
+            if(idx >= 0){ flatEps=list; flatIdx=idx; break; }
+          }
+        }catch(e){}
       }
-      try{
-        const slim=seriesData.flatEps.map(e=>({url:e.url||'',name:e.name||'',id:String(e.id||''),type:'vod',logo:e.thumb||'',group:e.group||'',_isSeries:true}));
-        episodesJson=JSON.stringify(slim);
-        episodeIndex=seriesData.flatIdx>=0?seriesData.flatIdx:slim.findIndex(e=>String(e.id)===String(item.id));
-      }catch(e){episodesJson='[]';}
+      if(flatEps && flatEps.length > 0){
+        try{
+          const slim=flatEps.map(e=>({url:e.url||'',name:e.name||'',id:String(e.id||''),type:'vod',logo:e.thumb||'',group:e.group||'',_isSeries:true}));
+          episodesJson=JSON.stringify(slim);
+          episodeIndex=flatIdx>=0?flatIdx:slim.findIndex(e=>String(e.id)===String(item.id));
+        }catch(e){episodesJson='[]';}
+      }
     }
     AndroidPlayer.openPlayer(
       item.url||'',
@@ -1723,6 +1742,16 @@ function _buildFlatEpList(currentIdx){
   // Guardar en seriesData para acceso desde play()
   seriesData.flatEps = allEps;
   seriesData.flatIdx = flatIdx >= 0 ? flatIdx : 0;
+  // Guardar en localStorage para recuperar desde historial/Home
+  try{
+    const seriesId = String(seriesData.item.id);
+    const epLists = lsGet(K.EPLIST) || {};
+    epLists[seriesId] = {eps: allEps.map(e=>({id:e.id,name:e.name,url:e.url,thumb:e.thumb,group:e.group,_isSeries:true})), ts: Date.now()};
+    // Mantener solo las últimas 10 series
+    const keys = Object.keys(epLists).sort((a,b)=>(epLists[b].ts||0)-(epLists[a].ts||0));
+    if(keys.length > 10) keys.slice(10).forEach(k=>delete epLists[k]);
+    lsSet(K.EPLIST, epLists);
+  }catch(e){}
 }
 function openEpExtByIdx(idx){
   if(!seriesData?.currentEps)return;
