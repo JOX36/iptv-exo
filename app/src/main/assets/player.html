@@ -1721,10 +1721,10 @@ function renderSeriesModal(seasonKeys){
 }
 function selectSeason(k){const seasonKeys=Object.keys(seriesData.seasons).sort((a,b)=>parseInt(a)-parseInt(b));seriesData.activeSeason=k;renderSeriesModal(seasonKeys)}
 function playEpisodeByIdx(idx){
+  toast(`EPBYIDX: idx=${idx}`, 3000);
   if(!seriesData?.currentEps)return;
   const ep=seriesData.currentEps[idx];if(!ep)return;
   toast('▶ '+ep.name,3000);closeSeriesModalForce();
-  // Construir lista plana de todos los episodios de todas las temporadas
   _buildFlatEpList(idx);
   play(ep);
 }
