@@ -1199,7 +1199,23 @@ function play(item){
     // Pasar lista de episodios para series (reproducción continua)
     let episodesJson='[]';
     let episodeIndex=-1;
-    if(item._isSeries && seriesData?.flatEps){
+    if(item._isSeries && seriesData){
+      // Asegurar lista plana construida
+      if(!seriesData.flatEps){
+        const seasonKeys=Object.keys(seriesData.seasons).sort((a,b)=>parseInt(a)-parseInt(b));
+        const allEps=[];
+        seasonKeys.forEach(sk=>{
+          (seriesData.seasons[sk]||[]).forEach(ep=>{
+            const epNum=ep.episode_num||ep.id||'?';
+            const title=ep.title||`Episodio ${epNum}`;
+            const ext=ep.container_extension||'mkv';
+            const url=`${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
+            allEps.push({id:String(ep.id),name:`${seriesData.item.name} · T${sk}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,thumb:ep.info?.movie_image||'',_isSeries:true});
+          });
+        });
+        seriesData.flatEps=allEps;
+        seriesData.flatIdx=allEps.findIndex(e=>e.id===String(item.id));
+      }
       try{
         const slim=seriesData.flatEps.map(e=>({url:e.url||'',name:e.name||'',id:String(e.id||''),type:'vod',logo:e.thumb||'',group:e.group||'',_isSeries:true}));
         episodesJson=JSON.stringify(slim);
