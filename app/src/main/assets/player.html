@@ -1168,6 +1168,7 @@ function play(item){
   if(!url){showOverlay(true,false,'❌ Sin URL');setStatus('error');return}
 
   // ── VOD/LIVE: usar PlayerActivity nativa si está disponible ──
+  toast(`DEBUG: Android=${typeof AndroidPlayer!=='undefined'} type=${item.type} series=${!!item._isSeries}`, 5000);
   if(typeof AndroidPlayer!=='undefined'){
     const pw=document.getElementById('playerWrap');
     pw.classList.add('android-mode');
