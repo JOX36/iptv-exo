@@ -799,22 +799,31 @@ public class PlayerActivity extends AppCompatActivity {
         if (!isVodType() || itemId == null) return;
         progressSaver = new Runnable() {
             @Override public void run() {
-                if (player != null && player.isPlaying()) {
+                if (player != null) {
                     long pos = player.getCurrentPosition();
                     long dur = player.getDuration();
                     if (pos > 5000 && dur > 0) {
-                        // Si superó el 95% marcar como vista completa
-                        if ((float) pos / dur > 0.95f) {
+                        float pct = (float) pos / dur;
+                        // Detectar fin por posición — algunos streams no disparan STATE_ENDED
+                        if (pct > 0.98f && !player.isPlaying()) {
+                            if (isSeriesType()) {
+                                onEpisodeEnded();
+                            } else {
+                                clearVodProgress(itemId);
+                            }
+                            return; // no reprogramar
+                        }
+                        if (pct > 0.95f) {
                             clearVodProgress(itemId);
-                        } else {
+                        } else if (player.isPlaying()) {
                             saveVodProgress(itemId, pos, dur);
                         }
                     }
                 }
-                progressHandler.postDelayed(this, 10000); // cada 10 segundos
+                progressHandler.postDelayed(this, 5000); // cada 5 segundos
             }
         };
-        progressHandler.postDelayed(progressSaver, 10000);
+        progressHandler.postDelayed(progressSaver, 5000);
     }
 
     private void stopProgressSaver() {
