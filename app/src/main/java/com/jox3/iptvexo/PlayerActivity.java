@@ -101,6 +101,14 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler progressHandler = new Handler();
     private Runnable progressSaver;
 
+    // Siguiente episodio — reproducción continua
+    private LinearLayout nextEpOverlay;
+    private TextView nextEpTitle, nextEpCountdown;
+    private Button nextEpBtnNow, nextEpBtnCancel;
+    private final Handler countdownHandler = new Handler();
+    private Runnable countdownRunnable;
+    private int countdownSeconds = 5;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -230,6 +238,15 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExt   = findViewById(R.id.vod_fs_btn_ext);
         vodFsBtnUrl   = findViewById(R.id.vod_fs_btn_url);
         vodFsBtnSubs  = findViewById(R.id.vod_fs_btn_subs);
+
+        // Siguiente episodio
+        nextEpOverlay  = findViewById(R.id.next_ep_overlay);
+        nextEpTitle    = findViewById(R.id.next_ep_title);
+        nextEpCountdown= findViewById(R.id.next_ep_countdown);
+        nextEpBtnNow   = findViewById(R.id.next_ep_btn_now);
+        nextEpBtnCancel= findViewById(R.id.next_ep_btn_cancel);
+        nextEpBtnNow.setOnClickListener(v -> playNextEpisode());
+        nextEpBtnCancel.setOnClickListener(v -> hideNextEpOverlay());
     }
 
     // Emojis puestos desde Java para evitar corrupcion UTF-8 en XML
@@ -480,7 +497,14 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                 } else if (state == Player.STATE_BUFFERING) {
                     showLoading(true);
-                } else if (!isVodType() && (state == Player.STATE_IDLE || state == Player.STATE_ENDED)) {
+                } else if (state == Player.STATE_ENDED) {
+                    if (!isVodType()) {
+                        retry();
+                    } else if (isSeriesType()) {
+                        // Serie terminó — mostrar overlay siguiente episodio
+                        onEpisodeEnded();
+                    }
+                } else if (state == Player.STATE_IDLE && !isVodType()) {
                     retry();
                 }
             }
@@ -510,6 +534,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void stopAndRelease() {
         handler.removeCallbacksAndMessages(null);
         stopProgressSaver();
+        hideNextEpOverlay();
         if (player != null) {
             // Desconectar PlayerView primero — evita que el audio siga por el surface
             playerView.setPlayer(null);
@@ -820,6 +845,86 @@ public class PlayerActivity extends AppCompatActivity {
     private void clearVodProgress(String id) {
         android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
         prefs.edit().remove("pos_" + id).remove("dur_" + id).apply();
+    }
+
+    // ══ REPRODUCCIÓN CONTINUA SERIES ══
+    private boolean isSeriesType() {
+        // Es serie si channels_json tiene items con _isSeries=true
+        if (channels.isEmpty()) return false;
+        try {
+            return channels.get(0).optBoolean("_isSeries", false);
+        } catch (Exception e) { return false; }
+    }
+
+    private void onEpisodeEnded() {
+        if (channelIndex < 0 || channels.isEmpty()) { finish(); return; }
+        int nextIdx = channelIndex + 1;
+        // Caso 3 — último episodio de la última temporada
+        if (nextIdx >= channels.size()) {
+            showSeriesCompleted();
+            return;
+        }
+        // Caso 1 y 2 — hay siguiente episodio (misma o nueva temporada)
+        try {
+            JSONObject next = channels.get(nextIdx);
+            String nextName = next.optString("name", "Siguiente episodio");
+            showNextEpOverlay(nextName, nextIdx);
+        } catch (Exception e) { finish(); }
+    }
+
+    private void showNextEpOverlay(String nextName, int nextIdx) {
+        if (nextEpOverlay == null) return;
+        nextEpTitle.setText(nextName);
+        nextEpOverlay.setVisibility(View.VISIBLE);
+        countdownSeconds = 5;
+        nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+
+        countdownRunnable = new Runnable() {
+            @Override public void run() {
+                countdownSeconds--;
+                if (countdownSeconds <= 0) {
+                    playNextEpisode();
+                } else {
+                    nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                    countdownHandler.postDelayed(this, 1000);
+                }
+            }
+        };
+        countdownHandler.postDelayed(countdownRunnable, 1000);
+    }
+
+    private void playNextEpisode() {
+        hideNextEpOverlay();
+        if (channelIndex + 1 >= channels.size()) { finish(); return; }
+        channelIndex++;
+        try {
+            JSONObject next = channels.get(channelIndex);
+            url    = next.optString("url", "");
+            name   = next.optString("name", "");
+            itemId = next.optString("id", "");
+            savedPosition = getVodProgress(itemId);
+            vodTxtTitleBar.setText(name);
+            vodTxtTitle.setText(name);
+            vodFsTxtTitle.setText(name);
+            vodTxtPlot.setText("");
+            retryCount = 0;
+            initPlayer();
+        } catch (Exception e) { finish(); }
+    }
+
+    private void hideNextEpOverlay() {
+        countdownHandler.removeCallbacks(countdownRunnable);
+        if (nextEpOverlay != null) nextEpOverlay.setVisibility(View.GONE);
+    }
+
+    private void showSeriesCompleted() {
+        if (nextEpOverlay == null) { finish(); return; }
+        nextEpTitle.setText("Serie completada \u2705");
+        nextEpCountdown.setText("Has visto todos los episodios");
+        nextEpBtnNow.setVisibility(View.GONE);
+        nextEpBtnCancel.setText("Cerrar");
+        nextEpBtnCancel.setOnClickListener(v -> finish());
+        nextEpOverlay.setVisibility(View.VISIBLE);
     }
 
     // ══ LIFECYCLE ══
