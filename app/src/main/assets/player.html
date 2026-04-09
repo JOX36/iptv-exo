@@ -1251,6 +1251,13 @@ function play(item){
       item._isSeries ? episodesJson : channelsJson,
       item._isSeries ? episodeIndex : channelIndex
     );
+    // DEBUG — mostrar cuántos episodios se pasan
+    if(item._isSeries){
+      try{
+        const epCount = JSON.parse(episodesJson).length;
+        toast(`🔢 Episodios: ${epCount} | Índice: ${episodeIndex}`, 4000);
+      }catch(e){ toast('❌ episodesJson inválido: '+e.message, 4000); }
+    }
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
