@@ -109,6 +109,9 @@ public class PlayerActivity extends AppCompatActivity {
     private Runnable countdownRunnable;
     private int countdownSeconds = 5;
 
+    // Debug overlay — temporal
+    private TextView debugOverlay;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -247,6 +250,9 @@ public class PlayerActivity extends AppCompatActivity {
         nextEpBtnCancel= findViewById(R.id.next_ep_btn_cancel);
         nextEpBtnNow.setOnClickListener(v -> playNextEpisode());
         nextEpBtnCancel.setOnClickListener(v -> hideNextEpOverlay());
+
+        // Debug
+        debugOverlay = findViewById(R.id.debug_overlay);
     }
 
     // Emojis puestos desde Java para evitar corrupcion UTF-8 en XML
@@ -797,6 +803,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void startProgressSaver() {
         if (!isVodType() || itemId == null) return;
+        // Mostrar debug overlay si es serie
+        if (isSeriesType() && debugOverlay != null) {
+            debugOverlay.setVisibility(View.VISIBLE);
+        }
         progressSaver = new Runnable() {
             @Override public void run() {
                 if (player != null) {
@@ -804,17 +814,23 @@ public class PlayerActivity extends AppCompatActivity {
                     long dur = player.getDuration();
                     boolean playing = player.isPlaying();
                     int state = player.getPlaybackState();
-                    android.util.Log.d("JOX3_SERIES",
-                        "pos=" + pos + " dur=" + dur +
-                        " playing=" + playing +
-                        " state=" + state +
-                        " isSeries=" + isSeriesType() +
-                        " chIdx=" + channelIndex +
-                        " chSize=" + channels.size());
+                    float pct = dur > 0 ? (float) pos / dur * 100 : 0;
+
+                    // Mostrar en pantalla
+                    if (debugOverlay != null) {
+                        String stateStr = state==1?"IDLE":state==2?"BUFFER":state==3?"READY":"ENDED";
+                        debugOverlay.setText(
+                            "pos=" + (pos/1000) + "s dur=" + (dur/1000) + "s\n" +
+                            "pct=" + String.format("%.1f", pct) + "%\n" +
+                            "playing=" + playing + " state=" + stateStr + "\n" +
+                            "isSeries=" + isSeriesType() + "\n" +
+                            "chIdx=" + channelIndex + "/" + channels.size()
+                        );
+                    }
+
                     if (pos > 5000 && dur > 0) {
-                        float pct = (float) pos / dur;
-                        if (pct > 0.98f && !playing) {
-                            android.util.Log.d("JOX3_SERIES", "FIN DETECTADO por posición");
+                        if (pct/100 > 0.98f && !playing) {
+                            if (debugOverlay != null) debugOverlay.setText(debugOverlay.getText() + "\n>>> FIN DETECTADO");
                             if (isSeriesType()) {
                                 onEpisodeEnded();
                             } else {
@@ -822,7 +838,7 @@ public class PlayerActivity extends AppCompatActivity {
                             }
                             return;
                         }
-                        if (pct > 0.95f) {
+                        if (pct/100 > 0.95f) {
                             clearVodProgress(itemId);
                         } else if (playing) {
                             saveVodProgress(itemId, pos, dur);
