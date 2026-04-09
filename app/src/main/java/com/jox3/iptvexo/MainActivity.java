@@ -14,6 +14,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -21,6 +22,8 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+    // Almacén temporal de respuestas — evita pasar JSON por evaluateJavascript
+    private final ConcurrentHashMap<String, String> fetchResults = new ConcurrentHashMap<>();
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -48,11 +51,73 @@ public class MainActivity extends AppCompatActivity {
 
     class Bridge {
 
+        // ── fetchUrl: bridge HTTP sin CORS ──
+        // El resultado se guarda en fetchResults y JS lo lee con fetchGetResult()
+        // Así evitamos pasar JSON por evaluateJavascript (que corrompe caracteres especiales)
+        @JavascriptInterface
+        public void fetchUrl(String urlStr, String callbackId) {
+            executor.execute(() -> {
+                String result = null;
+                String error  = null;
+                try {
+                    URL url = new URL(urlStr);
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(12000);
+                    conn.setReadTimeout(20000);
+                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                    conn.setRequestProperty("Accept", "application/json");
+                    int code = conn.getResponseCode();
+                    if (code >= 200 && code < 300) {
+                        BufferedReader br = new BufferedReader(
+                            new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = br.readLine()) != null) sb.append(line).append('\n');
+                        br.close();
+                        result = sb.toString();
+                    } else {
+                        error = "HTTP " + code;
+                    }
+                } catch (Exception e) {
+                    error = e.getMessage() != null ? e.getMessage() : "error";
+                }
+
+                // Guardar resultado en el mapa (el JS lo recupera con fetchGetResult)
+                if (result != null) {
+                    fetchResults.put(callbackId, result);
+                }
+                final String finalError = error;
+
+                // Notificar al JS solo con el callbackId (sin datos en la URL del JS)
+                runOnUiThread(() -> {
+                    if (finalError != null) {
+                        // Escapar solo lo mínimo para pasar el mensaje de error
+                        String safeErr = finalError.replace("'", " ").replace("\n", " ").substring(
+                            0, Math.min(finalError.length(), 100));
+                        webView.evaluateJavascript(
+                            "(function(){var cb=window._jcb['" + callbackId + "'];" +
+                            "if(cb){cb('" + safeErr + "',null);" +
+                            "delete window._jcb['" + callbackId + "'];}})();", null);
+                    } else {
+                        // Sin datos en JS — el callback llama fetchGetResult() para leer
+                        webView.evaluateJavascript(
+                            "(function(){var cb=window._jcb['" + callbackId + "'];" +
+                            "if(cb){var d=AndroidPlayer.fetchGetResult('" + callbackId + "');" +
+                            "cb(null,d);delete window._jcb['" + callbackId + "'];}})();", null);
+                    }
+                });
+            });
+        }
+
+        // ── fetchGetResult: JS llama esto para obtener la respuesta guardada ──
+        @JavascriptInterface
+        public String fetchGetResult(String callbackId) {
+            String result = fetchResults.remove(callbackId);
+            return result != null ? result : "";
+        }
+
         // ── openPlayer: único método con 10 parámetros ──
-        // WebView no soporta sobrecarga — un solo método para live, vod y series
-        // Para live:   channelsJson = lista canales, episodesJson = "[]", episodeIndex = -1
-        // Para series: channelsJson = "[]",          episodesJson = lista eps, episodeIndex = N
-        // Para vod:    channelsJson = "[]",          episodesJson = "[]",     episodeIndex = -1
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
                                String logo, String itemId,
@@ -73,39 +138,6 @@ public class MainActivity extends AppCompatActivity {
             startActivityForResult(i, 1001);
         }
 
-        // ── fetchUrl: bridge para peticiones HTTP sin CORS (Android 15+) ──
-        @JavascriptInterface
-        public void fetchUrl(String urlStr, String callbackId) {
-            executor.execute(() -> {
-                try {
-                    URL url = new URL(urlStr);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(10000);
-                    conn.setReadTimeout(15000);
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    int code = conn.getResponseCode();
-                    if (code >= 200 && code < 300) {
-                        BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = br.readLine()) != null) sb.append(line).append('\n');
-                        br.close();
-                        String json = sb.toString().replace("\\", "\\\\").replace("'", "\\'");
-                        runOnUiThread(() -> webView.evaluateJavascript(
-                            "window._jcb['" + callbackId + "'](null,'" + json + "');delete window._jcb['" + callbackId + "'];", null));
-                    } else {
-                        runOnUiThread(() -> webView.evaluateJavascript(
-                            "window._jcb['" + callbackId + "']('" + code + "',null);delete window._jcb['" + callbackId + "'];", null));
-                    }
-                } catch (Exception e) {
-                    String err = e.getMessage() != null ? e.getMessage().replace("'", "\\'") : "error";
-                    runOnUiThread(() -> webView.evaluateJavascript(
-                        "window._jcb['" + callbackId + "']('" + err + "',null);delete window._jcb['" + callbackId + "'];", null));
-                }
-            });
-        }
-
         // ── openFilePicker: seleccionar archivo M3U local ──
         @JavascriptInterface
         public void openFilePicker() {
@@ -116,14 +148,13 @@ public class MainActivity extends AppCompatActivity {
                 startActivityForResult(Intent.createChooser(intent, "Seleccionar M3U"), 2001);
             } catch (Exception e) {
                 android.widget.Toast.makeText(MainActivity.this,
-                    "No se pudo abrir el selector de archivos", android.widget.Toast.LENGTH_SHORT).show();
+                    "No se pudo abrir el selector", android.widget.Toast.LENGTH_SHORT).show();
             }
         }
 
-        // ── getAllVodProgress: devuelve progreso guardado de VOD ──
+        // ── getAllVodProgress: progreso VOD (guardado en localStorage del WebView) ──
         @JavascriptInterface
         public String getAllVodProgress() {
-            // Devuelve JSON vacío — el progreso se guarda en localStorage del WebView
             return "{}";
         }
 
@@ -136,7 +167,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
 
-        // Resultado del PlayerActivity (favs)
+        // Resultado PlayerActivity → sincronizar favs
         if (req == 1001 && data != null) {
             boolean added   = data.getBooleanExtra("fav_added", false);
             boolean removed = data.getBooleanExtra("fav_removed", false);
@@ -149,7 +180,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // Resultado del selector de archivo M3U
+        // Resultado selector archivo M3U
         if (req == 2001 && res == RESULT_OK && data != null && data.getData() != null) {
             android.net.Uri uri = data.getData();
             executor.execute(() -> {
@@ -160,19 +191,17 @@ public class MainActivity extends AppCompatActivity {
                     String line;
                     while ((line = br.readLine()) != null) sb.append(line).append('\n');
                     br.close();
-                    String content = sb.toString()
-                        .replace("\\", "\\\\")
-                        .replace("'", "\\'")
-                        .replace("\r", "");
-                    // Obtener nombre del archivo
+                    // Guardar contenido M3U en fetchResults con clave especial
+                    fetchResults.put("__m3u__", sb.toString());
                     String filename = uri.getLastPathSegment();
                     if (filename == null) filename = "lista.m3u";
-                    final String fname = filename;
+                    final String fname = filename.replace("'", "");
                     runOnUiThread(() -> webView.evaluateJavascript(
-                        "if(typeof receiveLocalM3U==='function')receiveLocalM3U('" + content + "','" + fname + "');", null));
+                        "(function(){var c=AndroidPlayer.fetchGetResult('__m3u__');" +
+                        "if(typeof receiveLocalM3U==='function')receiveLocalM3U(c,'" + fname + "');})()", null));
                 } catch (Exception e) {
                     runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this,
-                        "Error leyendo archivo: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
+                        "Error: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
                 }
             });
         }
