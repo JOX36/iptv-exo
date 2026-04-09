@@ -164,7 +164,9 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private boolean isSeries() {
-        return "series".equals(type);
+        // Los episodios llegan con type="vod" y _isSeries=true desde el HTML
+        // La forma fiable de saber que es serie es que tenga lista de episodios
+        return !episodeList.isEmpty();
     }
 
     private void bindViews() {
