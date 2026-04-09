@@ -2,32 +2,46 @@ package com.jox3.iptvexo;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
-import android.util.Base64;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
+
 import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
-    private final ExecutorService executor = Executors.newCachedThreadPool();
+    private static final int REQ_PLAYER   = 1001;
+    private static final int REQ_M3U_FILE = 1002;
+    private OkHttpClient httpClient;
 
-    @SuppressLint("SetJavaScriptEnabled")
+    @SuppressLint({"SetJavaScriptEnabled","TrustAllX509TrustManager"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        httpClient = buildUnsafeClient();
 
         webView = findViewById(R.id.webview);
         WebSettings ws = webView.getSettings();
@@ -35,6 +49,8 @@ public class MainActivity extends AppCompatActivity {
         ws.setDomStorageEnabled(true);
         ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         ws.setMediaPlaybackRequiresUserGesture(false);
+        ws.setAllowUniversalAccessFromFileURLs(true);
+        ws.setAllowFileAccessFromFileURLs(true);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -47,99 +63,167 @@ public class MainActivity extends AppCompatActivity {
         webView.loadUrl("file:///android_asset/player.html");
     }
 
+    @SuppressLint("TrustAllX509TrustManager")
+    private OkHttpClient buildUnsafeClient() {
+        try {
+            X509TrustManager tm = new X509TrustManager() {
+                public void checkClientTrusted(X509Certificate[] c, String a) {}
+                public void checkServerTrusted(X509Certificate[] c, String a) {}
+                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
+            };
+            SSLContext sc = SSLContext.getInstance("TLS");
+            sc.init(null, new TrustManager[]{tm}, new SecureRandom());
+            return new OkHttpClient.Builder()
+                .sslSocketFactory(sc.getSocketFactory(), tm)
+                .hostnameVerifier((h, s) -> true)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build();
+        } catch (Exception e) {
+            return new OkHttpClient.Builder().build();
+        }
+    }
+
+    // Almacén temporal de resultados grandes — evita OOM al pasar JSON en evaluateJavascript
+    private final java.util.concurrent.ConcurrentHashMap<String, String> resultStore =
+        new java.util.concurrent.ConcurrentHashMap<>();
+
     class Bridge {
 
-        // fetchUrl: hace la petición HTTP y devuelve el resultado en Base64
-        // Base64 evita cualquier problema con comillas, saltos de línea, etc.
-        // El JS decodifica con atob() antes de hacer JSON.parse()
         @JavascriptInterface
-        public void fetchUrl(String urlStr, String callbackId) {
-            executor.execute(() -> {
-                try {
-                    URL url = new URL(urlStr);
-                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                    conn.setRequestMethod("GET");
-                    conn.setConnectTimeout(12000);
-                    conn.setReadTimeout(20000);
-                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-                    conn.setRequestProperty("Accept", "application/json, */*");
+        public String getResult(String callbackId) {
+            return resultStore.remove(callbackId); // devuelve y elimina
+        }
 
-                    int code = conn.getResponseCode();
-                    if (code < 200 || code >= 300) {
-                        notifyError(callbackId, "HTTP " + code);
-                        return;
-                    }
-
-                    BufferedReader br = new BufferedReader(
-                        new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) sb.append(line).append('\n');
-                    br.close();
-
-                    // Codificar en Base64 — 100% seguro para pasar por evaluateJavascript
-                    String b64 = Base64.encodeToString(
-                        sb.toString().getBytes("UTF-8"), Base64.NO_WRAP);
-
-                    runOnUiThread(() -> webView.evaluateJavascript(
-                        "(function(){var cb=window._jcb['" + callbackId + "'];" +
-                        "if(cb){cb(null,'" + b64 + "');" +
-                        "delete window._jcb['" + callbackId + "'];}})();", null));
-
-                } catch (Exception e) {
-                    notifyError(callbackId, "error");
+        // Devolver progreso guardado en SharedPreferences al WebView
+        @JavascriptInterface
+        public String getAllVodProgress() {
+            android.content.SharedPreferences prefs =
+                getSharedPreferences("vod_progress", MODE_PRIVATE);
+            java.util.Map<String, ?> all = prefs.getAll();
+            StringBuilder sb = new StringBuilder("{");
+            boolean first = true;
+            for (java.util.Map.Entry<String, ?> entry : all.entrySet()) {
+                String key = entry.getKey();
+                if (!key.startsWith("pos_")) continue;
+                String id = key.substring(4);
+                long pos = prefs.getLong("pos_" + id, 0);
+                long dur = prefs.getLong("dur_" + id, 0);
+                if (pos > 0 && dur > 0) {
+                    if (!first) sb.append(",");
+                    sb.append("\"").append(id).append("\":{\"pos\":").append(pos)
+                      .append(",\"dur\":").append(dur).append("}");
+                    first = false;
                 }
-            });
+            }
+            sb.append("}");
+            return sb.toString();
         }
 
-        private void notifyError(String callbackId, String msg) {
-            runOnUiThread(() -> webView.evaluateJavascript(
-                "(function(){var cb=window._jcb['" + callbackId + "'];" +
-                "if(cb){cb('" + msg + "',null);" +
-                "delete window._jcb['" + callbackId + "'];}})();", null));
+        // ── Petición API desde Java — solución definitiva Android 15 ──
+        @JavascriptInterface
+        public void fetchUrl(final String url, final String callbackId) {
+            new Thread(() -> {
+                String result = null;
+                String error  = null;
+                try {
+                    // Intentar con la URL original
+                    result = doFetch(url);
+                } catch (Exception e1) {
+                    // Si falla, intentar con el protocolo alternativo HTTP/HTTPS
+                    try {
+                        String altUrl;
+                        if (url.startsWith("https://")) {
+                            altUrl = "http://" + url.substring(8);
+                        } else if (url.startsWith("http://")) {
+                            altUrl = "https://" + url.substring(7);
+                        } else {
+                            throw e1;
+                        }
+                        result = doFetch(altUrl);
+                        // Notificar al WebView el protocolo correcto
+                        updateHostProtocol(altUrl);
+                    } catch (Exception e2) {
+                        error = e1.getMessage() != null ? e1.getMessage() : "Error de red";
+                    }
+                }
+
+                final String finalResult = result;
+                final String finalError  = error;
+
+                // Guardar resultado en objeto accesible desde JS — evita OOM de evaluateJavascript
+                webView.post(() -> {
+                    String js;
+                    if (finalResult != null) {
+                        // Guardar en objeto puente en lugar de pasar como string literal
+                        resultStore.put(callbackId, finalResult);
+                        js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
+                             "var _d=AndroidPlayer.getResult('" + callbackId + "');" +
+                             "window._jcb['" + callbackId + "'](null,_d);" +
+                             "delete window._jcb['" + callbackId + "'];}";
+                    } else {
+                        js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
+                             "window._jcb['" + callbackId + "']('" + finalError + "',null);" +
+                             "delete window._jcb['" + callbackId + "'];}";
+                    }
+                    webView.evaluateJavascript(js, null);
+                });
+            }).start();
         }
 
-        // openPlayer: único método con 10 parámetros
-        // live:   channelsJson=lista, episodesJson="[]", episodeIndex=-1
-        // series: channelsJson="[]", episodesJson=lista, episodeIndex=N
-        // vod:    channelsJson="[]", episodesJson="[]",  episodeIndex=-1
+        private String doFetch(String url) throws Exception {
+            Request req = new Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0")
+                .header("Accept", "application/json, */*")
+                .build();
+            Response resp = httpClient.newCall(req).execute();
+            String body = resp.body() != null ? resp.body().string() : "";
+            resp.close();
+            if (body.isEmpty()) throw new Exception("Empty response");
+            return body;
+        }
+
+        // Detectar protocolo correcto del host y notificar al WebView
+        private void updateHostProtocol(final String workingUrl) {
+            try {
+                java.net.URL u = new java.net.URL(workingUrl);
+                final String correctHost = u.getProtocol() + "://" + u.getHost() +
+                    (u.getPort() > 0 ? ":" + u.getPort() : "");
+                webView.post(() ->
+                    webView.evaluateJavascript(
+                        "if(S&&S.host&&S.host!=='" + correctHost + "'){S.host='" + correctHost + "';}", null
+                    )
+                );
+            } catch (Exception ignored) {}
+        }
+
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
-                               String logo, String itemId,
-                               String channelsJson, int channelIndex,
-                               String episodesJson, int episodeIndex) {
+                               String logo, String itemId, String channelsJson, int channelIndex) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
-            i.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
-            i.putExtra("url",           url);
-            i.putExtra("name",          name);
-            i.putExtra("group",         group);
-            i.putExtra("type",          type);
-            i.putExtra("logo",          logo);
-            i.putExtra("id",            itemId);
-            i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
+            i.putExtra("url", url);
+            i.putExtra("name", name);
+            i.putExtra("group", group);
+            i.putExtra("type", type);
+            i.putExtra("logo", logo);
+            i.putExtra("id", itemId);
             i.putExtra("channel_index", channelIndex);
-            i.putExtra("episodes_json", episodesJson != null ? episodesJson : "[]");
-            i.putExtra("episode_index", episodeIndex);
-            startActivityForResult(i, 1001);
+            i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
+            startActivityForResult(i, REQ_PLAYER);
         }
 
-        // openFilePicker: seleccionar archivo M3U local
         @JavascriptInterface
         public void openFilePicker() {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType("*/*");
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            try {
-                startActivityForResult(Intent.createChooser(intent, "Seleccionar M3U"), 2001);
-            } catch (Exception e) {
-                android.widget.Toast.makeText(MainActivity.this,
-                    "No se pudo abrir el selector", android.widget.Toast.LENGTH_SHORT).show();
-            }
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
+                "text/plain", "audio/x-mpegurl",
+                "application/octet-stream", "application/vnd.apple.mpegurl"
+            });
+            startActivityForResult(Intent.createChooser(i, "Seleccionar lista M3U"), REQ_M3U_FILE);
         }
-
-        // getAllVodProgress: el progreso se guarda en localStorage del WebView
-        @JavascriptInterface
-        public String getAllVodProgress() { return "{}"; }
 
         @JavascriptInterface public void playUrl(String url) {}
         @JavascriptInterface public void stop() {}
@@ -150,53 +234,59 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
 
-        // Resultado PlayerActivity → sincronizar favs al HTML
-        if (req == 1001 && data != null) {
+        if (req == REQ_PLAYER && data != null) {
             boolean added   = data.getBooleanExtra("fav_added", false);
             boolean removed = data.getBooleanExtra("fav_removed", false);
-            String id       = data.getStringExtra("item_id");
-            String type     = data.getStringExtra("item_type");
+            String id   = data.getStringExtra("item_id");
+            String type = data.getStringExtra("item_type");
+            long position = data.getLongExtra("vod_position", 0);
+            long duration = data.getLongExtra("vod_duration", 0);
             if (id != null) {
                 String key = type + "_" + id;
-                if (added)   webView.evaluateJavascript(
-                    "S.favs.add('" + key + "');saveFavs();", null);
-                if (removed) webView.evaluateJavascript(
-                    "S.favs.delete('" + key + "');saveFavs();", null);
+                if (added)   webView.evaluateJavascript("S.favs.add('"    + key + "');saveFavs();", null);
+                if (removed) webView.evaluateJavascript("S.favs.delete('" + key + "');saveFavs();", null);
+                // Guardar progreso VOD en localStorage del WebView
+                if (position > 0 && duration > 0) {
+                    webView.evaluateJavascript(
+                        "saveVodProgress('" + id + "'," + position + "," + duration + ");", null
+                    );
+                }
             }
         }
 
-        // Resultado selector archivo M3U
-        if (req == 2001 && res == RESULT_OK && data != null && data.getData() != null) {
-            android.net.Uri uri = data.getData();
-            executor.execute(() -> {
-                try {
-                    java.io.InputStream is = getContentResolver().openInputStream(uri);
-                    BufferedReader br = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) sb.append(line).append('\n');
-                    br.close();
-                    // Pasar en Base64 igual que fetchUrl
-                    String b64 = Base64.encodeToString(
-                        sb.toString().getBytes("UTF-8"), Base64.NO_WRAP);
-                    String filename = uri.getLastPathSegment();
-                    if (filename == null) filename = "lista.m3u";
-                    final String fname = filename.replace("'", "");
-                    runOnUiThread(() -> webView.evaluateJavascript(
-                        "(function(){var c=atob('" + b64 + "');" +
-                        "if(typeof receiveLocalM3U==='function')receiveLocalM3U(c,'" + fname + "');})()", null));
-                } catch (Exception e) {
-                    runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this,
-                        "Error: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
+        if (req == REQ_M3U_FILE && res == RESULT_OK && data != null) {
+            Uri uri = data.getData();
+            if (uri == null) return;
+            try {
+                InputStream is = getContentResolver().openInputStream(uri);
+                if (is == null) return;
+                BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append("\n");
+                    if (sb.length() > 5 * 1024 * 1024) break;
                 }
-            });
+                reader.close();
+                String content = sb.toString()
+                    .replace("\\", "\\\\")
+                    .replace("`", "\\`")
+                    .replace("$", "\\$");
+                String fileName = uri.getLastPathSegment();
+                if (fileName == null) fileName = "Lista local";
+                final String jsContent = content;
+                final String jsName = fileName.replace("'", "\\'");
+                webView.post(() ->
+                    webView.evaluateJavascript(
+                        "loadLocalM3U(`" + jsContent + "`, '" + jsName + "')", null
+                    )
+                );
+            } catch (Exception e) {
+                webView.post(() ->
+                    webView.evaluateJavascript("toast('❌ Error al leer el archivo')", null)
+                );
+            }
         }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        executor.shutdownNow();
     }
 
     private long backPressedTime = 0;
