@@ -803,8 +803,8 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void startProgressSaver() {
         if (!isVodType() || itemId == null) return;
-        // Mostrar debug overlay si es serie
-        if (isSeriesType() && debugOverlay != null) {
+        // Mostrar debug overlay siempre en VOD para diagnóstico
+        if (debugOverlay != null) {
             debugOverlay.setVisibility(View.VISIBLE);
         }
         progressSaver = new Runnable() {
@@ -815,24 +815,23 @@ public class PlayerActivity extends AppCompatActivity {
                     boolean playing = player.isPlaying();
                     int state = player.getPlaybackState();
                     float pct = dur > 0 ? (float) pos / dur * 100 : 0;
+                    String stateStr = state==1?"IDLE":state==2?"BUFFER":state==3?"READY":"ENDED";
 
                     // Mostrar en pantalla
                     if (debugOverlay != null) {
-                        String stateStr = state==1?"IDLE":state==2?"BUFFER":state==3?"READY":"ENDED";
-                        debugOverlay.setText(
+                        runOnUiThread(() -> debugOverlay.setText(
                             "pos=" + (pos/1000) + "s dur=" + (dur/1000) + "s\n" +
                             "pct=" + String.format("%.1f", pct) + "%\n" +
                             "playing=" + playing + " state=" + stateStr + "\n" +
                             "isSeries=" + isSeriesType() + "\n" +
                             "chIdx=" + channelIndex + "/" + channels.size()
-                        );
+                        ));
                     }
 
                     if (pos > 5000 && dur > 0) {
                         if (pct/100 > 0.98f && !playing) {
-                            if (debugOverlay != null) debugOverlay.setText(debugOverlay.getText() + "\n>>> FIN DETECTADO");
                             if (isSeriesType()) {
-                                onEpisodeEnded();
+                                runOnUiThread(() -> onEpisodeEnded());
                             } else {
                                 clearVodProgress(itemId);
                             }
