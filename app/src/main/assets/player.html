@@ -221,7 +221,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
   display:none;position:fixed;top:0;left:0;right:0;z-index:2147483647;
   background:linear-gradient(to bottom,rgba(0,0,0,.7) 0%,transparent 100%);
   padding:10px 14px;flex-direction:row;align-items:center;gap:8px;
-  pointer-events:all;
+  pointer-events:all;box-sizing:border-box;width:100%;
 }
 .fs-controls.show{display:flex}
 .fs-btn{
@@ -843,7 +843,15 @@ function javaFetch(url){
     const id = 'j' + Date.now() + Math.random().toString(36).slice(2);
     window._jcb[id] = (err, data) => {
       if(err) reject(new Error(err));
-      else resolve(data);
+      else {
+        try {
+          // data llega en Base64 para evitar corrupción de caracteres especiales
+          const decoded = decodeURIComponent(escape(atob(data)));
+          resolve(decoded);
+        } catch(e) {
+          resolve(data); // fallback: usar directo si no es Base64
+        }
+      }
     };
     AndroidPlayer.fetchUrl(url, id);
   });
