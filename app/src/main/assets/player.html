@@ -14,29 +14,54 @@
   --green:#00ff88;--yellow:#ffc107;
   --text:#e0f4ff;--muted:#4a7a8a;--muted2:#7ab8cc;--radius:8px;
 }
+/* ═══ TEMAS ═══ */
+
+/* AMOLED — negro puro + rojo carmesí */
 body.theme-red{
-  --bg:#0e0a08;--bg2:#130c08;--bg3:#1a1008;--border:#2e1a10;
-  --accent:#ff6b35;--accent2:#ffaa3c;--blue:#ff6b35;
-  --green:#ffaa3c;--yellow:#ffc107;
-  --text:#ffe8d0;--muted:#7a4a2a;--muted2:#cc7a4a;
+  --bg:#000000;--bg2:#0d0305;--bg3:#120407;--border:#2a0a0e;
+  --accent:#dc143c;--accent2:#ff4567;--blue:#dc143c;
+  --green:#ff4567;--yellow:#ff6b6b;
+  --text:#ffe0e6;--muted:#6b2030;--muted2:#c04060;
 }
+
+/* Blanco — fondo limpio con toques de profundidad */
 body.theme-white{
-  --bg:#f0f2f5;--bg2:#ffffff;--bg3:#e8eaed;--border:#d0d5dd;
-  --accent:#0066cc;--accent2:#00aa66;--blue:#0066cc;
-  --green:#00aa66;--yellow:#e6a800;
-  --text:#1a1a2e;--muted:#6b7280;--muted2:#374151;
+  --bg:#f5f6fa;--bg2:#ffffff;--bg3:#eef0f7;--border:#d8dce8;
+  --accent:#1a56db;--accent2:#0ea5e9;--blue:#1a56db;
+  --green:#059669;--yellow:#d97706;
+  --text:#111827;--muted:#6b7280;--muted2:#374151;
 }
+
+/* Verde — bosque oscuro elegante */
 body.theme-green{
-  --bg:#000a00;--bg2:#001200;--bg3:#001a00;--border:#003300;
-  --accent:#00ff41;--accent2:#00cc33;--blue:#00ff41;
-  --green:#00ff41;--yellow:#aaff00;
-  --text:#ccffcc;--muted:#1a5c1a;--muted2:#33cc33;
+  --bg:#030d06;--bg2:#041208;--bg3:#06190b;--border:#0d3318;
+  --accent:#00c853;--accent2:#69f0ae;--blue:#00c853;
+  --green:#69f0ae;--yellow:#ccff90;
+  --text:#e0f5e9;--muted:#1b5e35;--muted2:#2e7d50;
 }
+
+/* Carbón — gris profundo + cyan suave */
 body.theme-black{
-  --bg:#000000;--bg2:#0a0a0a;--bg3:#111111;--border:#2a2a2a;
-  --accent:#ffffff;--accent2:#cccccc;--blue:#ffffff;
-  --green:#aaaaaa;--yellow:#dddddd;
-  --text:#eeeeee;--muted:#555555;--muted2:#888888;
+  --bg:#161b22;--bg2:#1c2128;--bg3:#21262d;--border:#30363d;
+  --accent:#58a6ff;--accent2:#79c0ff;--blue:#58a6ff;
+  --green:#3fb950;--yellow:#d29922;
+  --text:#c9d1d9;--muted:#484f58;--muted2:#8b949e;
+}
+
+/* Medianoche — azul profundo + blanco azulado */
+body.theme-midnight{
+  --bg:#010409;--bg2:#0d1117;--bg3:#161b22;--border:#1f2937;
+  --accent:#e6edf3;--accent2:#b1bac4;--blue:#79c0ff;
+  --green:#3fb950;--yellow:#d29922;
+  --text:#e6edf3;--muted:#2d3748;--muted2:#6e7681;
+}
+
+/* Violeta — púrpura oscuro + accent cian/turquesa */
+body.theme-warm{
+  --bg:#08050f;--bg2:#0e0918;--bg3:#140d22;--border:#2a1a40;
+  --accent:#00e5ff;--accent2:#7c4dff;--blue:#00e5ff;
+  --green:#7c4dff;--yellow:#e040fb;
+  --text:#ede7f6;--muted:#4a2d7a;--muted2:#9c7fd4;
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:var(--bg)}
@@ -1150,7 +1175,6 @@ function launchVLC(url,label=''){
 // ══ PLAYER ══
 let liveRetryTimer=null;
 function play(item){
-  toast(`PLAY: type=${item.type} series=${!!item._isSeries} url=${!!(item.url)}`, 4000);
   if(item.type==='series'){openSeries(item);return}
   const vid=document.getElementById('vid');
   S.current=item;
@@ -1169,7 +1193,6 @@ function play(item){
   if(!url){showOverlay(true,false,'❌ Sin URL');setStatus('error');return}
 
   // ── VOD/LIVE: usar PlayerActivity nativa si está disponible ──
-  toast(`DEBUG: Android=${typeof AndroidPlayer!=='undefined'} type=${item.type} series=${!!item._isSeries}`, 5000);
   if(typeof AndroidPlayer!=='undefined'){
     const pw=document.getElementById('playerWrap');
     pw.classList.add('android-mode');
@@ -1197,10 +1220,6 @@ function play(item){
         channelsJson=JSON.stringify(slim);
         channelIndex=slim.findIndex(c=>String(c.id)===String(item.id));
       }catch(e){channelsJson='[]';}
-    }
-    // DEBUG — ver propiedades del item
-    if(item.type==='vod' || item.type==='series'){
-      toast(`type=${item.type} _isSeries=${item._isSeries} id=${item.id}`, 5000);
     }
     // Pasar lista de episodios para series (reproducción continua)
     let episodesJson='[]';
@@ -1257,13 +1276,6 @@ function play(item){
       item._isSeries ? episodesJson : channelsJson,
       item._isSeries ? episodeIndex : channelIndex
     );
-    // DEBUG — mostrar cuántos episodios se pasan
-    if(item._isSeries){
-      try{
-        const epCount = JSON.parse(episodesJson).length;
-        toast(`🔢 Episodios: ${epCount} | Índice: ${episodeIndex}`, 4000);
-      }catch(e){ toast('❌ episodesJson inválido: '+e.message, 4000); }
-    }
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
@@ -1408,10 +1420,12 @@ function cleanHost(h){
 
 const THEMES=[
   {cls:'',       btn:'🎨', label:'Azul oscuro'},
-  {cls:'theme-red',   btn:'🔴', label:'Rojo/Naranja'},
-  {cls:'theme-white', btn:'⚪', label:'Blanco'},
-  {cls:'theme-green', btn:'💚', label:'Verde Neón'},
-  {cls:'theme-black', btn:'⬛', label:'Negro minimal'},
+  {cls:'theme-red',      btn:'⚫', label:'AMOLED'},
+  {cls:'theme-midnight', btn:'🌙', label:'Medianoche'},
+  {cls:'theme-warm',     btn:'🟣', label:'Violeta'},
+  {cls:'theme-white',    btn:'⚪', label:'Blanco'},
+  {cls:'theme-green',    btn:'💚', label:'Verde'},
+  {cls:'theme-black',    btn:'🩶', label:'Carbón'},
 ];
 function toggleTheme(){
   const cur=localStorage.getItem('iptv_theme')||'';
@@ -1721,7 +1735,6 @@ function renderSeriesModal(seasonKeys){
 }
 function selectSeason(k){const seasonKeys=Object.keys(seriesData.seasons).sort((a,b)=>parseInt(a)-parseInt(b));seriesData.activeSeason=k;renderSeriesModal(seasonKeys)}
 function playEpisodeByIdx(idx){
-  toast(`EPBYIDX: idx=${idx}`, 3000);
   if(!seriesData?.currentEps)return;
   const ep=seriesData.currentEps[idx];if(!ep)return;
   toast('▶ '+ep.name,3000);closeSeriesModalForce();
