@@ -963,6 +963,7 @@ public class PlayerActivity extends AppCompatActivity {
     private float gestureStartY = -1;
     private float gestureStartX = -1;
     private boolean gestureIsVolume = false;
+    private boolean gestureIsBrightness = false;
     private boolean gestureActive = false;
     private int gestureStartVolume = 0;
     private float gestureStartBrightness = 0;
@@ -990,14 +991,13 @@ public class PlayerActivity extends AppCompatActivity {
                     gestureStartX = event.getX();
                     gestureStartY = event.getY();
                     gestureActive = false;
-                    gestureIsVolume = gestureStartX < v.getWidth() / 2f;
+                    gestureIsVolume    = gestureStartX < v.getWidth() / 3f;
+                    gestureIsBrightness = gestureStartX > v.getWidth() * 2f / 3f;
                     if (gestureIsVolume) {
                         gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-                    } else {
-                        // Leer brillo actual de la ventana — no del sistema
+                    } else if (gestureIsBrightness) {
                         float winBright = getWindow().getAttributes().screenBrightness;
                         if (winBright < 0) {
-                            // Sin override — leer del sistema
                             try {
                                 winBright = Settings.System.getInt(
                                     getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
@@ -1007,6 +1007,8 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                     break;
                 case MotionEvent.ACTION_MOVE:
+                    // Zona central — no hacer nada
+                    if (!gestureIsVolume && !gestureIsBrightness) break;
                     float dy = gestureStartY - event.getY();
                     if (!gestureActive && Math.abs(dy) > 20) gestureActive = true;
                     if (gestureActive) {
@@ -1016,7 +1018,7 @@ public class PlayerActivity extends AppCompatActivity {
                                 gestureStartVolume + (int)(delta * maxVolume)));
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
                             int pct = (int)((float) newVol / maxVolume * 100);
-                            showGestureFeedback(gestureIsVolume, pct);
+                            showGestureFeedback(true, pct);
                         } else {
                             float newBright = Math.max(0.01f, Math.min(1f, gestureStartBrightness + delta));
                             WindowManager.LayoutParams lp = getWindow().getAttributes();
