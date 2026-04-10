@@ -68,7 +68,6 @@ public class PlayerActivity extends AppCompatActivity {
     private ProgressBar liveEpgProgress;
     private ImageButton liveBtnBack, liveBtnFav;
     private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop;
-    private ProgressBar progressBar;
 
     // VOD
     private LinearLayout vodLayout;
@@ -103,7 +102,6 @@ public class PlayerActivity extends AppCompatActivity {
     // Gestos volumen/brillo
     private AudioManager audioManager;
     private int maxVolume;
-    private TextView gestureOverlay;
     private final Handler gestureHideHandler = new Handler();
     private Runnable gestureHideRunnable;
 
@@ -206,7 +204,6 @@ public class PlayerActivity extends AppCompatActivity {
         liveTxtName   = findViewById(R.id.live_txt_name);
         liveTxtStatus = findViewById(R.id.live_txt_status);
         txtLoading    = findViewById(R.id.txt_loading);
-        progressBar   = findViewById(R.id.progress_bar);
         liveBtnBack   = findViewById(R.id.live_btn_back);
         liveBtnFav    = findViewById(R.id.live_btn_fav);
         liveBtnAudio  = findViewById(R.id.live_btn_audio);
@@ -264,7 +261,6 @@ public class PlayerActivity extends AppCompatActivity {
         // Gestos volumen/brillo
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        gestureOverlay = new TextView(this);
     }
 
     // Emojis puestos desde Java para evitar corrupcion UTF-8 en XML
@@ -498,6 +494,12 @@ public class PlayerActivity extends AppCompatActivity {
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
         player = new ExoPlayer.Builder(this)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
+                .setRenderersFactory(
+                    new androidx.media3.exoplayer.DefaultRenderersFactory(this)
+                        .setExtensionRendererMode(
+                            androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
+                        )
+                )
                 .build();
         pv.setPlayer(player);
 
