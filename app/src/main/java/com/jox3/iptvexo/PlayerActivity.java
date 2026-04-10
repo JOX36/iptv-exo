@@ -5,17 +5,21 @@ import android.app.AlertDialog;
 import android.app.PictureInPictureParams;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.provider.Settings;
 import android.util.Rational;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -94,6 +98,13 @@ public class PlayerActivity extends AppCompatActivity {
     private int retryCount = 0;
     private final Handler handler = new Handler();
     private GestureDetector gestureDetector;
+
+    // Gestos volumen/brillo
+    private AudioManager audioManager;
+    private int maxVolume;
+    private TextView gestureOverlay;
+    private final Handler gestureHideHandler = new Handler();
+    private Runnable gestureHideRunnable;
 
     // Progreso VOD
     private static final String PREFS_PROGRESS = "vod_progress";
@@ -247,6 +258,11 @@ public class PlayerActivity extends AppCompatActivity {
         nextEpBtnCancel= findViewById(R.id.next_ep_btn_cancel);
         nextEpBtnNow.setOnClickListener(v -> playNextEpisode());
         nextEpBtnCancel.setOnClickListener(v -> hideNextEpOverlay());
+
+        // Gestos volumen/brillo
+        audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        gestureOverlay = new TextView(this);
     }
 
     // Emojis puestos desde Java para evitar corrupcion UTF-8 en XML
@@ -382,7 +398,8 @@ public class PlayerActivity extends AppCompatActivity {
                 return true;
             }
         });
-        playerView.setOnTouchListener((v, e) -> { gestureDetector.onTouchEvent(e); return true; });
+        initGestureOverlay();
+        attachGestureListener(playerView);
     }
 
     // ══ SETUP VOD ══
@@ -423,6 +440,17 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnSubs.setOnClickListener(v -> showSubtitleTracks());
 
         vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
+
+        // Gestos volumen/brillo en VOD fullscreen
+        if (gestFeedbackLayout == null) initGestureOverlay();
+        gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
+            @Override
+            public boolean onSingleTapUp(MotionEvent e) {
+                if (isVodFullscreen) toggleVodFsBars();
+                return true;
+            }
+        });
+        attachGestureListener(vodPlayerView);
 
         fetchVodInfo();
     }
@@ -929,6 +957,106 @@ public class PlayerActivity extends AppCompatActivity {
         nextEpBtnCancel.setText("Cerrar");
         nextEpBtnCancel.setOnClickListener(v -> finish());
         nextEpOverlay.setVisibility(View.VISIBLE);
+    }
+
+    // ══ GESTOS VOLUMEN / BRILLO ══
+    private float gestureStartY = -1;
+    private float gestureStartX = -1;
+    private boolean gestureIsVolume = false;
+    private boolean gestureActive = false;
+    private int gestureStartVolume = 0;
+    private float gestureStartBrightness = 0;
+    private LinearLayout gestFeedbackLayout;
+    private TextView gestIconView, gestValueView;
+    private ProgressBar gestProgressView;
+
+    private void initGestureOverlay() {
+        gestFeedbackLayout = findViewById(R.id.gesture_overlay);
+        gestIconView       = findViewById(R.id.gesture_icon);
+        gestValueView      = findViewById(R.id.gesture_value);
+        gestProgressView   = findViewById(R.id.gesture_progress);
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    private void attachGestureListener(View view) {
+        view.setOnTouchListener((v, event) -> {
+            // Solo en fullscreen
+            if (!isFullscreenMode()) {
+                gestureDetector.onTouchEvent(event);
+                return true;
+            }
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    gestureStartX = event.getX();
+                    gestureStartY = event.getY();
+                    gestureActive = false;
+                    gestureIsVolume = gestureStartX < v.getWidth() / 2f;
+                    if (gestureIsVolume) {
+                        gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                    } else {
+                        try {
+                            gestureStartBrightness = Settings.System.getInt(
+                                getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
+                        } catch (Exception e) { gestureStartBrightness = 0.5f; }
+                    }
+                    break;
+                case MotionEvent.ACTION_MOVE:
+                    float dy = gestureStartY - event.getY();
+                    if (!gestureActive && Math.abs(dy) > 20) gestureActive = true;
+                    if (gestureActive) {
+                        float delta = dy / v.getHeight();
+                        if (gestureIsVolume) {
+                            int newVol = Math.max(0, Math.min(maxVolume,
+                                gestureStartVolume + (int)(delta * maxVolume)));
+                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
+                            int pct = (int)((float) newVol / maxVolume * 100);
+                            showGestureFeedback(gestureIsVolume, pct);
+                        } else {
+                            float newBright = Math.max(0.01f, Math.min(1f, gestureStartBrightness + delta));
+                            WindowManager.LayoutParams lp = getWindow().getAttributes();
+                            lp.screenBrightness = newBright;
+                            getWindow().setAttributes(lp);
+                            showGestureFeedback(false, (int)(newBright * 100));
+                        }
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    if (!gestureActive) {
+                        // Fue tap — pasar al detector normal
+                        gestureDetector.onTouchEvent(event);
+                    }
+                    hideGestureFeedbackDelayed();
+                    gestureActive = false;
+                    break;
+            }
+            gestureDetector.onTouchEvent(event);
+            return true;
+        });
+    }
+
+    private boolean isFullscreenMode() {
+        if (isVodType()) return isVodFullscreen;
+        return true; // Live siempre es fullscreen
+    }
+
+    private void showGestureFeedback(boolean isVolume, int pct) {
+        if (gestFeedbackLayout == null) return;
+        runOnUiThread(() -> {
+            gestFeedbackLayout.setVisibility(View.VISIBLE);
+            gestIconView.setText(isVolume ? (pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A") : "\u2600\uFE0F");
+            gestValueView.setText(pct + "%");
+            gestProgressView.setProgress(pct);
+            gestureHideHandler.removeCallbacks(gestureHideRunnable);
+        });
+    }
+
+    private void hideGestureFeedbackDelayed() {
+        gestureHideRunnable = () -> {
+            if (gestFeedbackLayout != null)
+                gestFeedbackLayout.setVisibility(View.GONE);
+        };
+        gestureHideHandler.postDelayed(gestureHideRunnable, 1200);
     }
 
     // ══ LIFECYCLE ══
