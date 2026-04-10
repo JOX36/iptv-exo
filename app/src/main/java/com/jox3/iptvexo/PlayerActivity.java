@@ -494,12 +494,6 @@ public class PlayerActivity extends AppCompatActivity {
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
         player = new ExoPlayer.Builder(this)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
-                .setRenderersFactory(
-                    new androidx.media3.exoplayer.DefaultRenderersFactory(this)
-                        .setExtensionRendererMode(
-                            androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-                        )
-                )
                 .build();
         pv.setPlayer(player);
 
