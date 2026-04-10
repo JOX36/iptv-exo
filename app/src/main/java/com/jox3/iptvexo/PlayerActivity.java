@@ -441,12 +441,24 @@ public class PlayerActivity extends AppCompatActivity {
 
         vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
 
-        // Gestos volumen/brillo en VOD fullscreen
+        // Gestos VOD: volumen/brillo + doble tap seek + swipe horizontal seek
         if (gestFeedbackLayout == null) initGestureOverlay();
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
                 if (isVodFullscreen) toggleVodFsBars();
+                return true;
+            }
+            @Override
+            public boolean onDoubleTap(MotionEvent e) {
+                if (!isVodType() || player == null) return false;
+                // Solo en fullscreen o modo portrait — siempre para VOD
+                boolean isLeft = e.getX() < vodPlayerView.getWidth() / 2f;
+                long seekMs = isLeft ? -10000 : 10000;
+                long newPos = Math.max(0, Math.min(
+                    player.getDuration(), player.getCurrentPosition() + seekMs));
+                player.seekTo(newPos);
+                showSeekFeedback(isLeft ? -10 : +10);
                 return true;
             }
         });
@@ -967,6 +979,9 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean gestureActive = false;
     private int gestureStartVolume = 0;
     private float gestureStartBrightness = 0;
+    // Swipe seek
+    private long seekStartPosition = -1;
+    private boolean gestureIsSeek = false;
     private LinearLayout gestFeedbackLayout;
     private TextView gestIconView, gestValueView;
     private ProgressBar gestProgressView;
@@ -991,7 +1006,8 @@ public class PlayerActivity extends AppCompatActivity {
                     gestureStartX = event.getX();
                     gestureStartY = event.getY();
                     gestureActive = false;
-                    gestureIsVolume    = gestureStartX < v.getWidth() / 3f;
+                    gestureIsSeek = false;
+                    gestureIsVolume     = gestureStartX < v.getWidth() / 3f;
                     gestureIsBrightness = gestureStartX > v.getWidth() * 2f / 3f;
                     if (gestureIsVolume) {
                         gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
@@ -1004,22 +1020,44 @@ public class PlayerActivity extends AppCompatActivity {
                             } catch (Exception e) { winBright = 0.5f; }
                         }
                         gestureStartBrightness = winBright;
+                    } else if (isVodType() && player != null) {
+                        // Zona central — seek horizontal
+                        seekStartPosition = player.getCurrentPosition();
                     }
                     break;
                 case MotionEvent.ACTION_MOVE:
-                    // Zona central — no hacer nada
-                    if (!gestureIsVolume && !gestureIsBrightness) break;
+                    if (!gestureIsVolume && !gestureIsBrightness && !gestureIsSeek) {
+                        // Detectar si es seek horizontal
+                        float dxRaw = event.getX() - gestureStartX;
+                        float dyRaw = event.getY() - gestureStartY;
+                        if (Math.abs(dxRaw) > 30 && Math.abs(dxRaw) > Math.abs(dyRaw) * 1.5f) {
+                            gestureIsSeek = true;
+                        }
+                    }
                     float dy = gestureStartY - event.getY();
-                    if (!gestureActive && Math.abs(dy) > 20) gestureActive = true;
+                    float dx = event.getX() - gestureStartX;
+                    if (!gestureActive && (Math.abs(dy) > 20 || Math.abs(dx) > 30)) gestureActive = true;
                     if (gestureActive) {
-                        float delta = dy / v.getHeight();
-                        if (gestureIsVolume) {
+                        if (gestureIsSeek && isVodType() && player != null && seekStartPosition >= 0) {
+                            // Seek horizontal — 1% por cada 8dp de swipe
+                            long dur = player.getDuration();
+                            if (dur > 0) {
+                                long seekDelta = (long)(dx / v.getWidth() * dur);
+                                long newPos = Math.max(0, Math.min(dur, seekStartPosition + seekDelta));
+                                player.seekTo(newPos);
+                                long newSecs = newPos / 1000;
+                                String timeStr = String.format("%d:%02d:%02d",
+                                    newSecs/3600, (newSecs%3600)/60, newSecs%60);
+                                showSeekTimeFeedback(dx > 0, timeStr, (int)(newPos * 100 / dur));
+                            }
+                        } else if (gestureIsVolume) {
+                            float delta = dy / v.getHeight();
                             int newVol = Math.max(0, Math.min(maxVolume,
                                 gestureStartVolume + (int)(delta * maxVolume)));
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
-                            int pct = (int)((float) newVol / maxVolume * 100);
-                            showGestureFeedback(true, pct);
-                        } else {
+                            showGestureFeedback(true, (int)((float)newVol/maxVolume*100));
+                        } else if (gestureIsBrightness) {
+                            float delta = dy / v.getHeight();
                             float newBright = Math.max(0.01f, Math.min(1f, gestureStartBrightness + delta));
                             WindowManager.LayoutParams lp = getWindow().getAttributes();
                             lp.screenBrightness = newBright;
@@ -1054,6 +1092,29 @@ public class PlayerActivity extends AppCompatActivity {
             gestFeedbackLayout.setVisibility(View.VISIBLE);
             gestIconView.setText(isVolume ? (pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A") : "\u2600\uFE0F");
             gestValueView.setText(pct + "%");
+            gestProgressView.setProgress(pct);
+            gestureHideHandler.removeCallbacks(gestureHideRunnable);
+        });
+    }
+
+    private void showSeekFeedback(int seconds) {
+        if (gestFeedbackLayout == null) return;
+        runOnUiThread(() -> {
+            gestFeedbackLayout.setVisibility(View.VISIBLE);
+            gestIconView.setText(seconds > 0 ? "\u23E9" : "\u23EA");
+            gestValueView.setText((seconds > 0 ? "+" : "") + seconds + "s");
+            gestProgressView.setProgress(50);
+            gestureHideHandler.removeCallbacks(gestureHideRunnable);
+            hideGestureFeedbackDelayed();
+        });
+    }
+
+    private void showSeekTimeFeedback(boolean forward, String timeStr, int pct) {
+        if (gestFeedbackLayout == null) return;
+        runOnUiThread(() -> {
+            gestFeedbackLayout.setVisibility(View.VISIBLE);
+            gestIconView.setText(forward ? "\u23E9" : "\u23EA");
+            gestValueView.setText(timeStr);
             gestProgressView.setProgress(pct);
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
         });
