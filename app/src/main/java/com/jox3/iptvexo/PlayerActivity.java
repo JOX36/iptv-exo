@@ -67,7 +67,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView liveEpgNow, liveEpgTime, liveEpgNext;
     private ProgressBar liveEpgProgress;
     private ImageButton liveBtnBack, liveBtnFav;
-    private Button liveBtnAudio, liveBtnSubs, liveBtnPip, liveBtnExt, liveBtnStop;
+    private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop;
     private ProgressBar progressBar;
 
     // VOD
@@ -83,6 +83,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout vodFsTop, vodFsBottom;
     private TextView vodFsTxtTitle;
     private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt, vodFsBtnUrl, vodFsBtnSubs;
+    private Button vodFsBtnPause, vodFsBtnStop;
 
     // Datos
     private String url, name, group, type, logo, itemId;
@@ -209,7 +210,6 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnBack   = findViewById(R.id.live_btn_back);
         liveBtnFav    = findViewById(R.id.live_btn_fav);
         liveBtnAudio  = findViewById(R.id.live_btn_audio);
-        liveBtnSubs   = findViewById(R.id.live_btn_subs);
         liveBtnPip    = findViewById(R.id.live_btn_pip);
         liveBtnExt    = findViewById(R.id.live_btn_ext);
         liveBtnStop   = findViewById(R.id.live_btn_stop);
@@ -249,6 +249,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExt   = findViewById(R.id.vod_fs_btn_ext);
         vodFsBtnUrl   = findViewById(R.id.vod_fs_btn_url);
         vodFsBtnSubs  = findViewById(R.id.vod_fs_btn_subs);
+        vodFsBtnPause = findViewById(R.id.vod_fs_btn_pause);
+        vodFsBtnStop  = findViewById(R.id.vod_fs_btn_stop);
 
         // Siguiente episodio
         nextEpOverlay  = findViewById(R.id.next_ep_overlay);
@@ -268,7 +270,6 @@ public class PlayerActivity extends AppCompatActivity {
     // Emojis puestos desde Java para evitar corrupcion UTF-8 en XML
     private void setEmojiLabels() {
         liveBtnAudio.setText("\uD83D\uDD0A Audio");
-        liveBtnSubs.setText("\uD83D\uDCAC Subs");
         liveBtnExt.setText("\uD83D\uDCF2 Externo");
         liveBtnStop.setText("\u23F9 Detener");
         vodBtnFullscreen.setText("\u26F6 Pantalla completa");
@@ -370,7 +371,6 @@ public class PlayerActivity extends AppCompatActivity {
         liveTxtName.setText(name);
         liveTxtStatus.setText("\u25CF EN VIVO");
         liveBtnAudio.setVisibility(View.GONE);
-        liveBtnSubs.setVisibility(View.GONE);
 
         liveBtnBack.setOnClickListener(v -> { stopAndRelease(); finish(); });
         liveBtnStop.setOnClickListener(v -> { stopAndRelease(); finish(); });
@@ -378,7 +378,6 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnPip.setOnClickListener(v -> enterPip());
         liveBtnExt.setOnClickListener(v -> launchExternal());
         liveBtnAudio.setOnClickListener(v -> showAudioTracks());
-        liveBtnSubs.setOnClickListener(v -> showSubtitleTracks());
 
         // Swipe para canal siguiente/anterior + tap para barras
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -438,6 +437,28 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExt.setOnClickListener(v -> launchExternal());
         vodFsBtnUrl.setOnClickListener(v -> copyUrl());
         vodFsBtnSubs.setOnClickListener(v -> showSubtitleTracks());
+
+        // Pausa/Play en fullscreen
+        vodFsBtnPause.setOnClickListener(v -> {
+            if (player == null) return;
+            if (player.isPlaying()) {
+                player.pause();
+                vodFsBtnPause.setText("\u25B6");
+                vodFsBtnPause.setTextColor(0xFF00FF88);
+            } else {
+                player.play();
+                vodFsBtnPause.setText("\u23F8");
+                vodFsBtnPause.setTextColor(0xFF00D4FF);
+            }
+        });
+
+        // Detener — sale de fullscreen y pausa
+        vodFsBtnStop.setOnClickListener(v -> {
+            if (player != null) player.pause();
+            vodFsBtnPause.setText("\u25B6");
+            vodFsBtnPause.setTextColor(0xFF00FF88);
+            if (isVodFullscreen) exitVodFullscreen();
+        });
 
         vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
 
@@ -514,7 +535,6 @@ public class PlayerActivity extends AppCompatActivity {
                         vodFsBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
                     } else {
                         liveBtnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
-                        liveBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
                     }
                 });
             }
