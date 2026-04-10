@@ -994,10 +994,16 @@ public class PlayerActivity extends AppCompatActivity {
                     if (gestureIsVolume) {
                         gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                     } else {
-                        try {
-                            gestureStartBrightness = Settings.System.getInt(
-                                getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
-                        } catch (Exception e) { gestureStartBrightness = 0.5f; }
+                        // Leer brillo actual de la ventana — no del sistema
+                        float winBright = getWindow().getAttributes().screenBrightness;
+                        if (winBright < 0) {
+                            // Sin override — leer del sistema
+                            try {
+                                winBright = Settings.System.getInt(
+                                    getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
+                            } catch (Exception e) { winBright = 0.5f; }
+                        }
+                        gestureStartBrightness = winBright;
                     }
                     break;
                 case MotionEvent.ACTION_MOVE:
