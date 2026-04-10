@@ -163,17 +163,6 @@
             android:visibility="gone" />
 
         <Button
-            android:id="@+id/live_btn_subs"
-            android:layout_width="wrap_content"
-            android:layout_height="34dp"
-            android:text="Subs"
-            android:textSize="11sp"
-            android:backgroundTint="#1a2535"
-            android:textColor="#7ab8cc"
-            android:layout_marginEnd="8dp"
-            android:visibility="gone" />
-
-        <Button
             android:id="@+id/live_btn_pip"
             android:layout_width="wrap_content"
             android:layout_height="34dp"
@@ -492,6 +481,26 @@
         android:padding="10dp"
         android:gravity="center"
         android:visibility="gone">
+
+        <Button
+            android:id="@+id/vod_fs_btn_pause"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="⏸"
+            android:textSize="14sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#00d4ff"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/vod_fs_btn_stop"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="⏹"
+            android:textSize="14sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#ef4444"
+            android:layout_marginEnd="8dp" />
 
         <Button
             android:id="@+id/vod_fs_btn_pip"
