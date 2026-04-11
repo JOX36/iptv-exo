@@ -316,32 +316,39 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .quality-badge.fhd{background:rgba(0,255,136,.85)}
 .quality-badge.uhd{background:rgba(255,193,7,.85)}
 
-.ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
-.ch-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 8px;cursor:pointer;transition:all .22s cubic-bezier(.4,0,.2,1);text-align:center;position:relative;overflow:hidden}
-.ch-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,212,255,.06),transparent);opacity:0;transition:opacity .2s}
-.ch-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,212,255,.15)}
+.ch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:10px}
+.ch-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 8px 10px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;text-align:center;position:relative;overflow:hidden}
+.ch-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,212,255,.1),transparent 60%);opacity:0;transition:opacity .3s}
+.ch-card:hover{border-color:var(--accent);transform:translateY(-4px) scale(1.03);box-shadow:0 10px 28px rgba(0,212,255,.22)}
 .ch-card:hover::after{opacity:1}
-.ch-card:active{transform:translateY(0);transition:transform .1s}
-.ch-card.active{border-color:var(--accent);background:rgba(0,212,255,.08);box-shadow:0 0 0 1px rgba(0,212,255,.3)}
-.ch-img{width:50px;height:50px;border-radius:8px;object-fit:contain;background:var(--bg3);margin:0 auto 7px;display:block}
+.ch-card:active{transform:translateY(0) scale(.97);transition:transform .1s}
+.ch-card.active{border-color:var(--accent);background:rgba(0,212,255,.08);box-shadow:0 0 0 2px rgba(0,212,255,.25)}
+.ch-img{width:56px;height:56px;border-radius:10px;object-fit:contain;background:var(--bg3);margin:0 auto 8px;display:block;transition:transform .25s}
+.ch-card:hover .ch-img{transform:scale(1.1)}
 .ch-ph{width:50px;height:50px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);margin:0 auto 7px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;color:var(--muted)}
-.ch-name{font-size:.7rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ch-name{font-size:.72rem;font-weight:600;overflow:hidden;white-space:nowrap;position:relative}
+.ch-name-inner{display:inline-block;white-space:nowrap;padding-right:16px;animation:none}
+.ch-card:hover .ch-name-inner.marquee{animation:marquee-scroll 4s linear infinite}
+@keyframes marquee-scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .ch-epg{font-size:.58rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
 .fav-btn{position:absolute;top:4px;right:4px;background:none;border:none;cursor:pointer;font-size:.85rem;padding:2px;transition:all .2s;opacity:.45;filter:grayscale(1) brightness(1.8)}
 .fav-btn:hover{opacity:1;filter:grayscale(0) brightness(1)}
 .fav-btn.on{opacity:1;filter:grayscale(0) brightness(1);text-shadow:0 0 8px rgba(255,193,7,.7)}
-.vod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
-.vod-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer;transition:all .22s cubic-bezier(.4,0,.2,1);overflow:hidden;position:relative}
-.vod-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,212,255,.18)}
-.vod-card:active{transform:translateY(0);transition:transform .1s}
-.vod-card.active{border-color:var(--accent);box-shadow:0 0 0 1px rgba(0,212,255,.3)}
+.vod-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+.vod-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;overflow:hidden;position:relative}
+.vod-card:hover{border-color:var(--accent);transform:translateY(-5px) scale(1.02);box-shadow:0 12px 32px rgba(0,212,255,.25)}
+.vod-card:active{transform:translateY(0) scale(.98);transition:transform .1s}
+.vod-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,212,255,.3)}
 .vod-prog-bar{position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(255,255,255,.1)}
 .vod-prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:0 2px 2px 0}
 .vod-seen-badge{position:absolute;top:4px;right:4px;background:rgba(0,255,136,.85);color:#0a0e14;font-size:.52rem;font-weight:800;padding:2px 5px;border-radius:3px;pointer-events:none}
-.vod-thumb{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--bg3);display:block}
+.vod-thumb{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--bg3);display:block;transition:transform .3s}
+.vod-card:hover .vod-thumb{transform:scale(1.05)}
 .vod-ph{width:100%;aspect-ratio:2/3;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:2.2rem;color:var(--muted)}
-.vod-info{padding:7px 8px}
-.vod-name{font-size:.7rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vod-info{padding:8px 9px 9px}
+.vod-name{font-size:.72rem;font-weight:600;overflow:hidden;white-space:nowrap;position:relative}
+.vod-name-inner{display:inline-block;white-space:nowrap;padding-right:16px;animation:none}
+.vod-card:hover .vod-name-inner.marquee{animation:marquee-scroll 5s linear infinite}
 .vod-rating{font-size:.65rem;color:var(--yellow);margin-top:2px}
 .list-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;border-radius:4px;padding-left:4px}
 .list-item:hover{background:rgba(0,212,255,.04)}
@@ -1019,9 +1026,12 @@ function chCard(ch){
   const isFav=S.favs.has(fk(ch));const epg=EPG_CACHE[ch.id];
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
   const imgEl=ch.logo?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="ch-ph">📺</div>`;
+  // Marquesina — duplicar texto para loop continuo
+  const nameEsc=esc(ch.name);
+  const nameEl=`<div class="ch-name"><span class="ch-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>`;
   return `<div class="ch-card${isAct?' active':''}" data-id="${ch.id}" onclick='play(${js(ch)})'>
     ${qBadge}${imgEl}
-    <div class="ch-name">${esc(ch.name)}</div>
+    ${nameEl}
     <div class="ch-epg">${epg?.title?'▸ '+esc(epg.title):''}</div>
     <button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button>
   </div>`;
@@ -1036,7 +1046,18 @@ function vodCard(ch){
   const pct=vodProgressPct(ch.id);
   const progBar=pct>0?`<div class="vod-prog-bar"><div class="vod-prog-fill" style="width:${pct}%"></div></div>`:'';
   const seenBadge=pct>=95?`<span class="vod-seen-badge">✓ Vista</span>`:'';
-  return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'><div style="position:relative">${imgEl}${qBadge}${seenBadge}</div><div class="vod-info"><div class="vod-name">${esc(ch.name)}</div>${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}</div>${progBar}<button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button></div>`;
+  // Marquesina
+  const nameEsc=esc(ch.name);
+  const nameEl=`<div class="vod-name"><span class="vod-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>`;
+  return `<div class="vod-card${isAct?' active':''}" onclick='${onclick}'>
+    <div style="position:relative">${imgEl}${qBadge}${seenBadge}</div>
+    <div class="vod-info">
+      ${nameEl}
+      ${ch.rating?`<div class="vod-rating">⭐ ${esc(ch.rating)}</div>`:''}
+    </div>
+    ${progBar}
+    <button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button>
+  </div>`;
 }
 function renderSide(){
   const el=document.getElementById('sideList');const t=S.sTab;
