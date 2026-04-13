@@ -105,6 +105,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .topbar-search input:focus{border-color:var(--accent)}
 .topbar-search::before{content:'🔍';position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:.72rem;pointer-events:none}
 .tb-btn{background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--muted2);cursor:pointer;font-size:.8rem;padding:6px 8px;transition:all .2s;white-space:nowrap;flex-shrink:0;user-select:none;-webkit-user-select:none}
+.tb-btn.multi-active{border-color:var(--accent);color:var(--accent);background:rgba(0,212,255,.1)}
 .tb-btn:hover{border-color:var(--accent);color:var(--accent)}
 
 /* ACCOUNT SELECTOR */
@@ -554,6 +555,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
     <div class="topbar-row2">
       <button class="tb-btn" onclick="toggleSidebar()">☰</button>
       <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="doSearch(this.value)"></div>
+      <button class="tb-btn" id="multiSearchBtn" onclick="toggleMultiSearch()" title="Buscar en todos los servidores">🌐</button>
       <button class="tb-btn" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">🎨</button>
     </div>
     <div class="search-filters hidden" id="searchFilters" style="display:none!important"></div>
@@ -1081,6 +1083,8 @@ function setContent(html){document.getElementById('contentArea').innerHTML=html}
 
 // ══ GLOBAL INDEX ══
 const IDX={items:[],done:false,running:false};
+// Índice multi-servidor — resultados combinados de todas las cuentas
+const MIDX={items:[],done:false,running:false,servers:[]};
 async function startBackgroundIndex(){
   if(IDX.running||IDX.done)return;IDX.running=true;IDX.items=[];
   const bar=document.getElementById('indexBar'),prog=document.getElementById('indexProgress'),status=document.getElementById('indexStatus');
@@ -1151,22 +1155,94 @@ function doSearch(q){
     setContent(`<div class="empty"><div class="empty-icon">📂</div><p>Elige una categoría</p></div>`);
     return;
   }
-  const pool=IDX.items.length>0?IDX.items:Object.entries(S.cats).flatMap(([sec,cats])=>cats.filter(c=>c.loaded).flatMap(c=>c.items.map(i=>({...i,_sec:sec}))));
+
+  // Elegir pool — multi o normal
+  let pool;
+  if(multiSearchActive){
+    if(MIDX.running){
+      setContent(`<div class="empty"><div class="empty-icon">🌐</div><p>Indexando servidores... espera un momento</p></div>`);
+      return;
+    }
+    pool = MIDX.done ? MIDX.items :
+      (IDX.items.length>0 ? IDX.items : Object.entries(S.cats).flatMap(([sec,cats])=>cats.filter(c=>c.loaded).flatMap(c=>c.items.map(i=>({...i,_sec:sec})))));
+  } else {
+    pool = IDX.items.length>0 ? IDX.items :
+      Object.entries(S.cats).flatMap(([sec,cats])=>cats.filter(c=>c.loaded).flatMap(c=>c.items.map(i=>({...i,_sec:sec}))));
+  }
+
   if(!pool.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Aún indexando...</p></div>`);return}
+
   let results=pool.filter(i=>i.name.toLowerCase().includes(q));
   if(S.searchFilter!=='all') results=results.filter(i=>(i._sec||i.type)===S.searchFilter);
   if(!results.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Sin resultados para "${q}"</p></div>`);return}
+
   const groups={live:[],vod:[],series:[]};
   results.forEach(i=>{const sec=i._sec||i.type||'live';if(groups[sec])groups[sec].push(i)});
   const secInfo={live:{icon:'📺',label:'TV en Vivo'},vod:{icon:'🎬',label:'Películas'},series:{icon:'🎭',label:'Series'}};
-  let html=`<div class="sec-hdr"><h2>🔍 "${q}"</h2><small>${results.length} resultados</small></div>`;
+  const modeLabel = multiSearchActive ? ` <span style="font-size:.65rem;color:var(--accent)">🌐 multi-servidor</span>` : '';
+  let html=`<div class="sec-hdr"><h2>🔍 "${q}"${modeLabel}</h2><small>${results.length} resultados</small></div>`;
+
   for(const[sec,items]of Object.entries(groups)){
     if(!items.length)continue;const{icon,label}=secInfo[sec];
     html+=`<div class="search-section"><div class="search-section-title">${icon} ${label}<span class="search-count">${items.length}</span></div>`;
-    html+=sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
+    // En modo multi mostrar badge del servidor
+    if(multiSearchActive && MIDX.done){
+      const cards = items.map(item=>{
+        const serverBadge = item._serverHost ?
+          `<div style="font-size:.55rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">
+            🌐 ${item._serverHost.replace(/^https?:\/\//,'').split(':')[0]}
+          </div>` : '';
+        if(sec==='live'){
+          // Inyectar badge servidor en chCard
+          return chCardMulti(item, serverBadge);
+        } else {
+          return vodCardMulti(item, serverBadge);
+        }
+      }).join('');
+      html += sec==='live' ? `<div class="ch-grid">${cards}</div>` : `<div class="vod-grid">${cards}</div>`;
+    } else {
+      html+=sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
+    }
     html+=`</div>`;
   }
   document.getElementById('contentArea').innerHTML=html;
+}
+
+function chCardMulti(ch, serverBadge){
+  const isFav=S.favs.has(fk(ch));
+  const imgEl=ch.logo?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="ch-ph">📺</div>`;
+  const nameEsc=esc(ch.name);
+  // Para multi-servidor necesitamos pasar el item con sus credenciales
+  const itemJs=js({...ch,url:ch.url||''});
+  return `<div class="ch-card" onclick='playMulti(${itemJs})'>
+    ${imgEl}
+    <div class="ch-name"><span class="ch-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>
+    ${serverBadge}
+  </div>`;
+}
+
+function vodCardMulti(ch, serverBadge){
+  const ph=ch.type==='series'?'🎭':'🎬';
+  const imgEl=ch.cover?`<img class="vod-thumb" src="${esc(ch.cover)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="vod-ph">${ph}</div>`;
+  const itemJs=js({...ch,url:ch.url||''});
+  const onclick=ch.type==='series'?`playMulti(${itemJs})`:`playMulti(${itemJs})`;
+  const nameEsc=esc(ch.name);
+  return `<div class="vod-card" onclick='${onclick}'>
+    <div style="position:relative">${imgEl}</div>
+    <div class="vod-info">
+      <div class="vod-name"><span class="vod-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>
+      ${serverBadge}
+    </div>
+  </div>`;
+}
+
+function playMulti(item){
+  // Si el item es del servidor activo — reproducir normal
+  if(!item._serverHost || (item._serverHost===S.host && item._serverUser===S.user)){
+    play(item); return;
+  }
+  // Item de otro servidor — reproducir directamente con su URL
+  play(item);
 }
 
 // ══ QUALITY DETECT ══
@@ -2275,6 +2351,111 @@ function openItemInfo(item){
   if(item.type==='series') play(item);
   else if(item.type==='vod') openVodInfo(item);
   else play(item);
+}
+
+// ══ BÚSQUEDA MULTI-SERVIDOR ══
+let multiSearchActive = false;
+
+function toggleMultiSearch(){
+  multiSearchActive = !multiSearchActive;
+  const btn = document.getElementById('multiSearchBtn');
+  btn.classList.toggle('multi-active', multiSearchActive);
+  btn.title = multiSearchActive ? 'Búsqueda multi-servidor activa' : 'Buscar en todos los servidores';
+
+  if(multiSearchActive){
+    toast('🌐 Búsqueda multi-servidor activada', 2000);
+    // Iniciar indexación de todos los servidores en background
+    if(!MIDX.done && !MIDX.running) startMultiIndex();
+  } else {
+    toast('Búsqueda normal', 1500);
+    // Limpiar búsqueda actual
+    const q = document.getElementById('searchBox').value.trim();
+    if(q) doSearch(q);
+  }
+}
+
+async function startMultiIndex(){
+  const accs = (lsGet(K.ACCS)||[]).filter(a=>!a.isLocal);
+  if(accs.length === 0){ toast('⚠️ No hay otros servidores guardados', 2000); return; }
+
+  MIDX.running = true;
+  MIDX.items = [];
+  MIDX.servers = [];
+
+  toast(`🌐 Indexando ${accs.length} servidor(es)...`, 3000);
+
+  // Indexar cada servidor en paralelo
+  await Promise.all(accs.map(async acc => {
+    // Saltar el servidor activo — ya está en IDX
+    if(acc.host === S.host && acc.user === S.user) return;
+    try {
+      const serverItems = await indexServer(acc);
+      MIDX.items.push(...serverItems);
+      MIDX.servers.push(acc.host);
+    } catch(e) {}
+  }));
+
+  // Agregar items del servidor activo también
+  if(IDX.items.length > 0){
+    IDX.items.forEach(item => {
+      MIDX.items.push({...item, _serverHost: S.host, _serverUser: S.user});
+    });
+  }
+
+  MIDX.done = true;
+  MIDX.running = false;
+  toast(`✅ Multi-índice listo — ${MIDX.items.length.toLocaleString()} elementos`, 2000);
+
+  // Refrescar búsqueda si hay query activo
+  const q = document.getElementById('searchBox').value.trim();
+  if(q) doSearch(q);
+}
+
+async function indexServer(acc){
+  const items = [];
+  const secs = ['live','vod','series'];
+  const catA = {live:'get_live_categories',vod:'get_vod_categories',series:'get_series_categories'};
+  const itemA = {live:'get_live_streams',vod:'get_vod_streams',series:'get_series'};
+
+  for(const sec of secs){
+    try {
+      // Usar xApiFor para hacer peticiones a otro servidor
+      const data = await xApiFor(acc, itemA[sec]);
+      const list = Array.isArray(data) ? data : [];
+      list.forEach(s => {
+        let item;
+        if(sec==='series'){
+          item={id:s.series_id,name:s.name||'?',logo:s.cover||'',cover:s.cover||'',rating:s.rating||'',type:'series',_sec:'series'};
+        } else if(sec==='vod'){
+          item={id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',cover:s.stream_icon||'',rating:s.rating||'',type:'vod',url:`${acc.host}/movie/${acc.user}/${acc.pass}/${s.stream_id}.mp4`,_sec:'vod'};
+        } else {
+          item={id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',type:'live',url:`${acc.host}/live/${acc.user}/${acc.pass}/${s.stream_id}.m3u8`,_sec:'live'};
+        }
+        item._serverHost = acc.host;
+        item._serverUser = acc.user;
+        item._serverPass = acc.pass;
+        items.push(item);
+      });
+    } catch(e) {}
+  }
+  return items;
+}
+
+async function xApiFor(acc, action, extra=''){
+  const url = `${acc.host}/player_api.php?username=${acc.user}&password=${acc.pass}&action=${action}${extra}`;
+  if(typeof AndroidPlayer !== 'undefined'){
+    return new Promise((resolve, reject)=>{
+      const id = 'j'+Date.now()+Math.random().toString(36).slice(2);
+      window._jcb[id] = (err, data) => {
+        if(err) reject(new Error(err));
+        else resolve(JSON.parse(data));
+      };
+      AndroidPlayer.fetchUrl(url, id);
+    });
+  }
+  const r = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0'}});
+  if(!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
 }
 
 // ══ INIT ══
