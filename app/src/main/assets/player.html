@@ -1188,43 +1188,58 @@ function doSearch(q){
 
 function doMultiSearch(q){
   if(MIDX.running){
-    setContent(`<div class="empty"><div class="empty-icon">🌐</div><p>Indexando servidores... espera un momento</p></div>`);
+    setContent(`<div class="empty"><div class="empty-icon">🌐</div><p>Indexando servidores...<br><small>Espera un momento y vuelve a buscar</small></p></div>`);
     return;
   }
-  const pool = MIDX.done ? MIDX.items :
-    (IDX.items.length>0 ? IDX.items.map(i=>({...i,_serverHost:S.host,_serverUser:S.user})) : []);
-  if(!pool.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Aún indexando...</p></div>`);return}
+  if(!MIDX.done){
+    // No ha iniciado — iniciar y avisar
+    startMultiIndex();
+    setContent(`<div class="empty"><div class="empty-icon">🌐</div><p>Iniciando índice multi-servidor...<br><small>Vuelve a buscar en unos segundos</small></p></div>`);
+    return;
+  }
 
-  const results = pool.filter(i=>i.name.toLowerCase().includes(q));
-  if(!results.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Sin resultados para "${q}"</p></div>`);return}
+  const results = MIDX.items.filter(i=>i.name.toLowerCase().includes(q));
+  if(!results.length){
+    setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Sin resultados para "${q}" en ningún servidor</p></div>`);
+    return;
+  }
 
   // Agrupar por servidor primero, luego por tipo
   const byServer = {};
   results.forEach(item=>{
-    const srvKey = item._serverHost || S.host;
-    if(!byServer[srvKey]) byServer[srvKey] = {live:[],vod:[],series:[],user:item._serverUser||S.user};
+    const srvKey = (item._serverHost||S.host) + '|' + (item._serverUser||S.user);
+    if(!byServer[srvKey]) byServer[srvKey] = {
+      live:[], vod:[], series:[],
+      host: item._serverHost||S.host,
+      user: item._serverUser||S.user
+    };
     const sec = item._sec || item.type || 'live';
     if(byServer[srvKey][sec]) byServer[srvKey][sec].push(item);
   });
 
   const secInfo={live:{icon:'📺',label:'TV en Vivo'},vod:{icon:'🎬',label:'Películas'},series:{icon:'🎭',label:'Series'}};
-  let html=`<div class="sec-hdr"><h2>🔍 "${q}" <span style="font-size:.65rem;color:var(--accent)">🌐 multi-servidor</span></h2><small>${results.length} resultados en ${Object.keys(byServer).length} servidor(es)</small></div>`;
+  let html=`<div class="sec-hdr"><h2>🔍 "${q}" <span style="font-size:.65rem;color:var(--accent)">🌐 multi-servidor</span></h2>
+    <small>${results.length} resultados en ${Object.keys(byServer).length} servidor(es)</small></div>`;
 
-  for(const[srvHost, data] of Object.entries(byServer)){
-    const srvLabel = srvHost.replace(/^https?:\/\//,'').split(':')[0];
+  for(const[, data] of Object.entries(byServer)){
+    const srvLabel = data.host.replace(/^https?:\/\//,'').split(':')[0];
     const total = data.live.length + data.vod.length + data.series.length;
+
     html+=`<div class="search-section">
-      <div class="search-section-title" style="background:rgba(0,212,255,.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">
+      <div class="search-section-title" style="background:rgba(0,212,255,.06);border-radius:8px;padding:8px 12px;margin-bottom:10px;border:1px solid rgba(0,212,255,.15)">
         🌐 <span style="color:var(--accent);font-weight:700">${esc(srvLabel)}</span>
+        <span style="color:var(--muted);font-size:.7rem;margin-left:4px">${esc(data.user)}</span>
         <span class="search-count">${total}</span>
       </div>`;
 
     for(const[sec,items] of Object.entries({live:data.live,vod:data.vod,series:data.series})){
       if(!items.length) continue;
       const{icon,label}=secInfo[sec];
-      html+=`<div style="margin-bottom:10px">
-        <div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;padding-left:2px">${icon} ${label} <span style="color:var(--muted)">(${items.length})</span></div>`;
-      html+=sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
+      html+=`<div style="margin-bottom:12px">
+        <div style="font-size:.75rem;color:var(--muted2);font-weight:600;margin-bottom:6px;padding-left:2px">${icon} ${label} <span style="color:var(--muted);font-weight:400">(${items.length})</span></div>`;
+      html+=sec==='live'
+        ?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`
+        :`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
       html+=`</div>`;
     }
     html+=`</div>`;
@@ -2363,35 +2378,40 @@ function toggleMultiSearch(){
 
 async function startMultiIndex(){
   const accs = (lsGet(K.ACCS)||[]).filter(a=>!a.isLocal);
-  if(accs.length === 0){ toast('⚠️ No hay otros servidores guardados', 2000); return; }
+  if(accs.length === 0){ toast('⚠️ No hay servidores guardados', 2000); return; }
 
   MIDX.running = true;
   MIDX.items = [];
   MIDX.servers = [];
 
-  toast(`🌐 Indexando ${accs.length} servidor(es)...`, 3000);
+  toast(`🌐 Indexando ${accs.length} servidor(es)...`, 4000);
 
-  // Indexar cada servidor en paralelo
+  let indexed = 0;
+  let failed = 0;
+
+  // Indexar TODOS los servidores — incluyendo el activo — de forma consistente
   await Promise.all(accs.map(async acc => {
-    // Saltar el servidor activo — ya está en IDX
-    if(acc.host === S.host && acc.user === S.user) return;
     try {
       const serverItems = await indexServer(acc);
-      MIDX.items.push(...serverItems);
-      MIDX.servers.push(acc.host);
-    } catch(e) {}
+      if(serverItems.length > 0){
+        MIDX.items.push(...serverItems);
+        MIDX.servers.push(acc.host);
+        indexed++;
+      } else {
+        failed++;
+      }
+    } catch(e) {
+      failed++;
+    }
   }));
-
-  // Agregar items del servidor activo también
-  if(IDX.items.length > 0){
-    IDX.items.forEach(item => {
-      MIDX.items.push({...item, _serverHost: S.host, _serverUser: S.user});
-    });
-  }
 
   MIDX.done = true;
   MIDX.running = false;
-  toast(`✅ Multi-índice listo — ${MIDX.items.length.toLocaleString()} elementos`, 2000);
+
+  const msg = failed > 0
+    ? `✅ ${indexed} servidores indexados, ${failed} fallaron — ${MIDX.items.length.toLocaleString()} elementos`
+    : `✅ Multi-índice listo — ${MIDX.items.length.toLocaleString()} elementos en ${indexed} servidores`;
+  toast(msg, 3000);
 
   // Refrescar búsqueda si hay query activo
   const q = document.getElementById('searchBox').value.trim();
