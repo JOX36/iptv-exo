@@ -421,11 +421,12 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .home-vod-name{font-size:.6rem;color:var(--muted2);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .home-vod-rating{font-size:.55rem;color:var(--yellow);margin-top:1px}
 .toast.show{transform:translateX(-50%) translateY(0)}
-.index-bar{height:3px;background:var(--bg3);flex-shrink:0;overflow:hidden;transition:opacity .4s}
-.index-bar.hidden{opacity:0;pointer-events:none}
-.index-progress{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .4s}
-.index-status{font-size:.65rem;color:var(--muted);padding:2px 12px;background:var(--bg2);border-bottom:1px solid var(--border);display:none}
-.index-status.visible{display:block}
+.index-bar{height:4px;background:var(--bg3);flex-shrink:0;overflow:hidden;transition:opacity .4s}
+.index-bar.hidden{opacity:0;pointer-events:none;height:0}
+.index-progress{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));width:0%;transition:width .3s ease-out}
+.index-status{font-size:.65rem;color:var(--muted);padding:3px 12px;background:var(--bg2);border-bottom:1px solid var(--border);display:none;align-items:center;gap:8px}
+.index-status.visible{display:flex}
+.index-pct{font-weight:700;color:var(--accent);min-width:36px;text-align:right}
 .search-section{margin-bottom:18px}
 .search-section-title{font-family:'Rajdhani',sans-serif;font-size:.85rem;font-weight:700;letter-spacing:1px;color:var(--muted2);padding:6px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px;display:flex;align-items:center;gap:8px}
 .search-count{background:var(--bg3);border-radius:10px;padding:2px 8px;font-size:.68rem;color:var(--muted);font-family:'Exo 2',sans-serif;font-weight:400}
@@ -554,7 +555,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
     </div>
     <div class="topbar-row2">
       <button class="tb-btn" onclick="toggleSidebar()">☰</button>
-      <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="debouncedSearch(this.value)"></div>
+      <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="debouncedSearch(this.value)" onfocus="onSearchFocus()"></div>
       <button class="tb-btn" id="multiSearchBtn" onclick="toggleMultiSearch()" title="Buscar en todos los servidores">🌐</button>
       <button class="tb-btn" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">🎨</button>
     </div>
@@ -562,7 +563,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
   </div>
 
   <div class="index-bar hidden" id="indexBar"><div class="index-progress" id="indexProgress"></div></div>
-  <div class="index-status" id="indexStatus"></div>
+  <div class="index-status" id="indexStatus"><span id="indexStatusText"></span><span class="index-pct" id="indexPct"></span></div>
 
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
   <div class="app-body">
@@ -1087,14 +1088,25 @@ const IDX={items:[],done:false,running:false};
 const MIDX={items:[],done:false,running:false,servers:[]};
 async function startBackgroundIndex(){
   if(IDX.running||IDX.done)return;IDX.running=true;IDX.items=[];
-  const bar=document.getElementById('indexBar'),prog=document.getElementById('indexProgress'),status=document.getElementById('indexStatus');
-  bar.classList.remove('hidden');status.classList.add('visible');
+  const bar=document.getElementById('indexBar');
+  const prog=document.getElementById('indexProgress');
+  const statusEl=document.getElementById('indexStatus');
+  const statusTxt=document.getElementById('indexStatusText');
+  const pctEl=document.getElementById('indexPct');
+  bar.classList.remove('hidden');statusEl.classList.add('visible');
+
+  const updateProgress=(pct,msg)=>{
+    prog.style.width=pct+'%';
+    if(statusTxt) statusTxt.textContent=msg;
+    if(pctEl) pctEl.textContent=pct+'%';
+  };
+
   const SECS=['live','vod','series'];
   const catA={live:'get_live_categories',vod:'get_vod_categories',series:'get_series_categories'};
   const itemA={live:'get_live_streams',vod:'get_vod_streams',series:'get_series'};
 
-  // Cargar todas las categorías primero
-  status.textContent='Cargando categorías...';
+  // Fase 1 — categorías (0-10%)
+  updateProgress(5,'Cargando categorías...');
   for(const sec of SECS){
     try{
       if(S.cats[sec].length===0){
@@ -1103,16 +1115,16 @@ async function startBackgroundIndex(){
       }
     }catch(e){}
   }
+  updateProgress(10,'Categorías cargadas');
 
-  // Estrategia: cargar TODO de una sola petición por sección (sin category_id)
-  // Esto es MUCHO más rápido que petición por categoría
-  let total=0,done=0;
-  const processAll=async(sec)=>{
+  // Fase 2 — contenido (10-100%)
+  let done=0;const total=3;
+  const secLabels={live:'📺 Canales',vod:'🎬 Películas',series:'🎭 Series'};
+  const processAll=async(sec,startPct,endPct)=>{
     try{
-      status.textContent=`Cargando ${sec==='live'?'📺 Canales':sec==='vod'?'🎬 Películas':'🎭 Series'}...`;
-      const d=await xApi(itemA[sec]); // sin category_id = trae TODO
+      updateProgress(startPct, `Indexando ${secLabels[sec]}...`);
+      const d=await xApi(itemA[sec]);
       const items=Array.isArray(d)?d:[];
-      // Distribuir en categorías
       items.forEach(s=>{
         let catId,item;
         if(sec==='series'){
@@ -1129,21 +1141,37 @@ async function startBackgroundIndex(){
         if(cat){item.group=cat.name;cat.items.push(item);cat.loaded=true;}
         IDX.items.push({...item,_sec:sec});
       });
-      done++;prog.style.width=`${Math.round((done/total)*100)}%`;
-    }catch(e){done++;prog.style.width=`${Math.round((done/total)*100)}%`;}
+      updateProgress(endPct, `${secLabels[sec]} — ${items.length.toLocaleString()} elementos`);
+    }catch(e){
+      updateProgress(endPct, `${secLabels[sec]} — error`);
+    }
   };
 
-  // Ejecutar las 3 secciones en paralelo
-  total=3;
-  await Promise.all(SECS.map(sec=>processAll(sec)));
+  // Secuencial para mostrar progreso claro — Live(10-40) VOD(40-70) Series(70-100)
+  await processAll('live',   10, 40);
+  await processAll('vod',    40, 70);
+  await processAll('series', 70, 99);
 
-  IDX.done=true;IDX.running=false;prog.style.width='100%';
-  status.textContent=`✅ Índice completo — ${IDX.items.length.toLocaleString()} elementos`;
-  setTimeout(()=>{bar.classList.add('hidden');status.classList.remove('visible')},3000);
+  IDX.done=true;IDX.running=false;
+  updateProgress(100, `✅ ${IDX.items.length.toLocaleString()} elementos indexados`);
+  if(pctEl) pctEl.textContent='100%';
+  setTimeout(()=>{bar.classList.add('hidden');statusEl.classList.remove('visible')},3000);
   if(S.sTab==='cat') renderSide();
 }
 
 // ══ SEARCH ══
+// Mostrar estado del índice al tocar el buscador
+function onSearchFocus(){
+  if(IDX.running){
+    // Índice en progreso — mostrar barra
+    document.getElementById('indexBar').classList.remove('hidden');
+    document.getElementById('indexStatus').classList.add('visible');
+  } else if(!IDX.done && !IDX.running){
+    // No ha iniciado aún — iniciar
+    startBackgroundIndex();
+  }
+}
+
 // Debounce — espera 350ms después de la última tecla antes de buscar
 let _searchTimer = null;
 function debouncedSearch(q){
