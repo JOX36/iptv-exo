@@ -67,7 +67,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView liveEpgNow, liveEpgTime, liveEpgNext;
     private ProgressBar liveEpgProgress;
     private ImageButton liveBtnBack, liveBtnFav;
-    private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop;
+    private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop, liveBtnInfo;
 
     // VOD
     private LinearLayout vodLayout;
@@ -82,7 +82,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout vodFsTop, vodFsBottom;
     private TextView vodFsTxtTitle;
     private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt, vodFsBtnUrl, vodFsBtnSubs;
-    private Button vodFsBtnPause, vodFsBtnStop;
+    private Button vodFsBtnPause, vodFsBtnStop, vodFsBtnInfo;
 
     // Datos
     private String url, name, group, type, logo, itemId;
@@ -118,6 +118,11 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler countdownHandler = new Handler();
     private Runnable countdownRunnable;
     private int countdownSeconds = 5;
+
+    // Info del stream
+    private LinearLayout streamInfoOverlay;
+    private TextView streamInfoText;
+    private TextView liveResolution, vodFsResolution;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -210,6 +215,7 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnPip    = findViewById(R.id.live_btn_pip);
         liveBtnExt    = findViewById(R.id.live_btn_ext);
         liveBtnStop   = findViewById(R.id.live_btn_stop);
+        liveBtnInfo   = findViewById(R.id.live_btn_info);
         liveEpgContainer = findViewById(R.id.live_epg_container);
         liveEpgNow    = findViewById(R.id.live_epg_now);
         liveEpgTime   = findViewById(R.id.live_epg_time);
@@ -248,6 +254,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnSubs  = findViewById(R.id.vod_fs_btn_subs);
         vodFsBtnPause = findViewById(R.id.vod_fs_btn_pause);
         vodFsBtnStop  = findViewById(R.id.vod_fs_btn_stop);
+        vodFsBtnInfo  = findViewById(R.id.vod_fs_btn_info);
 
         // Siguiente episodio
         nextEpOverlay  = findViewById(R.id.next_ep_overlay);
@@ -257,6 +264,12 @@ public class PlayerActivity extends AppCompatActivity {
         nextEpBtnCancel= findViewById(R.id.next_ep_btn_cancel);
         nextEpBtnNow.setOnClickListener(v -> playNextEpisode());
         nextEpBtnCancel.setOnClickListener(v -> hideNextEpOverlay());
+
+        // Stream info
+        streamInfoOverlay = findViewById(R.id.stream_info_overlay);
+        streamInfoText    = findViewById(R.id.stream_info_text);
+        liveResolution    = findViewById(R.id.live_txt_resolution);
+        vodFsResolution   = findViewById(R.id.vod_fs_txt_resolution);
 
         // Gestos volumen/brillo
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
@@ -370,6 +383,7 @@ public class PlayerActivity extends AppCompatActivity {
 
         liveBtnBack.setOnClickListener(v -> { stopAndRelease(); finish(); });
         liveBtnStop.setOnClickListener(v -> { stopAndRelease(); finish(); });
+        liveBtnInfo.setOnClickListener(v -> toggleStreamInfo());
         liveBtnFav.setOnClickListener(v -> toggleFav(liveBtnFav));
         liveBtnPip.setOnClickListener(v -> enterPip());
         liveBtnExt.setOnClickListener(v -> launchExternal());
@@ -455,6 +469,7 @@ public class PlayerActivity extends AppCompatActivity {
             vodFsBtnPause.setTextColor(0xFF00FF88);
             if (isVodFullscreen) exitVodFullscreen();
         });
+        vodFsBtnInfo.setOnClickListener(v -> toggleStreamInfo());
 
         vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
 
@@ -542,6 +557,13 @@ public class PlayerActivity extends AppCompatActivity {
                     if (!isVodType()) {
                         scheduleLiveHideBars();
                         fetchEpg();
+                        // Actualizar resolución en título Live
+                        handler.postDelayed(() -> {
+                            androidx.media3.common.Format vf = player != null ? player.getVideoFormat() : null;
+                            if (vf != null && vf.width > 0) {
+                                updateResolutionLabel(vf.width + "x" + vf.height);
+                            }
+                        }, 1500);
                     } else {
                         // Buscar posición guardada en el primer STATE_READY
                         if (savedPosition > 0) {
@@ -1142,6 +1164,63 @@ public class PlayerActivity extends AppCompatActivity {
                 gestFeedbackLayout.setVisibility(View.GONE);
         };
         gestureHideHandler.postDelayed(gestureHideRunnable, 1200);
+    }
+
+    // ══ STREAM INFO ══
+    private void toggleStreamInfo() {
+        if (streamInfoOverlay == null) return;
+        if (streamInfoOverlay.getVisibility() == View.VISIBLE) {
+            streamInfoOverlay.setVisibility(View.GONE);
+        } else {
+            updateStreamInfo();
+            streamInfoOverlay.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void updateStreamInfo() {
+        if (player == null || streamInfoText == null) return;
+        StringBuilder sb = new StringBuilder();
+        // Video
+        androidx.media3.common.Format vf = player.getVideoFormat();
+        if (vf != null) {
+            String codec = vf.codecs != null ? vf.codecs.split("\\.")[0].toUpperCase() : "?";
+            String res = vf.width > 0 ? vf.width + "x" + vf.height : "?";
+            String fps = vf.frameRate > 0 ? String.format("%.0f fps", vf.frameRate) : "";
+            String br  = vf.bitrate > 0 ? (vf.bitrate/1000) + " kbps" : "";
+            sb.append("📹 Video\n");
+            sb.append("  Res: ").append(res).append("\n");
+            sb.append("  Codec: ").append(codec).append("\n");
+            if (!fps.isEmpty()) sb.append("  FPS: ").append(fps).append("\n");
+            if (!br.isEmpty())  sb.append("  Bitrate: ").append(br).append("\n");
+            // Actualizar resolución en título
+            updateResolutionLabel(res);
+        }
+        // Audio
+        androidx.media3.common.Format af = player.getAudioFormat();
+        if (af != null) {
+            String aCodec = af.codecs != null ? af.codecs.split("\\.")[0].toUpperCase() : "?";
+            String aBr = af.bitrate > 0 ? (af.bitrate/1000) + " kbps" : "";
+            String ch  = af.channelCount > 0 ? af.channelCount + "ch" : "";
+            sb.append("\n🔊 Audio\n");
+            sb.append("  Codec: ").append(aCodec).append("\n");
+            if (!ch.isEmpty())  sb.append("  Canales: ").append(ch).append("\n");
+            if (!aBr.isEmpty()) sb.append("  Bitrate: ").append(aBr).append("\n");
+        }
+        if (sb.length() == 0) sb.append("Sin información disponible");
+        streamInfoText.setText(sb.toString().trim());
+    }
+
+    private void updateResolutionLabel(String res) {
+        runOnUiThread(() -> {
+            if (liveResolution != null) {
+                liveResolution.setText(res);
+                liveResolution.setVisibility(View.VISIBLE);
+            }
+            if (vodFsResolution != null) {
+                vodFsResolution.setText(res);
+                vodFsResolution.setVisibility(View.VISIBLE);
+            }
+        });
     }
 
     // ══ LIFECYCLE ══
