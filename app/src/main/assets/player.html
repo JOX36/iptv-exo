@@ -554,7 +554,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
     </div>
     <div class="topbar-row2">
       <button class="tb-btn" onclick="toggleSidebar()">☰</button>
-      <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="doSearch(this.value)"></div>
+      <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="debouncedSearch(this.value)"></div>
       <button class="tb-btn" id="multiSearchBtn" onclick="toggleMultiSearch()" title="Buscar en todos los servidores">🌐</button>
       <button class="tb-btn" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">🎨</button>
     </div>
@@ -1144,6 +1144,13 @@ async function startBackgroundIndex(){
 }
 
 // ══ SEARCH ══
+// Debounce — espera 350ms después de la última tecla antes de buscar
+let _searchTimer = null;
+function debouncedSearch(q){
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(() => doSearch(q), 350);
+}
+
 function doSearch(q){
   const filters=document.getElementById('searchFilters');
   filters.classList.toggle('hidden',!q.trim());
@@ -1156,93 +1163,73 @@ function doSearch(q){
     return;
   }
 
-  // Elegir pool — multi o normal
-  let pool;
   if(multiSearchActive){
-    if(MIDX.running){
-      setContent(`<div class="empty"><div class="empty-icon">🌐</div><p>Indexando servidores... espera un momento</p></div>`);
-      return;
-    }
-    pool = MIDX.done ? MIDX.items :
-      (IDX.items.length>0 ? IDX.items : Object.entries(S.cats).flatMap(([sec,cats])=>cats.filter(c=>c.loaded).flatMap(c=>c.items.map(i=>({...i,_sec:sec})))));
-  } else {
-    pool = IDX.items.length>0 ? IDX.items :
-      Object.entries(S.cats).flatMap(([sec,cats])=>cats.filter(c=>c.loaded).flatMap(c=>c.items.map(i=>({...i,_sec:sec}))));
+    doMultiSearch(q);
+    return;
   }
 
+  // Búsqueda normal — servidor activo
+  const pool=IDX.items.length>0?IDX.items:Object.entries(S.cats).flatMap(([sec,cats])=>cats.filter(c=>c.loaded).flatMap(c=>c.items.map(i=>({...i,_sec:sec}))));
   if(!pool.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Aún indexando...</p></div>`);return}
-
   let results=pool.filter(i=>i.name.toLowerCase().includes(q));
-  if(S.searchFilter!=='all') results=results.filter(i=>(i._sec||i.type)===S.searchFilter);
   if(!results.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Sin resultados para "${q}"</p></div>`);return}
-
   const groups={live:[],vod:[],series:[]};
   results.forEach(i=>{const sec=i._sec||i.type||'live';if(groups[sec])groups[sec].push(i)});
   const secInfo={live:{icon:'📺',label:'TV en Vivo'},vod:{icon:'🎬',label:'Películas'},series:{icon:'🎭',label:'Series'}};
-  const modeLabel = multiSearchActive ? ` <span style="font-size:.65rem;color:var(--accent)">🌐 multi-servidor</span>` : '';
-  let html=`<div class="sec-hdr"><h2>🔍 "${q}"${modeLabel}</h2><small>${results.length} resultados</small></div>`;
-
+  let html=`<div class="sec-hdr"><h2>🔍 "${q}"</h2><small>${results.length} resultados</small></div>`;
   for(const[sec,items]of Object.entries(groups)){
     if(!items.length)continue;const{icon,label}=secInfo[sec];
     html+=`<div class="search-section"><div class="search-section-title">${icon} ${label}<span class="search-count">${items.length}</span></div>`;
-    // En modo multi mostrar badge del servidor
-    if(multiSearchActive && MIDX.done){
-      const cards = items.map(item=>{
-        const serverBadge = item._serverHost ?
-          `<div style="font-size:.55rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px">
-            🌐 ${item._serverHost.replace(/^https?:\/\//,'').split(':')[0]}
-          </div>` : '';
-        if(sec==='live'){
-          // Inyectar badge servidor en chCard
-          return chCardMulti(item, serverBadge);
-        } else {
-          return vodCardMulti(item, serverBadge);
-        }
-      }).join('');
-      html += sec==='live' ? `<div class="ch-grid">${cards}</div>` : `<div class="vod-grid">${cards}</div>`;
-    } else {
-      html+=sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
-    }
+    html+=sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
     html+=`</div>`;
   }
   document.getElementById('contentArea').innerHTML=html;
 }
 
-function chCardMulti(ch, serverBadge){
-  const isFav=S.favs.has(fk(ch));
-  const imgEl=ch.logo?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="ch-ph">📺</div>`;
-  const nameEsc=esc(ch.name);
-  // Para multi-servidor necesitamos pasar el item con sus credenciales
-  const itemJs=js({...ch,url:ch.url||''});
-  return `<div class="ch-card" onclick='playMulti(${itemJs})'>
-    ${imgEl}
-    <div class="ch-name"><span class="ch-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>
-    ${serverBadge}
-  </div>`;
-}
-
-function vodCardMulti(ch, serverBadge){
-  const ph=ch.type==='series'?'🎭':'🎬';
-  const imgEl=ch.cover?`<img class="vod-thumb" src="${esc(ch.cover)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="vod-ph">${ph}</div>`;
-  const itemJs=js({...ch,url:ch.url||''});
-  const onclick=ch.type==='series'?`playMulti(${itemJs})`:`playMulti(${itemJs})`;
-  const nameEsc=esc(ch.name);
-  return `<div class="vod-card" onclick='${onclick}'>
-    <div style="position:relative">${imgEl}</div>
-    <div class="vod-info">
-      <div class="vod-name"><span class="vod-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>
-      ${serverBadge}
-    </div>
-  </div>`;
-}
-
-function playMulti(item){
-  // Si el item es del servidor activo — reproducir normal
-  if(!item._serverHost || (item._serverHost===S.host && item._serverUser===S.user)){
-    play(item); return;
+function doMultiSearch(q){
+  if(MIDX.running){
+    setContent(`<div class="empty"><div class="empty-icon">🌐</div><p>Indexando servidores... espera un momento</p></div>`);
+    return;
   }
-  // Item de otro servidor — reproducir directamente con su URL
-  play(item);
+  const pool = MIDX.done ? MIDX.items :
+    (IDX.items.length>0 ? IDX.items.map(i=>({...i,_serverHost:S.host,_serverUser:S.user})) : []);
+  if(!pool.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Aún indexando...</p></div>`);return}
+
+  const results = pool.filter(i=>i.name.toLowerCase().includes(q));
+  if(!results.length){setContent(`<div class="empty"><div class="empty-icon">🔍</div><p>Sin resultados para "${q}"</p></div>`);return}
+
+  // Agrupar por servidor primero, luego por tipo
+  const byServer = {};
+  results.forEach(item=>{
+    const srvKey = item._serverHost || S.host;
+    if(!byServer[srvKey]) byServer[srvKey] = {live:[],vod:[],series:[],user:item._serverUser||S.user};
+    const sec = item._sec || item.type || 'live';
+    if(byServer[srvKey][sec]) byServer[srvKey][sec].push(item);
+  });
+
+  const secInfo={live:{icon:'📺',label:'TV en Vivo'},vod:{icon:'🎬',label:'Películas'},series:{icon:'🎭',label:'Series'}};
+  let html=`<div class="sec-hdr"><h2>🔍 "${q}" <span style="font-size:.65rem;color:var(--accent)">🌐 multi-servidor</span></h2><small>${results.length} resultados en ${Object.keys(byServer).length} servidor(es)</small></div>`;
+
+  for(const[srvHost, data] of Object.entries(byServer)){
+    const srvLabel = srvHost.replace(/^https?:\/\//,'').split(':')[0];
+    const total = data.live.length + data.vod.length + data.series.length;
+    html+=`<div class="search-section">
+      <div class="search-section-title" style="background:rgba(0,212,255,.06);border-radius:6px;padding:6px 10px;margin-bottom:8px">
+        🌐 <span style="color:var(--accent);font-weight:700">${esc(srvLabel)}</span>
+        <span class="search-count">${total}</span>
+      </div>`;
+
+    for(const[sec,items] of Object.entries({live:data.live,vod:data.vod,series:data.series})){
+      if(!items.length) continue;
+      const{icon,label}=secInfo[sec];
+      html+=`<div style="margin-bottom:10px">
+        <div style="font-size:.72rem;color:var(--muted2);margin-bottom:6px;padding-left:2px">${icon} ${label} <span style="color:var(--muted)">(${items.length})</span></div>`;
+      html+=sec==='live'?`<div class="ch-grid">`+items.map(chCard).join('')+`</div>`:`<div class="vod-grid">`+items.map(vodCard).join('')+`</div>`;
+      html+=`</div>`;
+    }
+    html+=`</div>`;
+  }
+  document.getElementById('contentArea').innerHTML=html;
 }
 
 // ══ QUALITY DETECT ══
