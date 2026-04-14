@@ -473,17 +473,17 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .season-drop-item:last-child{border-bottom:none}
 .season-drop-item:hover{background:var(--bg3);color:var(--text)}
 .season-drop-item.active{color:var(--accent);font-weight:700;background:rgba(0,212,255,.06)}
-.ep-list{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
-.ep-item{display:flex;flex-direction:column;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:0;overflow:hidden;transition:all .2s}
+.ep-list{display:flex;flex-direction:column;gap:12px}
+.ep-item{display:flex;flex-direction:column;background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:all .2s}
 .ep-item:hover{border-color:var(--accent);background:rgba(0,212,255,.04)}
 .ep-num{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);border-radius:5px;padding:2px 7px;font-family:'Rajdhani',sans-serif;font-size:.82rem;font-weight:700;color:var(--accent);z-index:2}
-.ep-thumb{width:100%;height:130px;object-fit:cover;background:var(--bg);display:block}
-.ep-thumb-ph{width:100%;height:100px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:2rem}
-.ep-info{flex:1;min-width:0;padding:10px 12px 4px}
-.ep-title{font-size:.85rem;font-weight:700;line-height:1.3;margin-bottom:2px}
-.ep-meta{font-size:.7rem;color:var(--muted);margin-top:2px}
-.ep-plot{font-size:.75rem;color:var(--muted2);margin-top:5px;line-height:1.5}
-.ep-play-btns{display:flex;flex-direction:row;gap:6px;padding:8px 12px 10px;flex-shrink:0}
+.ep-thumb{width:100%;height:160px;object-fit:cover;background:var(--bg);display:block}
+.ep-thumb-ph{width:100%;height:120px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:2.5rem}
+.ep-info{padding:10px 14px 4px}
+.ep-title{font-size:.9rem;font-weight:700;line-height:1.3;margin-bottom:3px}
+.ep-meta{font-size:.72rem;color:var(--muted);margin-top:2px}
+.ep-plot{font-size:.78rem;color:var(--muted2);margin-top:6px;line-height:1.5}
+.ep-play-btns{display:flex;flex-direction:row;gap:8px;padding:8px 14px 12px}
 .ep-btn{background:var(--bg2);border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;font-size:.68rem;padding:4px 8px;transition:all .2s;white-space:nowrap}
 .ep-btn:hover{border-color:var(--accent);color:var(--accent)}
 .ep-btn.play{background:rgba(0,212,255,.1);border-color:var(--accent);color:var(--accent)}
@@ -1925,30 +1925,46 @@ function loadSimilarMovies(item){
   const similarEl = document.getElementById('vodModalSimilar');
   if(!similarEl) return;
 
-  // Buscar por género en el índice completo
   const itemGenre = (item.genre||'').toLowerCase().trim();
-  const pool = IDX.items.filter(i=>i._sec==='vod'&&i.id!==item.id);
-
   let similar = [];
+  let label = '🎬 Más en esta categoría';
 
-  // Primero intentar por género si está disponible
-  if(itemGenre && pool.length > 0){
-    similar = pool.filter(i=>(i.genre||'').toLowerCase().includes(itemGenre)).slice(0,12);
+  if(itemGenre){
+    // Buscar categorías VOD cuyo nombre contenga el género
+    const genreWords = itemGenre.split(/[,\/\s]+/).filter(w=>w.length>3);
+    const matchingCats = S.cats.vod.filter(cat=>{
+      const catName = cat.name.toLowerCase();
+      return genreWords.some(w=>catName.includes(w));
+    });
+
+    if(matchingCats.length > 0){
+      // Recoger items de todas las categorías del género
+      matchingCats.forEach(cat=>{
+        if(cat.loaded){
+          cat.items.filter(i=>i.id!==item.id).forEach(i=>similar.push(i));
+        }
+      });
+      // Aleatorizar un poco y limitar
+      similar = similar.sort(()=>Math.random()-.5).slice(0,12);
+      label = `🎬 Más de ${itemGenre.split(',')[0].trim()}`;
+    }
   }
 
-  // Si no hay género o pocos resultados — usar la misma categoría
+  // Fallback — misma categoría si no hay resultados por género
   if(similar.length < 4){
     const catId = S.activeCat[S.sec];
     const cat = S.cats[S.sec]?.find(c=>c.id===catId);
     if(cat?.loaded){
-      const catItems = cat.items.filter(i=>i.id!==item.id&&!similar.find(s=>s.id===i.id));
-      similar = [...similar, ...catItems].slice(0,12);
+      const catItems = cat.items
+        .filter(i=>i.id!==item.id && !similar.find(s=>s.id===i.id))
+        .slice(0, 12 - similar.length);
+      similar = [...similar, ...catItems];
+      if(!itemGenre) label = '🎬 Más en esta categoría';
     }
   }
 
   if(!similar.length) return;
 
-  const label = itemGenre ? `🎬 Más de ${itemGenre}` : '🎬 Más en esta categoría';
   let html=`<div class="vod-section-title">${label}</div><div class="similar-grid">`;
   similar.forEach(m=>{
     const thumb=m.cover||m.logo||'';
