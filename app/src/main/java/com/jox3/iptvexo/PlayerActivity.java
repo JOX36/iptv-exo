@@ -1210,7 +1210,7 @@ public class PlayerActivity extends AppCompatActivity {
             gestFeedbackLayout.setVisibility(View.VISIBLE);
             gestIconView.setText(seconds > 0 ? "\u23E9" : "\u23EA");
             gestValueView.setText((seconds > 0 ? "+" : "") + seconds + "s");
-            gestProgressView.setProgress(50);
+            setBarHeight(gestProgressView, 50);
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
             hideGestureFeedbackDelayed();
         });
@@ -1222,7 +1222,7 @@ public class PlayerActivity extends AppCompatActivity {
             gestFeedbackLayout.setVisibility(View.VISIBLE);
             gestIconView.setText(forward ? "\u23E9" : "\u23EA");
             gestValueView.setText(timeStr);
-            gestProgressView.setProgress(pct);
+            setBarHeight(gestProgressView, pct);
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
         });
     }
