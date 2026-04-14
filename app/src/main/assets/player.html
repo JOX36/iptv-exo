@@ -312,7 +312,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .quality-badge.fhd{background:rgba(0,255,136,.85)}
 .quality-badge.uhd{background:rgba(255,193,7,.85)}
 
-.ch-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.ch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 .vod-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
 .vod-seen-badge{position:absolute;top:4px;right:4px;background:rgba(0,255,136,.85);color:#0a0e14;font-size:.52rem;font-weight:800;padding:2px 5px;border-radius:3px;pointer-events:none}
 .vod-thumb{width:100%;aspect-ratio:2/3;object-fit:cover;background:var(--bg3);display:block;transition:transform .3s}
@@ -427,20 +427,24 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .sec-tabs{display:flex;gap:2px;border-radius:6px;padding:3px;flex-shrink:0;border-bottom:1px solid var(--border);background:transparent}
 
 /* Cards con animación de entrada escalonada */
-.ch-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:8px 6px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;text-align:center;position:relative;overflow:hidden;animation:fadeInUp .3s ease both}
-.ch-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,212,255,.1),transparent 60%);opacity:0;transition:opacity .3s}
-.ch-card:hover{border-color:var(--accent);transform:translateY(-4px) scale(1.03);box-shadow:0 10px 28px rgba(0,212,255,.22)}
+.ch-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;position:relative;overflow:hidden;animation:fadeInUp .3s ease both;display:flex;align-items:center;gap:10px}
+.ch-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,212,255,.08),transparent 60%);opacity:0;transition:opacity .3s;pointer-events:none}
+.ch-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,212,255,.2)}
 .ch-card:hover::after{opacity:1}
-.ch-card:active{transform:translateY(0) scale(.97) !important;transition:transform .08s !important}
-.ch-card.active{border-color:var(--accent);background:rgba(0,212,255,.08);box-shadow:0 0 0 2px rgba(0,212,255,.25)}
-.ch-img{width:44px;height:44px;border-radius:8px;object-fit:contain;background:var(--bg3);margin:0 auto 5px;display:block;transition:transform .25s}
-.ch-card:hover .ch-img{transform:scale(1.08)}
-.ch-ph{width:44px;height:44px;border-radius:8px;background:var(--bg3);border:1px solid var(--border);margin:0 auto 5px;display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:var(--muted)}
-.ch-name{font-size:.62rem;font-weight:600;overflow:hidden;white-space:nowrap;position:relative;line-height:1.3}
+.ch-card:active{transform:translateY(0) scale(.98) !important;transition:transform .08s !important}
+.ch-card.active{border-color:var(--accent);background:rgba(0,212,255,.06);box-shadow:0 0 0 2px rgba(0,212,255,.25)}
+.ch-img{width:54px;height:54px;border-radius:10px;object-fit:contain;background:var(--bg3);flex-shrink:0;display:block;transition:transform .25s}
+.ch-card:hover .ch-img{transform:scale(1.06)}
+.ch-ph{width:54px;height:54px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:1.4rem;color:var(--muted)}
+.ch-info{flex:1;min-width:0}
+.ch-name{font-size:.74rem;font-weight:700;overflow:hidden;white-space:nowrap;position:relative;color:var(--text);line-height:1.3}
 .ch-name-inner{display:inline-block;white-space:nowrap;padding-right:16px;animation:none}
 .ch-card:hover .ch-name-inner.marquee{animation:marquee-scroll 4s linear infinite}
-.ch-epg{font-size:.54rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
-
+.ch-epg{font-size:.64rem;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;line-height:1.3}
+.ch-badge-row{display:flex;align-items:center;gap:4px;margin-top:3px}
+.ch-live-dot{width:6px;height:6px;border-radius:50%;background:#ef4444;box-shadow:0 0 4px rgba(239,68,68,.7);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.ch-cat{font-size:.55rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* VOD cards con animación */
 .vod-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;overflow:hidden;position:relative;animation:fadeInUp .3s ease both}
 .vod-card::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 50%);opacity:0;transition:opacity .3s;pointer-events:none}
@@ -1092,14 +1096,23 @@ function chCard(ch){
   const isAct=S.current?.id===ch.id&&S.current?.type===ch.type;
   const isFav=S.favs.has(fk(ch));const epg=EPG_CACHE[ch.id];
   const q=detectQuality(ch.name);const qBadge=q?`<span class="quality-badge${q==='FHD'?' fhd':q==='UHD'?' uhd':''}">${q}</span>`:'';
-  const imgEl=ch.logo?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none'">`:`<div class="ch-ph">📺</div>`;
-  // Marquesina — duplicar texto para loop continuo
+  const imgEl=ch.logo
+    ?`<img class="ch-img" src="${esc(ch.logo)}" loading="lazy" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div class=ch-ph>📺</div>')">`
+    :`<div class="ch-ph">📺</div>`;
   const nameEsc=esc(ch.name);
-  const nameEl=`<div class="ch-name"><span class="ch-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>`;
+  const epgTxt=epg?.title?`<div class="ch-epg">▸ ${esc(epg.title)}</div>`:'';
+  const groupTxt=ch.group?`<div class="ch-cat">${esc(ch.group)}</div>`:'';
   return `<div class="ch-card${isAct?' active':''}" data-id="${ch.id}" onclick='play(${js(ch)})'>
-    ${qBadge}${imgEl}
-    ${nameEl}
-    <div class="ch-epg">${epg?.title?'▸ '+esc(epg.title):''}</div>
+    ${imgEl}
+    <div class="ch-info">
+      <div class="ch-name"><span class="ch-name-inner marquee">${nameEsc}&nbsp;&nbsp;&nbsp;${nameEsc}</span></div>
+      ${epgTxt}
+      <div class="ch-badge-row">
+        <span class="ch-live-dot"></span>
+        ${groupTxt}
+        ${qBadge}
+      </div>
+    </div>
     <button class="fav-btn${isFav?' on':''}" onclick="event.stopPropagation();toggleFav('${fk(ch)}')">⭐</button>
   </div>`;
 }
