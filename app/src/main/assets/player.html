@@ -564,6 +564,8 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 
   <div class="index-bar hidden" id="indexBar"><div class="index-progress" id="indexProgress"></div></div>
   <div class="index-status" id="indexStatus"><span id="indexStatusText"></span><span class="index-pct" id="indexPct"></span></div>
+  <div class="index-bar hidden" id="multiIndexBar" style="background:rgba(0,255,136,.15)"><div class="index-progress" id="multiIndexProgress" style="background:linear-gradient(90deg,#00ff88,#00d4ff)"></div></div>
+  <div class="index-status" id="multiIndexStatus"><span id="multiIndexStatusText"></span><span class="index-pct" id="multiIndexPct" style="color:#00ff88"></span></div>
 
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
   <div class="app-body">
@@ -2411,34 +2413,65 @@ async function startMultiIndex(){
   MIDX.items = [];
   MIDX.servers = [];
 
-  toast(`🌐 Indexando ${accs.length} servidor(es)...`, 4000);
+  // Mostrar barra de progreso multi-servidor
+  const bar     = document.getElementById('multiIndexBar');
+  const prog    = document.getElementById('multiIndexProgress');
+  const statusEl= document.getElementById('multiIndexStatus');
+  const statusTxt=document.getElementById('multiIndexStatusText');
+  const pctEl   = document.getElementById('multiIndexPct');
+
+  const updateMulti = (pct, msg) => {
+    bar.classList.remove('hidden');
+    statusEl.classList.add('visible');
+    prog.style.width = pct + '%';
+    if(statusTxt) statusTxt.textContent = msg;
+    if(pctEl) pctEl.textContent = pct + '%';
+  };
+
+  updateMulti(0, `🌐 Iniciando indexación de ${accs.length} servidor(es)...`);
 
   let indexed = 0;
-  let failed = 0;
+  let failed  = 0;
+  const total = accs.length;
 
-  // Indexar TODOS los servidores — incluyendo el activo — de forma consistente
-  await Promise.all(accs.map(async acc => {
+  // Indexar secuencialmente para mostrar progreso claro
+  for(const acc of accs){
+    const srvLabel = acc.host.replace(/^https?:\/\//,'').split(':')[0];
+    const pct = Math.round((indexed / total) * 95);
+    updateMulti(pct, `🌐 Indexando ${srvLabel}... (${indexed+1}/${total})`);
     try {
       const serverItems = await indexServer(acc);
       if(serverItems.length > 0){
         MIDX.items.push(...serverItems);
         MIDX.servers.push(acc.host);
         indexed++;
+        updateMulti(
+          Math.round((indexed / total) * 95),
+          `✅ ${srvLabel} — ${serverItems.length.toLocaleString()} elementos`
+        );
       } else {
         failed++;
+        updateMulti(Math.round((indexed / total) * 95), `⚠️ ${srvLabel} — sin contenido`);
       }
     } catch(e) {
       failed++;
+      updateMulti(Math.round((indexed / total) * 95), `❌ ${srvLabel} — error de conexión`);
     }
-  }));
+  }
 
-  MIDX.done = true;
+  MIDX.done    = true;
   MIDX.running = false;
 
-  const msg = failed > 0
-    ? `✅ ${indexed} servidores indexados, ${failed} fallaron — ${MIDX.items.length.toLocaleString()} elementos`
-    : `✅ Multi-índice listo — ${MIDX.items.length.toLocaleString()} elementos en ${indexed} servidores`;
-  toast(msg, 3000);
+  const finalMsg = failed > 0
+    ? `🌐 ${indexed} ok, ${failed} fallaron — ${MIDX.items.length.toLocaleString()} elementos`
+    : `🌐 ${indexed} servidores — ${MIDX.items.length.toLocaleString()} elementos`;
+  updateMulti(100, finalMsg);
+  if(pctEl) pctEl.textContent = '100%';
+
+  setTimeout(()=>{
+    bar.classList.add('hidden');
+    statusEl.classList.remove('visible');
+  }, 3000);
 
   // Refrescar búsqueda si hay query activo
   const q = document.getElementById('searchBox').value.trim();
