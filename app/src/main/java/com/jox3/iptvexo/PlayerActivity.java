@@ -1059,7 +1059,8 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean gestureIsSeek = false;
     private LinearLayout gestFeedbackLayout, gestFeedbackRight;
     private TextView gestIconView, gestValueView, gestIconRight, gestValueRight;
-    private ProgressBar gestProgressView, gestProgressRight;
+    private View gestProgressView, gestProgressRight;
+    private static final int GEST_BAR_MAX_DP = 120; // altura total de la barra en dp
 
     private void initGestureOverlay() {
         gestFeedbackLayout = findViewById(R.id.gesture_overlay);
@@ -1172,24 +1173,32 @@ public class PlayerActivity extends AppCompatActivity {
         return true; // Live siempre es fullscreen
     }
 
+    private void setBarHeight(View bar, int pct) {
+        if (bar == null) return;
+        float density = getResources().getDisplayMetrics().density;
+        int maxPx = (int)(GEST_BAR_MAX_DP * density);
+        int newH  = (int)(maxPx * pct / 100f);
+        android.view.ViewGroup.LayoutParams lp = bar.getLayoutParams();
+        lp.height = Math.max(1, newH);
+        bar.setLayoutParams(lp);
+    }
+
     private void showGestureFeedback(boolean isVolume, int pct) {
         runOnUiThread(() -> {
             if (isVolume) {
-                // Barra izquierda — volumen
                 if (gestFeedbackLayout == null) return;
                 gestFeedbackLayout.setVisibility(View.VISIBLE);
                 if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
                 gestIconView.setText(pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A");
                 gestValueView.setText(pct + "%");
-                if (gestProgressView != null) gestProgressView.setProgress(pct);
+                setBarHeight(gestProgressView, pct);
             } else {
-                // Barra derecha — brillo
                 if (gestFeedbackRight == null) return;
                 gestFeedbackRight.setVisibility(View.VISIBLE);
                 if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
                 gestIconRight.setText(pct < 30 ? "\uD83C\uDF11" : pct < 70 ? "\uD83C\uDF13" : "\u2600\uFE0F");
                 gestValueRight.setText(pct + "%");
-                if (gestProgressRight != null) gestProgressRight.setProgress(pct);
+                setBarHeight(gestProgressRight, pct);
             }
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
         });
