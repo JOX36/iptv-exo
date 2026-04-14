@@ -589,15 +589,52 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
-                if (!isVodType()) retry();
+                if (!isVodType()) retrySmarter(e);
                 else {
                     showLoading(false);
-                    // ExoPlayer falló en VOD — intentar con VLC automáticamente
                     toast("\uD83D\uDCFA Abriendo en reproductor externo...");
                     handler.postDelayed(() -> launchExternal(), 800);
                 }
             }
         });
+    }
+
+    private void retrySmarter(androidx.media3.common.PlaybackException e) {
+        if (retryCount >= 5) {
+            showLoading(false);
+            liveTxtStatus.setText("❌");
+            txtLoading.setText("No se pudo conectar al canal");
+            return;
+        }
+        retryCount++;
+
+        // Analizar tipo de error para decidir estrategia
+        int cause = e.errorCode;
+        int delayMs;
+        String msg;
+
+        if (cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+         || cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+            // Sin conexión o timeout — esperar más
+            delayMs = 5000;
+            msg = "Sin conexión, reintentando (" + retryCount + "/5)...";
+        } else if (cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+            // Servidor con error — esperar bastante
+            delayMs = 8000;
+            msg = "Servidor no responde, reintentando (" + retryCount + "/5)...";
+        } else if (cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
+            // Error genérico — reintento normal
+            delayMs = 3000;
+            msg = "Reconectando (" + retryCount + "/5)...";
+        } else {
+            // Stream cortado u otro — reintento rápido
+            delayMs = 2000;
+            msg = "Reconectando (" + retryCount + "/5)...";
+        }
+
+        txtLoading.setText(msg);
+        showLoading(true);
+        handler.postDelayed(this::initPlayer, delayMs);
     }
 
     private void retry() {
