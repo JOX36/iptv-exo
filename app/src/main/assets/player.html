@@ -473,17 +473,17 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .season-drop-item:last-child{border-bottom:none}
 .season-drop-item:hover{background:var(--bg3);color:var(--text)}
 .season-drop-item.active{color:var(--accent);font-weight:700;background:rgba(0,212,255,.06)}
-.ep-list{display:flex;flex-direction:column;gap:8px}
-.ep-item{display:flex;align-items:flex-start;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .2s}
-.ep-item:hover{border-color:var(--accent);background:rgba(0,212,255,.05)}
-.ep-num{width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--accent);flex-shrink:0}
-.ep-thumb{width:80px;height:46px;border-radius:6px;object-fit:cover;background:var(--bg);flex-shrink:0}
-.ep-thumb-ph{width:80px;height:46px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0}
-.ep-info{flex:1;min-width:0}
-.ep-title{font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ep-list{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.ep-item{display:flex;flex-direction:column;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:0;overflow:hidden;transition:all .2s}
+.ep-item:hover{border-color:var(--accent);background:rgba(0,212,255,.04)}
+.ep-num{position:absolute;top:6px;left:6px;background:rgba(0,0,0,.75);backdrop-filter:blur(4px);border-radius:5px;padding:2px 7px;font-family:'Rajdhani',sans-serif;font-size:.82rem;font-weight:700;color:var(--accent);z-index:2}
+.ep-thumb{width:100%;height:130px;object-fit:cover;background:var(--bg);display:block}
+.ep-thumb-ph{width:100%;height:100px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:2rem}
+.ep-info{flex:1;min-width:0;padding:10px 12px 4px}
+.ep-title{font-size:.85rem;font-weight:700;line-height:1.3;margin-bottom:2px}
 .ep-meta{font-size:.7rem;color:var(--muted);margin-top:2px}
-.ep-plot{font-size:.7rem;color:var(--muted2);margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.ep-play-btns{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
+.ep-plot{font-size:.75rem;color:var(--muted2);margin-top:5px;line-height:1.5}
+.ep-play-btns{display:flex;flex-direction:row;gap:6px;padding:8px 12px 10px;flex-shrink:0}
 .ep-btn{background:var(--bg2);border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;font-size:.68rem;padding:4px 8px;transition:all .2s;white-space:nowrap}
 .ep-btn:hover{border-color:var(--accent);color:var(--accent)}
 .ep-btn.play{background:rgba(0,212,255,.1);border-color:var(--accent);color:var(--accent)}
@@ -1865,6 +1865,9 @@ async function openVodInfo(item){
       coverEl.innerHTML=`<img class="vod-modal-cover" src="${esc(info.movie_image||info.cover_big)}" style="object-fit:cover" onerror="this.outerHTML='<div class=vod-modal-cover-ph>🎬</div>'">`;
     }
 
+    // Guardar género para recomendaciones
+    if(info.genre) _vodModalItem.genre = info.genre;
+
     // Sinopsis expandible
     const plot = info.plot||info.description||'Sin sinopsis disponible.';
     const plotEl = document.getElementById('vodModalPlot');
@@ -1919,15 +1922,34 @@ function toggleVodPlot(){
 }
 
 function loadSimilarMovies(item){
-  // Buscar en la misma categoría
-  const catId=S.activeCat[S.sec];
-  if(!catId) return;
-  const cat=S.cats[S.sec]?.find(c=>c.id===catId);
-  if(!cat?.loaded||!cat.items.length) return;
-  const similar=cat.items.filter(i=>i.id!==item.id).slice(0,10);
+  const similarEl = document.getElementById('vodModalSimilar');
+  if(!similarEl) return;
+
+  // Buscar por género en el índice completo
+  const itemGenre = (item.genre||'').toLowerCase().trim();
+  const pool = IDX.items.filter(i=>i._sec==='vod'&&i.id!==item.id);
+
+  let similar = [];
+
+  // Primero intentar por género si está disponible
+  if(itemGenre && pool.length > 0){
+    similar = pool.filter(i=>(i.genre||'').toLowerCase().includes(itemGenre)).slice(0,12);
+  }
+
+  // Si no hay género o pocos resultados — usar la misma categoría
+  if(similar.length < 4){
+    const catId = S.activeCat[S.sec];
+    const cat = S.cats[S.sec]?.find(c=>c.id===catId);
+    if(cat?.loaded){
+      const catItems = cat.items.filter(i=>i.id!==item.id&&!similar.find(s=>s.id===i.id));
+      similar = [...similar, ...catItems].slice(0,12);
+    }
+  }
+
   if(!similar.length) return;
-  const similarEl=document.getElementById('vodModalSimilar');
-  let html=`<div class="vod-section-title">🎬 Más en esta categoría</div><div class="similar-grid">`;
+
+  const label = itemGenre ? `🎬 Más de ${itemGenre}` : '🎬 Más en esta categoría';
+  let html=`<div class="vod-section-title">${label}</div><div class="similar-grid">`;
   similar.forEach(m=>{
     const thumb=m.cover||m.logo||'';
     html+=`<div class="similar-card" onclick="closeVodModal();setTimeout(()=>openVodInfo(${js(m)}),150)">
@@ -2006,9 +2028,15 @@ function renderSeriesModal(seasonKeys){
   // Lista de episodios con sinopsis
   const epList=`<div class="ep-list">`+seriesData.currentEps.map((ep,idx)=>{
     const epPlot = ep.plot ? `<div class="ep-plot">${esc(ep.plot)}</div>` : '';
+    const thumb = ep.thumb;
     return `<div class="ep-item">
-      <div class="ep-num">E${ep.epNum}</div>
-      ${ep.thumb?`<img class="ep-thumb" src="${esc(ep.thumb)}" loading="lazy" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div class=ep-thumb-ph>🎬</div>')">`:`<div class="ep-thumb-ph">🎬</div>`}
+      <div style="position:relative">
+        ${thumb
+          ?`<img class="ep-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          :''}
+        <div class="ep-thumb-ph" ${thumb?'style="display:none"':''}>🎬</div>
+        <div class="ep-num">E${ep.epNum}</div>
+      </div>
       <div class="ep-info">
         <div class="ep-title">${esc(ep.title)}</div>
         <div class="ep-meta">${[ep.dur,ep.rating?`⭐${ep.rating}`:''].filter(Boolean).join(' · ')}</div>
