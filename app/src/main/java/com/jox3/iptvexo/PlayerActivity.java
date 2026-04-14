@@ -1057,15 +1057,19 @@ public class PlayerActivity extends AppCompatActivity {
     // Swipe seek
     private long seekStartPosition = -1;
     private boolean gestureIsSeek = false;
-    private LinearLayout gestFeedbackLayout;
-    private TextView gestIconView, gestValueView;
-    private ProgressBar gestProgressView;
+    private LinearLayout gestFeedbackLayout, gestFeedbackRight;
+    private TextView gestIconView, gestValueView, gestIconRight, gestValueRight;
+    private ProgressBar gestProgressView, gestProgressRight;
 
     private void initGestureOverlay() {
         gestFeedbackLayout = findViewById(R.id.gesture_overlay);
         gestIconView       = findViewById(R.id.gesture_icon);
         gestValueView      = findViewById(R.id.gesture_value);
         gestProgressView   = findViewById(R.id.gesture_progress);
+        gestFeedbackRight  = findViewById(R.id.gesture_overlay_right);
+        gestIconRight      = findViewById(R.id.gesture_icon_right);
+        gestValueRight     = findViewById(R.id.gesture_value_right);
+        gestProgressRight  = findViewById(R.id.gesture_progress_right);
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -1169,12 +1173,24 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void showGestureFeedback(boolean isVolume, int pct) {
-        if (gestFeedbackLayout == null) return;
         runOnUiThread(() -> {
-            gestFeedbackLayout.setVisibility(View.VISIBLE);
-            gestIconView.setText(isVolume ? (pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A") : "\u2600\uFE0F");
-            gestValueView.setText(pct + "%");
-            gestProgressView.setProgress(pct);
+            if (isVolume) {
+                // Barra izquierda — volumen
+                if (gestFeedbackLayout == null) return;
+                gestFeedbackLayout.setVisibility(View.VISIBLE);
+                if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
+                gestIconView.setText(pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A");
+                gestValueView.setText(pct + "%");
+                if (gestProgressView != null) gestProgressView.setProgress(pct);
+            } else {
+                // Barra derecha — brillo
+                if (gestFeedbackRight == null) return;
+                gestFeedbackRight.setVisibility(View.VISIBLE);
+                if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
+                gestIconRight.setText(pct < 30 ? "\uD83C\uDF11" : pct < 70 ? "\uD83C\uDF13" : "\u2600\uFE0F");
+                gestValueRight.setText(pct + "%");
+                if (gestProgressRight != null) gestProgressRight.setProgress(pct);
+            }
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
         });
     }
@@ -1206,6 +1222,8 @@ public class PlayerActivity extends AppCompatActivity {
         gestureHideRunnable = () -> {
             if (gestFeedbackLayout != null)
                 gestFeedbackLayout.setVisibility(View.GONE);
+            if (gestFeedbackRight != null)
+                gestFeedbackRight.setVisibility(View.GONE);
         };
         gestureHideHandler.postDelayed(gestureHideRunnable, 1200);
     }
