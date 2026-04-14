@@ -525,6 +525,13 @@ public class PlayerActivity extends AppCompatActivity {
 
         player.addListener(new Player.Listener() {
             @Override
+            public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    updateResolutionLabel(videoSize.width + "x" + videoSize.height);
+                }
+            }
+
+            @Override
             public void onTracksChanged(Tracks tracks) {
                 int audioCount = 0; boolean hasSubs = false;
                 for (Tracks.Group g : tracks.getGroups()) {
@@ -1057,38 +1064,45 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                     break;
                 case MotionEvent.ACTION_MOVE:
+                    float dyM = gestureStartY - event.getY();
+                    float dxM = event.getX() - gestureStartX;
+
                     if (!gestureIsVolume && !gestureIsBrightness && !gestureIsSeek) {
-                        // Detectar si es seek horizontal
-                        float dxRaw = event.getX() - gestureStartX;
-                        float dyRaw = event.getY() - gestureStartY;
-                        if (Math.abs(dxRaw) > 30 && Math.abs(dxRaw) > Math.abs(dyRaw) * 1.5f) {
-                            gestureIsSeek = true;
+                        // Detectar dirección dominante del gesto
+                        if (Math.abs(dxM) > 30 && Math.abs(dxM) > Math.abs(dyM) * 1.5f) {
+                            gestureIsSeek = true; // horizontal → seek
                         }
+                        // vertical en zona vol/brillo se detecta más abajo
                     }
-                    float dy = gestureStartY - event.getY();
-                    float dx = event.getX() - gestureStartX;
-                    if (!gestureActive && (Math.abs(dy) > 20 || Math.abs(dx) > 30)) gestureActive = true;
+
+                    // Para volumen y brillo exigir movimiento predominantemente vertical
+                    boolean isVertical = Math.abs(dyM) > Math.abs(dxM) * 1.2f;
+
+                    if (!gestureActive) {
+                        if (gestureIsSeek && Math.abs(dxM) > 30) gestureActive = true;
+                        else if ((gestureIsVolume || gestureIsBrightness) && isVertical && Math.abs(dyM) > 20) gestureActive = true;
+                    }
+
                     if (gestureActive) {
                         if (gestureIsSeek && isVodType() && player != null && seekStartPosition >= 0) {
-                            // Seek horizontal — 1% por cada 8dp de swipe
                             long dur = player.getDuration();
                             if (dur > 0) {
-                                long seekDelta = (long)(dx / v.getWidth() * dur);
+                                long seekDelta = (long)(dxM / v.getWidth() * dur);
                                 long newPos = Math.max(0, Math.min(dur, seekStartPosition + seekDelta));
                                 player.seekTo(newPos);
                                 long newSecs = newPos / 1000;
                                 String timeStr = String.format("%d:%02d:%02d",
                                     newSecs/3600, (newSecs%3600)/60, newSecs%60);
-                                showSeekTimeFeedback(dx > 0, timeStr, (int)(newPos * 100 / dur));
+                                showSeekTimeFeedback(dxM > 0, timeStr, (int)(newPos * 100 / dur));
                             }
-                        } else if (gestureIsVolume) {
-                            float delta = dy / v.getHeight();
+                        } else if (gestureIsVolume && isVertical) {
+                            float delta = dyM / v.getHeight();
                             int newVol = Math.max(0, Math.min(maxVolume,
                                 gestureStartVolume + (int)(delta * maxVolume)));
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
                             showGestureFeedback(true, (int)((float)newVol/maxVolume*100));
-                        } else if (gestureIsBrightness) {
-                            float delta = dy / v.getHeight();
+                        } else if (gestureIsBrightness && isVertical) {
+                            float delta = dyM / v.getHeight();
                             float newBright = Math.max(0.01f, Math.min(1f, gestureStartBrightness + delta));
                             WindowManager.LayoutParams lp = getWindow().getAttributes();
                             lp.screenBrightness = newBright;
