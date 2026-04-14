@@ -474,7 +474,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .season-drop-item:hover{background:var(--bg3);color:var(--text)}
 .season-drop-item.active{color:var(--accent);font-weight:700;background:rgba(0,212,255,.06)}
 .ep-list{display:flex;flex-direction:column;gap:8px}
-.ep-item{display:flex;align-items:center;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .2s}
+.ep-item{display:flex;align-items:flex-start;gap:12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;cursor:pointer;transition:all .2s}
 .ep-item:hover{border-color:var(--accent);background:rgba(0,212,255,.05)}
 .ep-num{width:32px;height:32px;border-radius:6px;background:var(--bg);display:flex;align-items:center;justify-content:center;font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--accent);flex-shrink:0}
 .ep-thumb{width:80px;height:46px;border-radius:6px;object-fit:cover;background:var(--bg);flex-shrink:0}
@@ -482,6 +482,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .ep-info{flex:1;min-width:0}
 .ep-title{font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ep-meta{font-size:.7rem;color:var(--muted);margin-top:2px}
+.ep-plot{font-size:.7rem;color:var(--muted2);margin-top:4px;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ep-play-btns{display:flex;flex-direction:column;gap:4px;flex-shrink:0}
 .ep-btn{background:var(--bg2);border:1px solid var(--border);border-radius:5px;color:var(--muted2);cursor:pointer;font-size:.68rem;padding:4px 8px;transition:all .2s;white-space:nowrap}
 .ep-btn:hover{border-color:var(--accent);color:var(--accent)}
@@ -493,18 +494,35 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .vod-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:500;display:flex;align-items:flex-end;justify-content:center}
 .vod-modal-bg.hidden{display:none}
 .vod-modal{background:var(--bg2);border:1px solid var(--border);border-radius:16px 16px 0 0;width:100%;max-width:680px;height:92vh;display:flex;flex-direction:column;animation:slideUp .25s ease;overflow:hidden}
-.vod-modal-cover{width:100%;height:260px;object-fit:contain;background:var(--bg3);display:block;flex-shrink:0}
+.vod-modal-hero{position:relative;flex-shrink:0}
+.vod-modal-cover{width:100%;height:220px;object-fit:cover;background:var(--bg3);display:block}
 .vod-modal-cover-ph{width:100%;height:180px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:4rem;flex-shrink:0}
-.vod-modal-info{flex:1;overflow-y:auto;padding:16px}
-.vod-modal-title{font-family:'Rajdhani',sans-serif;font-size:1.3rem;font-weight:700;margin-bottom:4px}
-.vod-modal-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.vod-modal-hero-grad{position:absolute;bottom:0;left:0;right:0;height:80px;background:linear-gradient(to top,var(--bg2),transparent)}
+.vod-modal-info{flex:1;overflow-y:auto;padding:14px 16px 20px}
+.vod-modal-title{font-family:'Rajdhani',sans-serif;font-size:1.3rem;font-weight:700;margin-bottom:6px;line-height:1.2}
+.vod-modal-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .vod-modal-badge{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:.68rem;color:var(--muted2)}
 .vod-modal-rating{color:var(--yellow);font-size:.78rem;font-weight:600}
-.vod-modal-plot{font-size:.8rem;color:var(--muted2);line-height:1.5;margin-bottom:16px}
-.vod-modal-btns{display:flex;gap:8px;flex-wrap:wrap}
+.vod-modal-plot{font-size:.8rem;color:var(--muted2);line-height:1.6;margin-bottom:4px;overflow:hidden;max-height:72px;transition:max-height .3s}
+.vod-modal-plot.expanded{max-height:400px}
+.vod-modal-plot-btn{background:none;border:none;color:var(--accent);font-size:.72rem;cursor:pointer;padding:0;margin-bottom:14px;display:block}
+.vod-modal-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .vod-modal-play{flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:var(--radius);color:#0a0e14;cursor:pointer;font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;padding:12px;letter-spacing:.5px}
 .vod-modal-ext{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);color:var(--muted2);cursor:pointer;font-size:.85rem;padding:12px 16px}
-.vod-modal-close{position:absolute;top:12px;right:12px;background:rgba(0,0,0,.6);border:none;border-radius:50%;color:#fff;cursor:pointer;font-size:1.2rem;width:34px;height:34px;display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(4px)}
+.vod-modal-close{position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);border:none;border-radius:50%;color:#fff;cursor:pointer;font-size:1.2rem;width:34px;height:34px;display:flex;align-items:center;justify-content:center;z-index:10;backdrop-filter:blur(4px)}
+.vod-section-title{font-family:'Rajdhani',sans-serif;font-size:.85rem;font-weight:700;color:var(--text);letter-spacing:.5px;margin-bottom:10px;padding-top:4px}
+.cast-list{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;margin-bottom:14px}
+.cast-list::-webkit-scrollbar{display:none}
+.cast-item{flex-shrink:0;text-align:center;width:64px}
+.cast-photo{width:52px;height:52px;border-radius:50%;background:var(--bg3);border:2px solid var(--border);margin:0 auto 4px;display:flex;align-items:center;justify-content:center;font-size:1.3rem;overflow:hidden}
+.cast-photo img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.cast-name{font-size:.58rem;color:var(--muted2);line-height:1.2;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.similar-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px;margin-bottom:4px}
+.similar-card{cursor:pointer;border-radius:6px;overflow:hidden;background:var(--bg3);border:1px solid var(--border);transition:transform .2s,border-color .2s}
+.similar-card:hover{transform:scale(1.04);border-color:var(--accent)}
+.similar-thumb{width:100%;aspect-ratio:2/3;object-fit:cover;display:block}
+.similar-thumb-ph{width:100%;aspect-ratio:2/3;display:flex;align-items:center;justify-content:center;font-size:1.5rem}
+.similar-name{font-size:.58rem;padding:3px 4px;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -728,15 +746,21 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 <div class="vod-modal-bg hidden" id="vodModal" onclick="if(event.target===this)closeVodModal()">
   <div class="vod-modal" style="position:relative">
     <button class="vod-modal-close" onclick="closeVodModal()">✕</button>
-    <div id="vodModalCover"></div>
+    <div class="vod-modal-hero">
+      <div id="vodModalCover"></div>
+      <div class="vod-modal-hero-grad"></div>
+    </div>
     <div class="vod-modal-info">
       <div class="vod-modal-title" id="vodModalTitle">—</div>
       <div class="vod-modal-meta" id="vodModalMeta"></div>
       <div class="vod-modal-plot" id="vodModalPlot"></div>
+      <button class="vod-modal-plot-btn" id="vodModalPlotBtn" onclick="toggleVodPlot()" style="display:none">Ver más ▾</button>
       <div class="vod-modal-btns">
         <button class="vod-modal-play" id="vodModalPlayBtn" onclick="playFromVodModal()">▶ Reproducir</button>
         <button class="vod-modal-ext" onclick="extFromVodModal()">📲 Externo</button>
       </div>
+      <div id="vodModalCast"></div>
+      <div id="vodModalSimilar"></div>
     </div>
   </div>
 </div>
@@ -1814,6 +1838,9 @@ async function openVodInfo(item){
   document.getElementById('vodModalTitle').textContent=item.name;
   document.getElementById('vodModalMeta').innerHTML='<span class="vod-modal-badge">⏳ Cargando...</span>';
   document.getElementById('vodModalPlot').textContent='';
+  document.getElementById('vodModalPlotBtn').style.display='none';
+  document.getElementById('vodModalCast').innerHTML='';
+  document.getElementById('vodModalSimilar').innerHTML='';
   const coverEl=document.getElementById('vodModalCover');
   if(item.cover){
     coverEl.innerHTML=`<img class="vod-modal-cover" src="${esc(item.cover)}" onerror="this.outerHTML='<div class=vod-modal-cover-ph>🎬</div>'">`;
@@ -1823,21 +1850,96 @@ async function openVodInfo(item){
   try{
     const data=await xApi('get_vod_info',`&vod_id=${item.id}`);
     const info=data.info||{};
+
+    // Meta
     const meta=[];
-    if(info.releasedate||info.year) meta.push(`<span class="vod-modal-badge">${(info.releasedate||info.year||'').substring(0,4)}</span>`);
+    if(info.releasedate||info.year) meta.push(`<span class="vod-modal-badge">📅 ${(info.releasedate||info.year||'').substring(0,4)}</span>`);
     if(info.duration) meta.push(`<span class="vod-modal-badge">⏱ ${info.duration}</span>`);
     if(info.genre) meta.push(`<span class="vod-modal-badge">${esc(info.genre)}</span>`);
     if(info.rating||item.rating) meta.push(`<span class="vod-modal-rating">⭐ ${info.rating||item.rating}</span>`);
+    if(info.country) meta.push(`<span class="vod-modal-badge">🌍 ${esc(info.country)}</span>`);
     document.getElementById('vodModalMeta').innerHTML=meta.join('')||'';
-    document.getElementById('vodModalPlot').textContent=info.plot||info.description||'Sin sinopsis disponible.';
+
+    // Portada mejorada
     if(info.movie_image||info.cover_big){
-      coverEl.innerHTML=`<img class="vod-modal-cover" src="${esc(info.movie_image||info.cover_big)}" onerror="this.outerHTML='<div class=vod-modal-cover-ph>🎬</div>'">`;
+      coverEl.innerHTML=`<img class="vod-modal-cover" src="${esc(info.movie_image||info.cover_big)}" style="object-fit:cover" onerror="this.outerHTML='<div class=vod-modal-cover-ph>🎬</div>'">`;
     }
+
+    // Sinopsis expandible
+    const plot = info.plot||info.description||'Sin sinopsis disponible.';
+    const plotEl = document.getElementById('vodModalPlot');
+    plotEl.textContent = plot;
+    plotEl.classList.remove('expanded');
+    const plotBtn = document.getElementById('vodModalPlotBtn');
+    if(plot.length > 150){
+      plotBtn.style.display='block';
+      plotBtn.textContent='Ver más ▾';
+    }
+
+    // Reparto
+    const cast = info.cast||info.actors||'';
+    const director = info.director||'';
+    if(cast || director){
+      const castEl = document.getElementById('vodModalCast');
+      let castHtml = `<div class="vod-section-title">🎬 Reparto y Dirección</div><div class="cast-list">`;
+      if(director){
+        castHtml += `<div class="cast-item">
+          <div class="cast-photo">🎬</div>
+          <div class="cast-name">${esc(director.split(',')[0].trim())}</div>
+        </div>`;
+      }
+      if(cast){
+        cast.split(',').slice(0,8).forEach(actor=>{
+          const a = actor.trim();
+          if(!a) return;
+          castHtml += `<div class="cast-item">
+            <div class="cast-photo">👤</div>
+            <div class="cast-name">${esc(a)}</div>
+          </div>`;
+        });
+      }
+      castHtml += `</div>`;
+      castEl.innerHTML = castHtml;
+    }
+
+    // Películas similares — de la misma categoría
+    loadSimilarMovies(item);
+
   }catch(e){
     document.getElementById('vodModalMeta').innerHTML='';
     document.getElementById('vodModalPlot').textContent='Sin información disponible.';
   }
 }
+
+function toggleVodPlot(){
+  const plotEl=document.getElementById('vodModalPlot');
+  const btn=document.getElementById('vodModalPlotBtn');
+  const expanded=plotEl.classList.toggle('expanded');
+  btn.textContent=expanded?'Ver menos ▴':'Ver más ▾';
+}
+
+function loadSimilarMovies(item){
+  // Buscar en la misma categoría
+  const catId=S.activeCat[S.sec];
+  if(!catId) return;
+  const cat=S.cats[S.sec]?.find(c=>c.id===catId);
+  if(!cat?.loaded||!cat.items.length) return;
+  const similar=cat.items.filter(i=>i.id!==item.id).slice(0,10);
+  if(!similar.length) return;
+  const similarEl=document.getElementById('vodModalSimilar');
+  let html=`<div class="vod-section-title">🎬 Más en esta categoría</div><div class="similar-grid">`;
+  similar.forEach(m=>{
+    const thumb=m.cover||m.logo||'';
+    html+=`<div class="similar-card" onclick="closeVodModal();setTimeout(()=>openVodInfo(${js(m)}),150)">
+      ${thumb?`<img class="similar-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
+      <div class="similar-thumb-ph" ${thumb?'style="display:none"':''}>🎬</div>
+      <div class="similar-name">${esc(m.name)}</div>
+    </div>`;
+  });
+  html+=`</div>`;
+  similarEl.innerHTML=html;
+}
+
 function closeVodModal(){document.getElementById('vodModal').classList.add('hidden');_vodModalItem=null}
 function playFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();play(item)}
 function extFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();launchVLC(item.url,item.name)}
@@ -1850,11 +1952,13 @@ async function openSeries(item){
   const mh=document.getElementById('modalHeader');
   mh.innerHTML=`${item.logo?`<img src="${esc(item.logo)}" onerror="this.outerHTML='<div class=modal-header-ph>🎭</div>'">`:`<div class="modal-header-ph">🎭</div>`}<div class="modal-title"><h3>${esc(item.name)}</h3><p>${esc(item.group||'')}</p></div><button class="modal-close" onclick="closeSeriesModalForce()">✕</button>`;
   try{
-    const data=await xApi('get_series_info',`&series_id=${item.id}`);const eps=data.episodes||{};
+    const data=await xApi('get_series_info',`&series_id=${item.id}`);
+    const eps=data.episodes||{};
     seriesData={item,seasons:eps,info:data.info||{},activeSeason:null};
     const seasonKeys=Object.keys(eps).sort((a,b)=>parseInt(a)-parseInt(b));
     if(!seasonKeys.length){document.getElementById('modalBody').innerHTML=`<div class="empty"><div class="empty-icon">📂</div><p>Sin episodios</p></div>`;return}
-    seriesData.activeSeason=seasonKeys[0];renderSeriesModal(seasonKeys);
+    seriesData.activeSeason=seasonKeys[0];
+    renderSeriesModal(seasonKeys);
   }catch(e){document.getElementById('modalBody').innerHTML=`<div class="empty"><div class="empty-icon">❌</div><p>${e.message}</p></div>`}
 }
 function renderSeriesModal(seasonKeys){
@@ -1862,8 +1966,28 @@ function renderSeriesModal(seasonKeys){
   seriesData.currentEps=eps.map(ep=>{
     const epNum=ep.episode_num||ep.id||'?';const title=ep.title||`Episodio ${epNum}`;const ext=ep.container_extension||'mkv';
     const url=`${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
-    return{id:String(ep.id),name:`${seriesData.item.name} · T${activeSeason}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,epNum,title,dur:ep.info?.duration_secs?fmtDur(ep.info.duration_secs):'',rating:ep.info?.rating||'',thumb:ep.info?.movie_image||'',_isSeries:true};
+    return{id:String(ep.id),name:`${seriesData.item.name} · T${activeSeason}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,epNum,title,dur:ep.info?.duration_secs?fmtDur(ep.info.duration_secs):'',rating:ep.info?.rating||'',thumb:ep.info?.movie_image||'',plot:ep.info?.plot||ep.info?.overview||'',_isSeries:true};
   });
+
+  // Sinopsis de la serie
+  const info = seriesData.info || {};
+  let seriesSynopsis = '';
+  const plot = info.plot||info.description||info.overview||'';
+  const cast = info.cast||info.actors||'';
+  const genre = info.genre||'';
+  const year = info.releaseDate||info.year||'';
+  const rating = info.rating||'';
+  if(plot || cast || genre){
+    seriesSynopsis = `<div style="background:var(--bg3);border-radius:10px;padding:12px;margin-bottom:12px;border:1px solid var(--border)">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        ${year?`<span class="vod-modal-badge">📅 ${year}</span>`:''}
+        ${genre?`<span class="vod-modal-badge">${esc(genre)}</span>`:''}
+        ${rating?`<span class="vod-modal-rating">⭐ ${esc(rating)}</span>`:''}
+      </div>
+      ${plot?`<p style="font-size:.78rem;color:var(--muted2);line-height:1.6;margin-bottom:${cast?'8px':'0'}">${esc(plot)}</p>`:''}
+      ${cast?`<p style="font-size:.7rem;color:var(--muted)"><span style="color:var(--muted2)">Reparto:</span> ${esc(cast.split(',').slice(0,5).join(', '))}</p>`:''}
+    </div>`;
+  }
 
   // Dropdown de temporadas
   const dropItems = seasonKeys.map(k=>`
@@ -1879,8 +2003,25 @@ function renderSeriesModal(seasonKeys){
     <div class="season-drop-list" id="seasonDropList">${dropItems}</div>
   </div>`;
 
-  const epList=`<div class="ep-list">`+seriesData.currentEps.map((ep,idx)=>`<div class="ep-item"><div class="ep-num">E${ep.epNum}</div>${ep.thumb?`<img class="ep-thumb" src="${esc(ep.thumb)}" loading="lazy" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div class=ep-thumb-ph>🎬</div>')">`:`<div class="ep-thumb-ph">🎬</div>`}<div class="ep-info"><div class="ep-title">${esc(ep.title)}</div><div class="ep-meta">${[ep.dur,ep.rating?`⭐${ep.rating}`:''].filter(Boolean).join(' · ')}</div></div><div class="ep-play-btns"><button class="ep-btn play" onclick="playEpisodeByIdx(${idx})">▶ Play</button><button class="ep-btn" onclick="openEpExtByIdx(${idx})">📲 Ext</button></div></div>`).join('')+`</div>`;
-  document.getElementById('modalBody').innerHTML=seasonDrop+epList;
+  // Lista de episodios con sinopsis
+  const epList=`<div class="ep-list">`+seriesData.currentEps.map((ep,idx)=>{
+    const epPlot = ep.plot ? `<div class="ep-plot">${esc(ep.plot)}</div>` : '';
+    return `<div class="ep-item">
+      <div class="ep-num">E${ep.epNum}</div>
+      ${ep.thumb?`<img class="ep-thumb" src="${esc(ep.thumb)}" loading="lazy" onerror="this.style.display='none';this.insertAdjacentHTML('afterend','<div class=ep-thumb-ph>🎬</div>')">`:`<div class="ep-thumb-ph">🎬</div>`}
+      <div class="ep-info">
+        <div class="ep-title">${esc(ep.title)}</div>
+        <div class="ep-meta">${[ep.dur,ep.rating?`⭐${ep.rating}`:''].filter(Boolean).join(' · ')}</div>
+        ${epPlot}
+      </div>
+      <div class="ep-play-btns">
+        <button class="ep-btn play" onclick="playEpisodeByIdx(${idx})">▶ Play</button>
+        <button class="ep-btn" onclick="openEpExtByIdx(${idx})">📲 Ext</button>
+      </div>
+    </div>`;
+  }).join('')+`</div>`;
+
+  document.getElementById('modalBody').innerHTML=seriesSynopsis+seasonDrop+epList;
 }
 
 function toggleSeasonDrop(){
