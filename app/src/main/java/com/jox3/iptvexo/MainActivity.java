@@ -51,6 +51,8 @@ public class MainActivity extends AppCompatActivity {
         ws.setMediaPlaybackRequiresUserGesture(false);
         ws.setAllowUniversalAccessFromFileURLs(true);
         ws.setAllowFileAccessFromFileURLs(true);
+        ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        webView.clearCache(true);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
