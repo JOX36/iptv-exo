@@ -1057,10 +1057,11 @@ public class PlayerActivity extends AppCompatActivity {
     // Swipe seek
     private long seekStartPosition = -1;
     private boolean gestureIsSeek = false;
-    private LinearLayout gestFeedbackLayout, gestFeedbackRight;
+    private LinearLayout gestFeedbackLayout, gestFeedbackRight, gestSeekOverlay;
     private TextView gestIconView, gestValueView, gestIconRight, gestValueRight;
-    private View gestProgressView, gestProgressRight;
-    private static final int GEST_BAR_MAX_DP = 120; // altura total de la barra en dp
+    private TextView gestSeekIcon, gestSeekValue;
+    private View gestProgressView, gestProgressRight, gestSeekProgress;
+    private static final int GEST_BAR_MAX_DP = 120;
 
     private void initGestureOverlay() {
         gestFeedbackLayout = findViewById(R.id.gesture_overlay);
@@ -1071,8 +1072,11 @@ public class PlayerActivity extends AppCompatActivity {
         gestIconRight      = findViewById(R.id.gesture_icon_right);
         gestValueRight     = findViewById(R.id.gesture_value_right);
         gestProgressRight  = findViewById(R.id.gesture_progress_right);
+        gestSeekOverlay    = findViewById(R.id.gesture_seek_overlay);
+        gestSeekIcon       = findViewById(R.id.gesture_seek_icon);
+        gestSeekValue      = findViewById(R.id.gesture_seek_value);
+        gestSeekProgress   = findViewById(R.id.gesture_seek_progress);
     }
-
     @SuppressLint("ClickableViewAccessibility")
     private void attachGestureListener(View view) {
         view.setOnTouchListener((v, event) -> {
@@ -1219,22 +1223,34 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void showSeekTimeFeedback(boolean forward, String timeStr, int pct) {
-        if (gestFeedbackLayout == null) return;
         runOnUiThread(() -> {
-            gestFeedbackLayout.setVisibility(View.VISIBLE);
-            gestIconView.setText(forward ? "\u23E9" : "\u23EA");
-            gestValueView.setText(timeStr);
-            setBarHeight(gestProgressView, pct);
+            // Ocultar vol/brillo
+            if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
+            if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
+            // Mostrar overlay seek horizontal central
+            if (gestSeekOverlay != null) {
+                gestSeekOverlay.setVisibility(View.VISIBLE);
+                if (gestSeekIcon != null) gestSeekIcon.setText(forward ? "\u23E9" : "\u23EA");
+                if (gestSeekValue != null) gestSeekValue.setText(timeStr);
+                // Barra horizontal — ancho proporcional al progreso
+                if (gestSeekProgress != null) {
+                    android.view.ViewGroup.LayoutParams lp = gestSeekProgress.getLayoutParams();
+                    gestSeekProgress.post(() -> {
+                        android.view.View parent = (android.view.View) gestSeekProgress.getParent();
+                        lp.width = (int)(parent.getWidth() * pct / 100f);
+                        gestSeekProgress.setLayoutParams(lp);
+                    });
+                }
+            }
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
         });
     }
 
     private void hideGestureFeedbackDelayed() {
         gestureHideRunnable = () -> {
-            if (gestFeedbackLayout != null)
-                gestFeedbackLayout.setVisibility(View.GONE);
-            if (gestFeedbackRight != null)
-                gestFeedbackRight.setVisibility(View.GONE);
+            if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
+            if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
+            if (gestSeekOverlay != null) gestSeekOverlay.setVisibility(View.GONE);
         };
         gestureHideHandler.postDelayed(gestureHideRunnable, 1200);
     }
