@@ -1087,8 +1087,11 @@ public class PlayerActivity extends AppCompatActivity {
                     gestureStartY = event.getY();
                     gestureActive = false;
                     gestureIsSeek = false;
-                    gestureIsVolume     = gestureStartX < v.getWidth() / 3f;
-                    gestureIsBrightness = gestureStartX > v.getWidth() * 2f / 3f;
+                    float third = v.getWidth() / 3f;
+                    gestureIsVolume     = gestureStartX < third;
+                    gestureIsBrightness = gestureStartX > (v.getWidth() - third);
+                    // Zona central — siempre seek en VOD
+                    boolean isCenterZone = !gestureIsVolume && !gestureIsBrightness;
                     if (gestureIsVolume) {
                         gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
                     } else if (gestureIsBrightness) {
@@ -1100,8 +1103,7 @@ public class PlayerActivity extends AppCompatActivity {
                             } catch (Exception e) { winBright = 0.5f; }
                         }
                         gestureStartBrightness = winBright;
-                    } else if (isVodType() && player != null) {
-                        // Zona central — seek horizontal
+                    } else if (isCenterZone && player != null) {
                         seekStartPosition = player.getCurrentPosition();
                     }
                     break;
@@ -1169,7 +1171,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private boolean isFullscreenMode() {
-        if (isVodType()) return isVodFullscreen;
+        if (isVodType()) return true; // VOD siempre acepta gestos
         return true; // Live siempre es fullscreen
     }
 
