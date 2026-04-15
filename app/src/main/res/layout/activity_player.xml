@@ -705,7 +705,7 @@
             android:background="#33FFFFFF">
             <View
                 android:id="@+id/gesture_seek_progress"
-                android:layout_width="50%"
+                android:layout_width="0dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="start"
                 android:background="#00D4FF" />
