@@ -616,7 +616,7 @@
 
     </LinearLayout>
 
-    <!-- GESTURE FEEDBACK — Barra volumen (izquierda) -->
+    <!-- GESTURE FEEDBACK — Volumen (izquierda vertical) -->
     <LinearLayout
         android:id="@+id/gesture_overlay"
         android:layout_width="36dp"
@@ -637,20 +637,16 @@
             android:text="🔊"
             android:layout_marginBottom="6dp" />
 
-        <!-- Contenedor de barra vertical -->
         <FrameLayout
             android:layout_width="12dp"
             android:layout_height="120dp"
             android:background="#33FFFFFF">
-
-            <!-- Relleno que crece desde abajo -->
             <View
                 android:id="@+id/gesture_progress"
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
                 android:layout_gravity="bottom"
                 android:background="#00D4FF" />
-
         </FrameLayout>
 
         <TextView
@@ -664,7 +660,60 @@
 
     </LinearLayout>
 
-    <!-- GESTURE FEEDBACK — Barra brillo (derecha) -->
+    <!-- GESTURE FEEDBACK — Seek horizontal (centro) -->
+    <LinearLayout
+        android:id="@+id/gesture_seek_overlay"
+        android:layout_width="280dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="#CC0a0e14"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="12dp"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:id="@+id/gesture_seek_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="20sp"
+                android:text="⏩"
+                android:layout_marginEnd="8dp" />
+
+            <TextView
+                android:id="@+id/gesture_seek_value"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:fontFamily="monospace"
+                android:text="0:00:00" />
+
+        </LinearLayout>
+
+        <!-- Barra horizontal de progreso -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:background="#33FFFFFF">
+            <View
+                android:id="@+id/gesture_seek_progress"
+                android:layout_width="50%"
+                android:layout_height="match_parent"
+                android:layout_gravity="start"
+                android:background="#00D4FF" />
+        </FrameLayout>
+
+    </LinearLayout>
+
+    <!-- GESTURE FEEDBACK — Brillo (derecha vertical) -->
     <LinearLayout
         android:id="@+id/gesture_overlay_right"
         android:layout_width="36dp"
@@ -689,14 +738,12 @@
             android:layout_width="12dp"
             android:layout_height="120dp"
             android:background="#33FFFFFF">
-
             <View
                 android:id="@+id/gesture_progress_right"
                 android:layout_width="match_parent"
                 android:layout_height="60dp"
                 android:layout_gravity="bottom"
                 android:background="#FFD700" />
-
         </FrameLayout>
 
         <TextView
