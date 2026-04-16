@@ -94,7 +94,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 /* TOPBAR */
 .topbar{display:flex;flex-direction:column;background:var(--bg2);border-bottom:1px solid var(--border);padding:0;flex-shrink:0;z-index:100}
 .topbar-appname{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 6px;background:linear-gradient(135deg,rgba(0,212,255,.08),transparent)}
-.topbar-row1{display:flex;align-items:center;gap:6px;width:100%;min-width:0;padding:4px 10px}
+.topbar-row1{display:flex;align-items:center;gap:6px;width:100%;min-width:0;padding:6px 10px}
 .topbar-row2{display:flex;align-items:center;gap:6px;width:100%;padding:4px 10px 6px}
 .topbar-logo{font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:700;color:var(--accent);letter-spacing:1px;white-space:nowrap;flex-shrink:0;animation:neonPulse 3s ease-in-out infinite}
 .topbar-spacer{flex:1}
@@ -148,7 +148,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
   .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:150;transform:translateX(-100%);width:240px;transition:transform .25s}
   .sidebar.open{transform:translateX(0)}
   .sidebar.collapsed{transform:translateX(-100%);width:240px}
-  .sec-tab{padding:5px 7px;font-size:.7rem}
+  .sec-tab{padding:8px 10px;font-size:.72rem}
 }
 
 /* MAIN */
@@ -323,7 +323,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .ch-logo-wrap{position:relative;display:block;width:100%;margin-bottom:6px;border-radius:10px;overflow:hidden}
 .ch-name{font-size:.7rem;font-weight:600;overflow:hidden;white-space:nowrap;position:relative;line-height:1.3;margin-bottom:2px}
 .ch-name-inner{display:inline-block;white-space:nowrap;padding-right:16px}
-.ch-name-inner.marquee{animation:marquee-scroll 3s linear infinite}
+.ch-name-inner.marquee{animation:marquee-scroll 4s linear infinite}
 @keyframes marquee-scroll{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 .ch-epg{font-size:.58rem;color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
 .fav-btn{position:absolute;top:4px;right:4px;background:none;border:none;cursor:pointer;font-size:.85rem;padding:2px;transition:all .2s;opacity:.45;filter:grayscale(1) brightness(1.8)}
@@ -336,7 +336,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .vod-info{padding:8px 9px 9px}
 .vod-name{font-size:.72rem;font-weight:600;overflow:hidden;white-space:nowrap;position:relative}
 .vod-name-inner{display:inline-block;white-space:nowrap;padding-right:16px;animation:none}
-.vod-card:hover .vod-name-inner.marquee{animation:marquee-scroll 3s linear infinite}
+.vod-card:hover .vod-name-inner.marquee{animation:marquee-scroll 4s linear infinite}
 .vod-rating{font-size:.65rem;color:var(--yellow);margin-top:2px}
 .list-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s;border-radius:4px;padding-left:4px}
 .list-item:hover{background:rgba(0,212,255,.04)}
@@ -434,19 +434,19 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 @keyframes shimmerBg{0%,100%{background-position:0% 50%}50%{background-position:100% 50%}}
 
 /* Tab activo con línea animada */
-.sec-tab{padding:5px 9px;border-radius:4px;cursor:pointer;font-size:.75rem;font-weight:600;color:var(--muted);transition:all .25s;white-space:nowrap;user-select:none;-webkit-user-select:none;position:relative}
+.sec-tab{padding:10px 12px;border-radius:6px;cursor:pointer;font-size:.78rem;font-weight:700;color:var(--muted);transition:all .25s;white-space:nowrap;user-select:none;-webkit-user-select:none;position:relative;line-height:1}
 .sec-tab.active{background:transparent;color:var(--accent)}
 .sec-tab.active::after{content:'';position:absolute;bottom:-2px;left:10%;right:10%;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:2px;transform-origin:center;animation:tabSlide .25s ease}
 
 /* Tab container sin fondo */
-.sec-tabs{display:flex;gap:2px;border-radius:6px;padding:3px;flex-shrink:0;border-bottom:1px solid var(--border);background:transparent}
+.sec-tabs{display:flex;gap:2px;border-radius:8px;padding:3px;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg3);overflow-x:auto;scrollbar-width:none}
 
 /* Cards con animación de entrada escalonada */
 .ch-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:12px 8px 10px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;text-align:center;position:relative;overflow:hidden;animation:fadeInUp .3s ease both}
 .ch-card::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,212,255,.1),transparent 60%);opacity:0;transition:opacity .3s}
 .ch-card:hover{border-color:var(--accent);transform:translateY(-4px) scale(1.03);box-shadow:0 10px 28px rgba(0,212,255,.22)}
 .ch-card:hover::after{opacity:1}
-.ch-card:active{transform:translateY(0) scale(.97) !important;transition:transform .08s !important}
+.ch-card:active{transform:translateY(0) scale(.97) !important;transition:transform .08s !important;filter:brightness(1.3)}
 .ch-card.active{border-color:var(--accent);background:rgba(0,212,255,.08);box-shadow:0 0 0 2px rgba(0,212,255,.25)}
 
 /* VOD cards con animación */
@@ -454,7 +454,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .vod-card::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 50%);opacity:0;transition:opacity .3s;pointer-events:none}
 .vod-card:hover{border-color:var(--accent);transform:translateY(-5px) scale(1.02);box-shadow:0 12px 32px rgba(0,212,255,.25)}
 .vod-card:hover::after{opacity:1}
-.vod-card:active{transform:translateY(0) scale(.98) !important;transition:transform .08s !important}
+.vod-card:active{transform:translateY(0) scale(.98) !important;transition:transform .08s !important;filter:brightness(1.3)}
 .vod-card.active{border-color:var(--accent);box-shadow:0 0 0 2px rgba(0,212,255,.3)}
 
 /* Botones con micro-animación */
