@@ -178,6 +178,26 @@
             android:visibility="gone" />
 
         <Button
+            android:id="@+id/live_btn_prev"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="⏮"
+            android:textSize="16sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#00d4ff"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/live_btn_next"
+            android:layout_width="wrap_content"
+            android:layout_height="34dp"
+            android:text="⏭"
+            android:textSize="16sp"
+            android:backgroundTint="#1a2535"
+            android:textColor="#00d4ff"
+            android:layout_marginEnd="8dp" />
+
+        <Button
             android:id="@+id/live_btn_pip"
             android:layout_width="wrap_content"
             android:layout_height="34dp"
