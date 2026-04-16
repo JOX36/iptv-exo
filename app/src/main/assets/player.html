@@ -72,10 +72,12 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 
 /* SETUP */
 #setupScreen{display:flex;align-items:center;justify-content:center;height:100vh;background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(0,212,255,.08),transparent 60%),var(--bg)}
-.setup-box{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:36px 28px;width:min(420px,94vw)}
+.setup-box{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:36px 28px;width:min(420px,94vw);animation:setupEntrance .5s cubic-bezier(.34,1.2,.64,1) both}
 .setup-logo{text-align:center;margin-bottom:28px}
-.setup-logo h1{font-family:'Rajdhani',sans-serif;font-size:2.2rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px}
-.setup-logo p{color:var(--muted);font-size:.8rem;margin-top:4px}
+.setup-logo h1{font-family:'Rajdhani',sans-serif;font-size:2.2rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:2px;animation:neonPulse 2.5s ease-in-out infinite}
+.setup-logo p{color:var(--muted);font-size:.8rem;margin-top:4px;animation:fadeInUp .6s ease .3s both}
+@keyframes neonPulse{0%,100%{filter:drop-shadow(0 0 4px rgba(0,212,255,.6)) drop-shadow(0 0 10px rgba(0,212,255,.3))}50%{filter:drop-shadow(0 0 14px rgba(0,212,255,1)) drop-shadow(0 0 28px rgba(0,255,136,.6)) drop-shadow(0 0 40px rgba(0,212,255,.4))}}
+@keyframes setupEntrance{from{opacity:0;transform:translateY(24px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 .sf{margin-bottom:14px}
 .sf label{display:block;font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:6px}
 .sf input{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Exo 2',sans-serif;font-size:.9rem;padding:11px 14px;outline:none;transition:border-color .2s}
@@ -94,7 +96,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .topbar-appname{display:flex;align-items:center;justify-content:space-between;padding:10px 12px 6px;background:linear-gradient(135deg,rgba(0,212,255,.08),transparent)}
 .topbar-row1{display:flex;align-items:center;gap:6px;width:100%;min-width:0;padding:4px 10px}
 .topbar-row2{display:flex;align-items:center;gap:6px;width:100%;padding:4px 10px 6px}
-.topbar-logo{font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:700;color:var(--accent);letter-spacing:1px;white-space:nowrap;flex-shrink:0}
+.topbar-logo{font-family:'Rajdhani',sans-serif;font-size:1.2rem;font-weight:700;color:var(--accent);letter-spacing:1px;white-space:nowrap;flex-shrink:0;animation:neonPulse 3s ease-in-out infinite}
 .topbar-spacer{flex:1}
 .topbar-search{flex:1;position:relative;min-width:0}
 .topbar-search input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:20px;color:var(--text);font-family:'Exo 2',sans-serif;font-size:.8rem;padding:7px 12px 7px 28px;outline:none;transition:border-color .2s}
