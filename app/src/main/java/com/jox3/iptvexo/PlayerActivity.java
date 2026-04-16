@@ -67,7 +67,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView liveEpgNow, liveEpgTime, liveEpgNext;
     private ProgressBar liveEpgProgress;
     private ImageButton liveBtnBack, liveBtnFav;
-    private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop;
+    private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop, liveBtnPrev, liveBtnNext;
 
     // VOD
     private LinearLayout vodLayout;
@@ -213,6 +213,8 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnPip    = findViewById(R.id.live_btn_pip);
         liveBtnExt    = findViewById(R.id.live_btn_ext);
         liveBtnStop   = findViewById(R.id.live_btn_stop);
+        liveBtnPrev   = findViewById(R.id.live_btn_prev);
+        liveBtnNext   = findViewById(R.id.live_btn_next);
         liveEpgContainer = findViewById(R.id.live_epg_container);
         liveEpgNow    = findViewById(R.id.live_epg_now);
         liveEpgTime   = findViewById(R.id.live_epg_time);
@@ -382,19 +384,11 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnPip.setOnClickListener(v -> enterPip());
         liveBtnExt.setOnClickListener(v -> launchExternal());
         liveBtnAudio.setOnClickListener(v -> showAudioTracks());
+        liveBtnPrev.setOnClickListener(v -> navigateChannel(-1));
+        liveBtnNext.setOnClickListener(v -> navigateChannel(1));
 
-        // Swipe para canal siguiente/anterior + tap para barras
+        // Tap para barras — sin swipe de canal
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
-            @Override
-            public boolean onFling(MotionEvent e1, MotionEvent e2, float vX, float vY) {
-                if (e1 == null || e2 == null) return false;
-                float diff = e2.getX() - e1.getX();
-                if (Math.abs(diff) > 80 && Math.abs(vX) > 80) {
-                    navigateChannel(diff < 0 ? 1 : -1);
-                    return true;
-                }
-                return false;
-            }
             @Override
             public boolean onSingleTapUp(MotionEvent e) {
                 toggleLiveBars();
@@ -477,14 +471,21 @@ public class PlayerActivity extends AppCompatActivity {
             @Override
             public boolean onDoubleTap(MotionEvent e) {
                 if (!isVodType() || player == null) return false;
-                // Solo en fullscreen o modo portrait — siempre para VOD
-                boolean isLeft = e.getX() < vodPlayerView.getWidth() / 2f;
-                long seekMs = isLeft ? -10000 : 10000;
-                long newPos = Math.max(0, Math.min(
-                    player.getDuration(), player.getCurrentPosition() + seekMs));
-                player.seekTo(newPos);
-                showSeekFeedback(isLeft ? -10 : +10);
-                return true;
+                float x = e.getX();
+                float w = vodPlayerView.getWidth();
+                // 1/3 izquierda → -10s, 1/3 derecha → +10s, centro → nada
+                if (x < w / 3f) {
+                    long newPos = Math.max(0, player.getCurrentPosition() - 10000);
+                    player.seekTo(newPos);
+                    showSeekFeedback(-10);
+                    return true;
+                } else if (x > w * 2f / 3f) {
+                    long newPos = Math.min(player.getDuration(), player.getCurrentPosition() + 10000);
+                    player.seekTo(newPos);
+                    showSeekFeedback(+10);
+                    return true;
+                }
+                return false;
             }
         });
         attachGestureListener(vodPlayerView);
