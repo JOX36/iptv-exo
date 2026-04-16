@@ -125,6 +125,7 @@ public class PlayerActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -675,10 +676,14 @@ public class PlayerActivity extends AppCompatActivity {
             url   = ch.optString("url", "");
             name  = ch.optString("name", "");
             itemId= ch.optString("id", "");
-            liveTxtName.setText(name);
-            retryCount = 0;
-            showLiveBars();
-            initPlayer();
+            // Fade al cambiar canal
+            playerView.animate().alpha(0f).setDuration(180).withEndAction(() -> {
+                liveTxtName.setText(name);
+                retryCount = 0;
+                showLiveBars();
+                initPlayer();
+                playerView.animate().alpha(1f).setDuration(300).start();
+            }).start();
         } catch (Exception e) { toast("Error al cambiar canal"); }
     }
 
@@ -1443,6 +1448,7 @@ public class PlayerActivity extends AppCompatActivity {
         } else {
             stopAndRelease();
             finish();
+            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         }
     }
 }
