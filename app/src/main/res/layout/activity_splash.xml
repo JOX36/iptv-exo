@@ -1,1 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/splash_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#0a0e14">
 
+    <!-- Logo principal con neon -->
+    <TextView
+        android:id="@+id/splash_logo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="◈ JOX3 TV"
+        android:textSize="48sp"
+        android:textStyle="bold"
+        android:textColor="#00D4FF"
+        android:fontFamily="sans-serif-condensed"
+        android:letterSpacing="0.1"
+        android:shadowColor="#00D4FF"
+        android:shadowDx="0"
+        android:shadowDy="0"
+        android:shadowRadius="20" />
+
+    <!-- Tagline -->
+    <TextView
+        android:id="@+id/splash_tagline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Live · VOD · Series"
+        android:textSize="14sp"
+        android:textColor="#4a7a8a"
+        android:layout_marginTop="12dp"
+        android:letterSpacing="0.2" />
+
+    <!-- Barra de progreso neon -->
+    <View
+        android:id="@+id/splash_bar"
+        android:layout_width="120dp"
+        android:layout_height="2dp"
+        android:layout_marginTop="48dp"
+        android:background="@android:color/transparent" />
+
+</LinearLayout>
