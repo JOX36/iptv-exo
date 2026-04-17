@@ -1217,12 +1217,25 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void showSeekFeedback(int seconds) {
-        if (gestFeedbackLayout == null) return;
         runOnUiThread(() -> {
-            gestFeedbackLayout.setVisibility(View.VISIBLE);
-            gestIconView.setText(seconds > 0 ? "\u23E9" : "\u23EA");
-            gestValueView.setText((seconds > 0 ? "+" : "") + seconds + "s");
-            setBarHeight(gestProgressView, 50);
+            // Ocultar vol/brillo
+            if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
+            if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
+            // Mostrar overlay central horizontal
+            if (gestSeekOverlay != null) {
+                gestSeekOverlay.setVisibility(View.VISIBLE);
+                if (gestSeekIcon != null) gestSeekIcon.setText(seconds > 0 ? "\u23E9" : "\u23EA");
+                if (gestSeekValue != null) gestSeekValue.setText((seconds > 0 ? "+" : "") + seconds + "s");
+                // Barra al 50% para doble tap
+                if (gestSeekProgress != null) {
+                    gestSeekProgress.post(() -> {
+                        android.view.View parent = (android.view.View) gestSeekProgress.getParent();
+                        android.view.ViewGroup.LayoutParams lp = gestSeekProgress.getLayoutParams();
+                        lp.width = parent.getWidth() / 2;
+                        gestSeekProgress.setLayoutParams(lp);
+                    });
+                }
+            }
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
             hideGestureFeedbackDelayed();
         });
