@@ -62,7 +62,27 @@ public class MainActivity extends AppCompatActivity {
         });
 
         webView.addJavascriptInterface(new Bridge(), "AndroidPlayer");
-        webView.loadUrl("file:///android_asset/player.html");
+
+        // Detectar TV Box y cargar versión optimizada
+        boolean isTv = getPackageManager().hasSystemFeature(
+            android.content.pm.PackageManager.FEATURE_LEANBACK);
+        boolean isTvUiMode = (getResources().getConfiguration().uiMode &
+            android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
+
+        if(isTv || isTvUiMode){
+            // TV Box — forzar landscape fullscreen
+            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
+            getWindow().getDecorView().setSystemUiVisibility(
+                android.view.View.SYSTEM_UI_FLAG_FULLSCREEN |
+                android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            );
+            webView.loadUrl("file:///android_asset/player_tv.html");
+        } else {
+            webView.loadUrl("file:///android_asset/player.html");
+        }
     }
 
     @SuppressLint("TrustAllX509TrustManager")
