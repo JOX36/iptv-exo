@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=1280, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>IPTV Player — JOX3</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -564,10 +564,10 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
       <h1>▶ IPTV PLAYER</h1>
       <p>by JOX3 · Live · VOD · Series</p>
     </div>
-    <div class="sf"><label>Host <span style="font-weight:400;color:var(--muted);font-size:.68rem;text-transform:none;letter-spacing:0">— o pega URL completa</span></label><input type="url" id="sHost" placeholder="http://servidor:8080  ó  URL completa"></div>
-    <div class="sf"><label>Usuario</label><input type="text" id="sUser" placeholder="username"></div>
-    <div class="sf"><label>Contraseña</label><input type="password" id="sPass" placeholder="password"></div>
-    <button class="setup-btn" onclick="doLogin()">▶ ENTRAR</button>
+    <div class="sf"><label>Host</label><input type="url" id="sHost" placeholder="http://servidor:8080" tabindex="1" autofocus></div>
+    <div class="sf"><label>Usuario</label><input type="text" id="sUser" placeholder="username" tabindex="2"></div>
+    <div class="sf"><label>Contraseña</label><input type="password" id="sPass" placeholder="password" tabindex="3"></div>
+    <button class="setup-btn" onclick="doLogin()" tabindex="4">▶ ENTRAR</button>
     <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
       <div style="flex:1;height:1px;background:var(--border)"></div>
       <span style="font-size:.68rem;color:var(--muted);white-space:nowrap">o carga una lista</span>
@@ -2784,6 +2784,11 @@ function tvDetect(){
     TV.enabled = true;
     document.body.classList.add('tv-mode');
     tvInit();
+    // Enfocar primer campo del setup si está visible
+    setTimeout(()=>{
+      const h = document.getElementById('sHost');
+      if(h) h.focus();
+    }, 500);
   }
 }
 
@@ -2794,50 +2799,51 @@ function tvInit(){
   style.id = 'tvStyles';
   style.textContent = `
     /* ── TV FULLSCREEN LAYOUT ── */
-    html, body { width: 1280px !important; height: 720px !important; overflow: hidden !important; font-size: 16px !important; }
-    #appScreen { height: 720px !important; }
-    .topbar { padding: 0 !important; }
-    .topbar-appname { padding: 10px 20px 6px !important; }
-    .topbar-row1 { padding: 6px 20px !important; }
-    .topbar-row2 { padding: 4px 20px 8px !important; }
-    .app-body { height: calc(720px - 110px) !important; }
-    .sidebar { width: 280px !important; flex-shrink: 0 !important; transform: none !important; position: relative !important; }
+    html, body { width: 100vw !important; height: 100vh !important; overflow: hidden !important; font-size: 18px !important; }
+    #appScreen { height: 100vh !important; }
+    .topbar-row1 { padding: 8px 20px !important; }
+    .topbar-row2 { padding: 4px 20px 10px !important; }
+    .sidebar { width: 260px !important; flex-shrink: 0 !important; transform: none !important; position: relative !important; }
     .sidebar.collapsed { width: 0 !important; }
+    .sidebar-overlay { display: none !important; }
     .content-area { padding: 16px 20px !important; }
-    .ch-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 12px !important; }
-    .vod-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 12px !important; }
+    .ch-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 14px !important; }
+    .vod-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 14px !important; }
     .ch-img { height: 100px !important; }
     .ch-ph { height: 100px !important; }
-    .sec-tab { padding: 12px 18px !important; font-size: .85rem !important; }
-    .cat-item { padding: 12px 16px !important; font-size: .85rem !important; }
-    .vod-name { font-size: .8rem !important; }
-    .ch-name { font-size: .78rem !important; }
-    .home-row-scroll { gap: 12px !important; }
-    .home-vod-thumb { width: 130px !important; height: 195px !important; }
-    .home-vod-thumb-ph { width: 130px !important; height: 195px !important; }
-    /* Modales más centrados en TV */
+    .sec-tab { padding: 12px 16px !important; font-size: .88rem !important; }
+    .cat-item { padding: 12px 16px !important; font-size: .88rem !important; }
+    .ch-name { font-size: .8rem !important; }
+    .vod-name { font-size: .82rem !important; }
+    /* Setup screen centrado en TV */
+    #setupScreen { height: 100vh !important; }
+    .setup-box { width: 500px !important; padding: 40px 36px !important; }
+    .setup-logo h1 { font-size: 2.8rem !important; }
+    .sf input { font-size: 1rem !important; padding: 14px !important; }
+    .sf input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(0,212,255,.3) !important; }
+    .setup-btn { font-size: 1.1rem !important; padding: 16px !important; }
+    /* Modales centrados */
     .vod-modal-bg, .modal-bg, .epg-modal-bg { align-items: center !important; }
-    .vod-modal { height: 80vh !important; max-width: 700px !important; border-radius: 16px !important; }
-    .modal { max-width: 700px !important; border-radius: 16px !important; }
-    /* Ocultar overlay móvil */
-    .sidebar-overlay { display: none !important; }
+    .vod-modal { height: 80vh !important; max-width: 800px !important; border-radius: 16px !important; }
+    .modal { max-width: 800px !important; border-radius: 16px !important; }
     /* Foco TV */
     .tv-mode *:focus { outline: none !important; }
     .tv-focus {
       outline: 3px solid var(--accent) !important;
-      outline-offset: 2px;
+      outline-offset: 2px !important;
       box-shadow: 0 0 0 3px rgba(0,212,255,.25), 0 0 16px rgba(0,212,255,.3) !important;
-      transform: scale(1.04);
+      transform: scale(1.04) !important;
       transition: all .15s !important;
-      z-index: 10;
-      position: relative;
+      z-index: 10 !important;
+      position: relative !important;
     }
     .tv-cursor {
-      position: fixed; bottom: 12px; right: 12px;
+      position: fixed; bottom: 16px; right: 16px;
       background: rgba(0,212,255,.15); border: 1px solid var(--accent);
-      border-radius: 8px; padding: 4px 10px;
-      font-size: .65rem; color: var(--accent);
+      border-radius: 8px; padding: 6px 14px;
+      font-size: .75rem; color: var(--accent);
       z-index: 9999; pointer-events: none;
+      letter-spacing: .5px;
     }
   `;
   document.head.appendChild(style);
@@ -2973,10 +2979,39 @@ document.addEventListener('keydown', e => {
     TV.enabled = true;
     document.body.classList.add('tv-mode');
     tvInit();
+    // Si estamos en setup, enfocar primer campo
+    const h = document.getElementById('sHost');
+    if(h && document.getElementById('setupScreen').style.display !== 'none'){
+      h.focus(); return;
+    }
     tvFocusZone('tabs');
   }
 
   const key = e.key || e.keyCode;
+
+  // ── Setup screen: navegación entre campos con flechas ──
+  const setupVisible = document.getElementById('setupScreen') &&
+    document.getElementById('setupScreen').style.display !== 'none';
+  if(setupVisible){
+    const fields = ['sHost','sUser','sPass'];
+    const btnLogin = document.querySelector('.setup-btn[tabindex="4"]');
+    const active = document.activeElement;
+    const idx = fields.indexOf(active?.id);
+
+    if(key === 'ArrowDown' || key === 40){
+      e.preventDefault();
+      if(idx >= 0 && idx < fields.length-1) document.getElementById(fields[idx+1]).focus();
+      else if(idx === fields.length-1 && btnLogin) btnLogin.focus();
+    } else if(key === 'ArrowUp' || key === 38){
+      e.preventDefault();
+      if(idx > 0) document.getElementById(fields[idx-1]).focus();
+    } else if((key === 'Enter' || key === 13) && active === btnLogin){
+      e.preventDefault(); doLogin();
+    }
+    // Dejar que las letras lleguen al input normalmente
+    return;
+  }
+
   let handled = true;
 
   switch(key){
