@@ -95,6 +95,7 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean favAdded = false;
     private boolean isVodFullscreen = false;
     private boolean liveBarsVisible = false;
+    private boolean isTvMode = false;
     private int retryCount = 0;
     private final Handler handler = new Handler();
     private GestureDetector gestureDetector;
@@ -126,6 +127,13 @@ public class PlayerActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
+
+        // Detectar TV Box
+        isTvMode = getPackageManager().hasSystemFeature(
+            android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+            ((getResources().getConfiguration().uiMode &
+            android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION);
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
                 | WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -736,6 +744,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ══ LIVE BARS ══
     private void toggleLiveBars() {
+        if (isTvMode) return; // TV: barras siempre visibles
         if (liveBarsVisible) hideLiveBars(); else showLiveBars();
     }
 
@@ -743,16 +752,18 @@ public class PlayerActivity extends AppCompatActivity {
         liveBarsVisible = true;
         liveTopBar.setVisibility(View.VISIBLE);
         liveBottomBar.setVisibility(View.VISIBLE);
-        scheduleLiveHideBars();
+        if (!isTvMode) scheduleLiveHideBars();
     }
 
     private void hideLiveBars() {
+        if (isTvMode) return; // TV: no ocultar
         liveBarsVisible = false;
         liveTopBar.setVisibility(View.GONE);
         liveBottomBar.setVisibility(View.GONE);
     }
 
     private void scheduleLiveHideBars() {
+        if (isTvMode) return; // TV: no programar ocultado
         handler.removeCallbacksAndMessages(null);
         handler.postDelayed(this::hideLiveBars, 4000);
     }
@@ -1452,6 +1463,52 @@ public class PlayerActivity extends AppCompatActivity {
             liveTxtName.setText(name);
             initPlayer();
         }
+    }
+
+    @Override
+    public boolean dispatchKeyEvent(android.view.KeyEvent event) {
+        if (!isTvMode) return super.dispatchKeyEvent(event);
+        if (event.getAction() != android.view.KeyEvent.ACTION_DOWN)
+            return super.dispatchKeyEvent(event);
+
+        switch (event.getKeyCode()) {
+            case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
+            case android.view.KeyEvent.KEYCODE_ENTER:
+            case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+                if (player != null) {
+                    if (player.isPlaying()) player.pause();
+                    else player.play();
+                }
+                return true;
+            case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
+            case android.view.KeyEvent.KEYCODE_MEDIA_REWIND:
+                if (isVodType() && player != null)
+                    player.seekTo(Math.max(0, player.getCurrentPosition() - 10000));
+                else navigateChannel(-1);
+                return true;
+            case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
+            case android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                if (isVodType() && player != null)
+                    player.seekTo(Math.min(player.getDuration(), player.getCurrentPosition() + 10000));
+                else navigateChannel(1);
+                return true;
+            case android.view.KeyEvent.KEYCODE_DPAD_UP:
+                if (!isVodType()) navigateChannel(-1);
+                return true;
+            case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
+                if (!isVodType()) navigateChannel(1);
+                return true;
+            case android.view.KeyEvent.KEYCODE_BACK:
+            case android.view.KeyEvent.KEYCODE_ESCAPE:
+                stopAndRelease();
+                finish();
+                return true;
+            case android.view.KeyEvent.KEYCODE_MEDIA_STOP:
+                stopAndRelease();
+                finish();
+                return true;
+        }
+        return super.dispatchKeyEvent(event);
     }
 
     @Override
