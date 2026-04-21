@@ -97,6 +97,7 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean liveBarsVisible = false;
     private boolean isTvMode = false;
     private int retryCount = 0;
+    private int seriesErrorCount = 0; // prevenir cascada infinita de errores en series
     private final Handler handler = new Handler();
     private GestureDetector gestureDetector;
 
@@ -635,6 +636,7 @@ public class PlayerActivity extends AppCompatActivity {
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     showLoading(false);
+                    seriesErrorCount = 0; // resetear contador de errores de serie al reproducir bien
                     // Actualizar resolución para Live y VOD
                     handler.postDelayed(() -> {
                         androidx.media3.common.Format vf = player != null ? player.getVideoFormat() : null;
@@ -670,30 +672,34 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
-                if (!isVodType()) {
-                    retrySmarter(e);
-                } else if (isSeriesContent()) {
-                    // Series: intentar siguiente episodio en vez de abrir externo
-                    if (channelIndex >= 0 && channelIndex + 1 < channels.size()) {
+                // ExoPlayer puede disparar error en hilo background — proteger con runOnUiThread
+                runOnUiThread(() -> {
+                    try {
+                        if (!isVodType()) {
+                            retrySmarter(e);
+                        } else if (isSeriesContent() && channelIndex >= 0 && channelIndex + 1 < channels.size()) {
+                            // Series: intentar siguiente episodio (máximo 3 intentos seguidos)
+                            seriesErrorCount++;
+                            if (seriesErrorCount <= 3) {
+                                showLoading(false);
+                                toast("Episodio falló, intentando siguiente (" + seriesErrorCount + "/3)...");
+                                handler.postDelayed(() -> onEpisodeEnded(), 1500);
+                            } else {
+                                showLoading(false);
+                                toast("Demasiados errores en la serie");
+                                seriesErrorCount = 0;
+                            }
+                        } else {
+                            // Película o último episodio: abrir externo
+                            showLoading(false);
+                            toast("\uD83D\uDCF2 Abriendo en reproductor externo...");
+                            handler.postDelayed(() -> launchExternal(), 800);
+                        }
+                    } catch (Exception ex) {
                         showLoading(false);
-                        onEpisodeEnded();
-                    } else {
-                        showLoading(false);
-                        toast("Fin de la serie");
+                        toast("Error de reproduccion");
                     }
-                } else {
-                    // Película: intentar fallback sin mimeType antes de abrir externo
-                    if (retryCount == 0) {
-                        retryCount++;
-                        showLoading(true);
-                        txtLoading.setText("Reintentando sin tipo forzado...");
-                        initPlayerNoMimeType();
-                    } else {
-                        showLoading(false);
-                        toast("\uD83D\uDCF2 Abriendo en reproductor externo...");
-                        handler.postDelayed(() -> launchExternal(), 800);
-                    }
-                }
+                });
             }
         });
     }
@@ -791,9 +797,11 @@ public class PlayerActivity extends AppCompatActivity {
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
                 // Fallback definitivo — abrir externo
-                showLoading(false);
-                toast("\uD83D\uDCF2 Abriendo en reproductor externo...");
-                handler.postDelayed(() -> launchExternal(), 800);
+                runOnUiThread(() -> {
+                    showLoading(false);
+                    toast("\uD83D\uDCF2 Abriendo en reproductor externo...");
+                    handler.postDelayed(() -> launchExternal(), 800);
+                });
             }
         });
     }
@@ -1181,6 +1189,7 @@ public class PlayerActivity extends AppCompatActivity {
             vodFsTxtTitle.setText(name);
             vodTxtPlot.setText("");
             retryCount = 0;
+            seriesErrorCount = 0;
             initPlayer();
         } catch (Exception e) { finish(); }
     }
