@@ -97,7 +97,6 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean liveBarsVisible = false;
     private boolean isTvMode = false;
     private int retryCount = 0;
-    private int seriesErrorCount = 0; // prevenir cascada infinita de errores en series
     private final Handler handler = new Handler();
     private GestureDetector gestureDetector;
 
@@ -206,75 +205,6 @@ public class PlayerActivity extends AppCompatActivity {
 
     private boolean isVodType() {
         return "vod".equals(type) || "series".equals(type);
-    }
-
-    // ══ PARSEO UNIFICADO DE URLS IPTV ══
-    // Formatos soportados:
-    //   http://host/live/username/password/stream_id.m3u8
-    //   http://host/movie/username/password/stream_id.mp4
-    //   http://host/series/username/password/episode_id.mkv
-    //   http://host/username/password/stream_id.m3u8 (sin prefijo tipo)
-    private String extractUsername() {
-        try {
-            java.net.URL u = new java.net.URL(url);
-            String[] path = u.getPath().split("/");
-            // Filtrar vacíos
-            java.util.List<String> parts = new java.util.ArrayList<>();
-            for (String p : path) { if (!p.isEmpty()) parts.add(p); }
-            if (parts.size() >= 3) {
-                // live/movie/series/username/password o username/password
-                String first = parts.get(0);
-                if (first.equals("live") || first.equals("movie") || first.equals("series")) {
-                    return parts.size() > 1 ? parts.get(1) : "";
-                }
-                return parts.get(0);
-            }
-        } catch (Exception ignored) {}
-        return "";
-    }
-
-    private String extractPassword() {
-        try {
-            java.net.URL u = new java.net.URL(url);
-            String[] path = u.getPath().split("/");
-            java.util.List<String> parts = new java.util.ArrayList<>();
-            for (String p : path) { if (!p.isEmpty()) parts.add(p); }
-            if (parts.size() >= 3) {
-                String first = parts.get(0);
-                if (first.equals("live") || first.equals("movie") || first.equals("series")) {
-                    return parts.size() > 2 ? parts.get(2) : "";
-                }
-                return parts.size() > 1 ? parts.get(1) : "";
-            }
-        } catch (Exception ignored) {}
-        return "";
-    }
-
-    private String extractApiHost() {
-        try {
-            java.net.URL u = new java.net.URL(url);
-            return u.getProtocol() + "://" + u.getHost() + (u.getPort() > 0 ? ":" + u.getPort() : "");
-        } catch (Exception e) {
-            // Fallback: intentar extraer protocolo + host del path
-            String[] p = url.split("/");
-            return p.length >= 3 ? p[0] + "//" + p[2] : "";
-        }
-    }
-
-    // Detecta si el contenido actual es de una lista de series (episodios)
-    private boolean isSeriesContent() {
-        // Verificar por URL
-        if (url != null && url.contains("/series/")) return true;
-        // Verificar por flag en canales
-        if (channels.isEmpty()) return false;
-        try {
-            for (int i = 0; i < Math.min(channels.size(), 5); i++) {
-                String chUrl = channels.get(i).optString("url", "");
-                if (chUrl.contains("/series/")) return true;
-                if (channels.get(i).optBoolean("_isSeries", false)) return true;
-            }
-        } catch (Exception ignored) {}
-        return false;
     }
 
     private void bindViews() {
@@ -386,11 +316,15 @@ public class PlayerActivity extends AppCompatActivity {
         if (itemId == null || itemId.isEmpty() || url == null) return;
         new Thread(() -> {
             try {
-                String user = extractUsername();
-                String pass = extractPassword();
-                String host = extractApiHost();
-                if (user.isEmpty() || pass.isEmpty() || host.isEmpty()) return;
-                String api = host + "/player_api.php?username=" + user
+                String[] p = url.split("/");
+                if (p.length < 6) return;
+                String api = p[0] + "//" + p[2] + "/player_api.php?username=" + p[3]
+                        + "&password=" + p[4] + "&action=get_short_epg&stream_id=" + itemId + "&limit=2";
+                // Extraer user/pass correctamente
+                // URL live: host/live/user/pass/id.m3u8
+                String user = p.length > 4 ? p[4] : "";
+                String pass = p.length > 5 ? p[5] : "";
+                api = p[0] + "//" + p[2] + "/player_api.php?username=" + user
                         + "&password=" + pass + "&action=get_short_epg&stream_id=" + itemId + "&limit=2";
                 java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(api).openConnection();
                 c.setConnectTimeout(6000); c.setReadTimeout(6000);
@@ -584,16 +518,10 @@ public class PlayerActivity extends AppCompatActivity {
         // Para VOD: especificar tipo MIME según extensión — fix servidores con SSL/redirecciones
         MediaItem mediaItem;
         if (isVodType()) {
-            // Detectar MIME type — limpiar query params antes de verificar extensión
-            String urlClean = url.split("\\?")[0].toLowerCase();
-            String mimeType = "video/mp4"; // default
-            if (urlClean.contains(".m3u8")) mimeType = "application/x-mpegurl";
-            else if (urlClean.contains(".mkv")) mimeType = "video/x-matroska";
-            else if (urlClean.contains(".ts")) mimeType = "video/mp2t";
-            else if (urlClean.contains(".avi")) mimeType = "video/avi";
-            else if (urlClean.contains(".webm")) mimeType = "video/webm";
-            else if (urlClean.contains(".flv")) mimeType = "video/x-flv";
-            else if (urlClean.contains(".mpeg") || urlClean.contains(".mpg")) mimeType = "video/mpeg";
+            String mimeType = "video/mp4";
+            if (url.contains(".mkv")) mimeType = "video/x-matroska";
+            else if (url.contains(".ts")) mimeType = "video/mp2t";
+            else if (url.contains(".avi")) mimeType = "video/avi";
             mediaItem = new MediaItem.Builder()
                     .setUri(url)
                     .setMimeType(mimeType)
@@ -636,7 +564,6 @@ public class PlayerActivity extends AppCompatActivity {
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     showLoading(false);
-                    seriesErrorCount = 0; // resetear contador de errores de serie al reproducir bien
                     // Actualizar resolución para Live y VOD
                     handler.postDelayed(() -> {
                         androidx.media3.common.Format vf = player != null ? player.getVideoFormat() : null;
@@ -672,34 +599,12 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
-                // ExoPlayer puede disparar error en hilo background — proteger con runOnUiThread
-                runOnUiThread(() -> {
-                    try {
-                        if (!isVodType()) {
-                            retrySmarter(e);
-                        } else if (isSeriesContent() && channelIndex >= 0 && channelIndex + 1 < channels.size()) {
-                            // Series: intentar siguiente episodio (máximo 3 intentos seguidos)
-                            seriesErrorCount++;
-                            if (seriesErrorCount <= 3) {
-                                showLoading(false);
-                                toast("Episodio falló, intentando siguiente (" + seriesErrorCount + "/3)...");
-                                handler.postDelayed(() -> onEpisodeEnded(), 1500);
-                            } else {
-                                showLoading(false);
-                                toast("Demasiados errores en la serie");
-                                seriesErrorCount = 0;
-                            }
-                        } else {
-                            // Película o último episodio: abrir externo
-                            showLoading(false);
-                            toast("\uD83D\uDCF2 Abriendo en reproductor externo...");
-                            handler.postDelayed(() -> launchExternal(), 800);
-                        }
-                    } catch (Exception ex) {
-                        showLoading(false);
-                        toast("Error de reproduccion");
-                    }
-                });
+                if (!isVodType()) retrySmarter(e);
+                else {
+                    showLoading(false);
+                    toast("\uD83D\uDCFA Abriendo en reproductor externo...");
+                    handler.postDelayed(() -> launchExternal(), 800);
+                }
             }
         });
     }
@@ -749,61 +654,6 @@ public class PlayerActivity extends AppCompatActivity {
             showLoading(true);
             handler.postDelayed(this::initPlayer, 3000);
         } else showLoading(false);
-    }
-
-    // Reintentar reproducción sin mimeType forzado — fix servidores con URLs no estándar
-    private void initPlayerNoMimeType() {
-        stopAndRelease();
-        showLoading(true);
-
-        PlayerView pv = isVodType() ? vodPlayerView : playerView;
-        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
-        player = new ExoPlayer.Builder(this)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
-                .build();
-        pv.setPlayer(player);
-
-        // Sin mimeType — dejar que ExoPlayer auto-detecte
-        MediaItem mediaItem = MediaItem.fromUri(url);
-        player.setMediaItem(mediaItem);
-        player.prepare();
-        player.play();
-
-        player.addListener(new Player.Listener() {
-            @Override
-            public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    updateResolutionLabel(videoSize.width + "x" + videoSize.height);
-                }
-            }
-
-            @Override
-            public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) {
-                    showLoading(false);
-                    handler.postDelayed(() -> {
-                        androidx.media3.common.Format vf = player != null ? player.getVideoFormat() : null;
-                        if (vf != null && vf.width > 0) updateResolutionLabel(vf.width + "x" + vf.height);
-                    }, 1500);
-                    stopProgressSaver();
-                    startProgressSaver();
-                } else if (state == Player.STATE_BUFFERING) {
-                    showLoading(true);
-                } else if (state == Player.STATE_ENDED) {
-                    if (isSeriesContent()) onEpisodeEnded();
-                }
-            }
-
-            @Override
-            public void onPlayerError(androidx.media3.common.PlaybackException e) {
-                // Fallback definitivo — abrir externo
-                runOnUiThread(() -> {
-                    showLoading(false);
-                    toast("\uD83D\uDCF2 Abriendo en reproductor externo...");
-                    handler.postDelayed(() -> launchExternal(), 800);
-                });
-            }
-        });
     }
 
     private void stopAndRelease() {
@@ -965,12 +815,10 @@ public class PlayerActivity extends AppCompatActivity {
     private void fetchVodInfo() {
         new Thread(() -> {
             try {
-                String user = extractUsername();
-                String pass = extractPassword();
-                String host = extractApiHost();
-                if (user.isEmpty() || pass.isEmpty() || host.isEmpty()) return;
-                String api = host + "/player_api.php?username=" + user
-                        + "&password=" + pass + "&action=get_vod_info&vod_id=" + itemId;
+                String[] p = url.split("/");
+                if (p.length < 6) return;
+                String api = p[0] + "//" + p[2] + "/player_api.php?username=" + p[4]
+                        + "&password=" + p[5] + "&action=get_vod_info&vod_id=" + itemId;
                 HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
                 c.setConnectTimeout(8000); c.setReadTimeout(8000);
                 BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
@@ -1134,7 +982,14 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ══ REPRODUCCIÓN CONTINUA SERIES ══
     private boolean isSeriesType() {
-        return isSeriesContent();
+        if (channels.isEmpty()) return false;
+        try {
+            // Cualquier item de la lista con _isSeries=true confirma que es serie
+            for (int i = 0; i < Math.min(channels.size(), 3); i++) {
+                if (channels.get(i).optBoolean("_isSeries", false)) return true;
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     private void onEpisodeEnded() {
@@ -1189,7 +1044,6 @@ public class PlayerActivity extends AppCompatActivity {
             vodFsTxtTitle.setText(name);
             vodTxtPlot.setText("");
             retryCount = 0;
-            seriesErrorCount = 0;
             initPlayer();
         } catch (Exception e) { finish(); }
     }
