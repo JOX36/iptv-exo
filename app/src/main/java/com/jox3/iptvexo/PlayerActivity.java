@@ -112,6 +112,11 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler progressHandler = new Handler();
     private Runnable progressSaver;
 
+    // Fallback: detectar fin de episodio si STATE_ENDED no se dispara
+    private final Handler endCheckHandler = new Handler();
+    private Runnable endCheckRunnable;
+    private boolean episodeEndHandled = false;
+
     // Siguiente episodio — reproducción continua
     private LinearLayout nextEpOverlay;
     private TextView nextEpTitle, nextEpCountdown;
@@ -119,6 +124,7 @@ public class PlayerActivity extends AppCompatActivity {
     private final Handler countdownHandler = new Handler();
     private Runnable countdownRunnable;
     private int countdownSeconds = 5;
+    private boolean isSeries = false; // flag explícito para series
 
     // Resolución del stream
     private TextView liveResolution, vodFsResolution, vodTxtResolution;
@@ -163,6 +169,7 @@ public class PlayerActivity extends AppCompatActivity {
         logo         = getIntent().getStringExtra("logo");
         itemId       = getIntent().getStringExtra("id");
         channelIndex = getIntent().getIntExtra("channel_index", -1);
+        isSeries     = getIntent().getBooleanExtra("is_series", false);
         parseChannels(getIntent().getStringExtra("channels_json"));
 
         // EPG data
@@ -582,14 +589,20 @@ public class PlayerActivity extends AppCompatActivity {
                         }
                         stopProgressSaver();
                         startProgressSaver();
+                        // Iniciar chequeo de fin de episodio para series
+                        if (isSeriesType()) {
+                            startEndCheck();
+                        }
                     }
                 } else if (state == Player.STATE_BUFFERING) {
                     showLoading(true);
                 } else if (state == Player.STATE_ENDED) {
                     if (!isVodType()) {
                         retry();
-                    } else if (isSeriesType()) {
+                    } else if (isSeriesType() && !episodeEndHandled) {
                         // Serie terminó — mostrar overlay siguiente episodio
+                        episodeEndHandled = true;
+                        stopEndCheck();
                         onEpisodeEnded();
                     }
                 } else if (state == Player.STATE_IDLE && !isVodType()) {
@@ -659,6 +672,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void stopAndRelease() {
         handler.removeCallbacksAndMessages(null);
         stopProgressSaver();
+        stopEndCheck();
         hideNextEpOverlay();
         if (player != null) {
             // Desconectar PlayerView primero — evita que el audio siga por el surface
@@ -980,11 +994,42 @@ public class PlayerActivity extends AppCompatActivity {
         prefs.edit().remove("pos_" + id).remove("dur_" + id).apply();
     }
 
+    // ══ FALLBACK: DETECTAR FIN DE EPISODIO ══
+    private void startEndCheck() {
+        stopEndCheck();
+        episodeEndHandled = false;
+        endCheckRunnable = new Runnable() {
+            @Override public void run() {
+                if (player != null && isSeriesType() && !episodeEndHandled) {
+                    long pos = player.getCurrentPosition();
+                    long dur = player.getDuration();
+                    // Si estamos a menos de 3 segundos del final o ya pasamos
+                    if (dur > 0 && pos > 0 && (dur - pos < 3000 || pos >= dur - 500)) {
+                        episodeEndHandled = true;
+                        onEpisodeEnded();
+                        return;
+                    }
+                }
+                endCheckHandler.postDelayed(this, 2000);
+            }
+        };
+        endCheckHandler.postDelayed(endCheckRunnable, 3000);
+    }
+
+    private void stopEndCheck() {
+        if (endCheckRunnable != null) {
+            endCheckHandler.removeCallbacks(endCheckRunnable);
+            endCheckRunnable = null;
+        }
+    }
+
     // ══ REPRODUCCIÓN CONTINUA SERIES ══
     private boolean isSeriesType() {
+        // Flag explícito desde el Intent (confiable)
+        if (isSeries) return true;
+        // Fallback: revisar items del JSON
         if (channels.isEmpty()) return false;
         try {
-            // Cualquier item de la lista con _isSeries=true confirma que es serie
             for (int i = 0; i < Math.min(channels.size(), 3); i++) {
                 if (channels.get(i).optBoolean("_isSeries", false)) return true;
             }
@@ -1439,6 +1484,7 @@ public class PlayerActivity extends AppCompatActivity {
         logo         = intent.getStringExtra("logo");
         itemId       = intent.getStringExtra("id");
         channelIndex = intent.getIntExtra("channel_index", -1);
+        isSeries     = intent.getBooleanExtra("is_series", false);
         channels.clear();
         parseChannels(intent.getStringExtra("channels_json"));
         retryCount = 0;

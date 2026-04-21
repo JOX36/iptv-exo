@@ -222,7 +222,8 @@ public class MainActivity extends AppCompatActivity {
 
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
-                               String logo, String itemId, String channelsJson, int channelIndex) {
+                               String logo, String itemId, String channelsJson, int channelIndex,
+                               boolean isSeries) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
             i.putExtra("url", url);
             i.putExtra("name", name);
@@ -232,6 +233,7 @@ public class MainActivity extends AppCompatActivity {
             i.putExtra("id", itemId);
             i.putExtra("channel_index", channelIndex);
             i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
+            i.putExtra("is_series", isSeries);
             startActivityForResult(i, REQ_PLAYER);
         }
 
