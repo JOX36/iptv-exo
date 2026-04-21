@@ -1479,11 +1479,12 @@ function play(item){
       item.url||'',
       item.name||'',
       item.group||'',
-      item.type||'live',
+      item._isSeries ? 'series' : (item.type||'live'),
       item.logo||'',
       String(item.id||''),
       item._isSeries ? episodesJson : channelsJson,
-      item._isSeries ? episodeIndex : channelIndex
+      item._isSeries ? episodeIndex : channelIndex,
+      item._isSeries ? true : false
     );
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
