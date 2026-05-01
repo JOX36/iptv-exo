@@ -1,12 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.iptv_exo">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Permisos obligatorios -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- Opcional: Permiso para mantener la pantalla encendida durante la reproducción -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
@@ -20,7 +18,6 @@
         android:usesCleartextTraffic="true"
         tools:targetApi="31">
 
-        <!-- Declaración de la Activity principal -->
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize"
@@ -28,13 +25,11 @@
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize">
             
-            <!-- Filtro de intención para iniciar la app desde el launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Filtro para manejar enlaces IPTV desde otras apps (opcional) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
