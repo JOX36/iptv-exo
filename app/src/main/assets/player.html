@@ -800,6 +800,9 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
 const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3'};
 
+// MEJORA: Timeout de carga para evitar URLs colgadas
+let _playLoadTimer = null;
+
 // ── Progreso VOD ──
 function saveVodProgress(id, position, duration){
   const prog = lsGet(K.PROG) || {};
@@ -1383,9 +1386,30 @@ function launchVLC(url,label=''){
 
 // ══ PLAYER ══
 let liveRetryTimer=null;
+
+// MEJORA: Resetea completamente el elemento video si se queda en estado zombie
+function resetVideoElement(){
+  const oldVid = document.getElementById('vid');
+  const parent = oldVid.parentNode;
+  const newVid = document.createElement('video');
+  newVid.id = 'vid';
+  newVid.controls = true;
+  newVid.playsInline = true;
+  newVid.className = oldVid.className;
+  newVid.style = oldVid.style.cssText;
+  parent.replaceChild(newVid, oldVid);
+  // Re-inicializar controles VOD sobre el nuevo elemento
+  initVodControls();
+  return newVid;
+}
+
 function play(item){
   if(item.type==='series'){openSeries(item);return}
-  const vid=document.getElementById('vid');
+  // MEJORA: Resetear video si es necesario (evita estado zombie)
+  let vid = document.getElementById('vid');
+  if(vid.error || vid.networkState === 3){
+    vid = resetVideoElement();
+  }
   S.current=item;
   S.history=S.history.filter(h=>fk(h.item)!==fk(item));
   S.history.unshift({item,ts:Date.now()});saveHist();
@@ -1400,6 +1424,15 @@ function play(item){
   vid.pause();vid.removeAttribute('src');
   const url=item.url;
   if(!url){showOverlay(true,false,'❌ Sin URL');setStatus('error');return}
+
+  // MEJORA: Timeout de carga para URLs que no responden
+  if(_playLoadTimer) clearTimeout(_playLoadTimer);
+  _playLoadTimer = setTimeout(() => {
+    if(vid.readyState < 2 && !vid.error) {
+      showOverlay(true, false, '❌ No se pudo cargar el stream\nEl servidor no responde o la URL es inaccesible');
+      setStatus('error');
+    }
+  }, 15000);
 
   // ── VOD/LIVE: usar PlayerActivity nativa si está disponible ──
   if(typeof AndroidPlayer!=='undefined'){
@@ -1507,6 +1540,7 @@ function play(item){
       S.hls=new Hls({enableWorker:true,lowLatencyMode:true});
       S.hls.loadSource(url);S.hls.attachMedia(vid);
       S.hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+        if(_playLoadTimer) clearTimeout(_playLoadTimer);
         document.getElementById('playerWrap').classList.add('active');
         vid.play().catch(()=>{});showOverlay(false);setStatus('vod');
       });
@@ -1516,6 +1550,7 @@ function play(item){
       const t=setTimeout(()=>{if(vid.readyState<2) tryVLC()},4000);
       vid.oncanplay=()=>{
         clearTimeout(t);
+        if(_playLoadTimer) clearTimeout(_playLoadTimer);
         document.getElementById('playerWrap').classList.add('active');
         showOverlay(false);setStatus('vod');vid.play().catch(()=>{});
       };
@@ -1534,7 +1569,10 @@ function play(item){
     if(Hls.isSupported()){
       S.hls=new Hls({enableWorker:true,lowLatencyMode:true,backBufferLength:30,liveSyncDurationCount:3});
       S.hls.loadSource(url);S.hls.attachMedia(vid);
-      S.hls.on(Hls.Events.MANIFEST_PARSED,()=>{vid.play().catch(()=>{});showOverlay(false);setStatus('live')});
+      S.hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+        if(_playLoadTimer) clearTimeout(_playLoadTimer);
+        vid.play().catch(()=>{});showOverlay(false);setStatus('live')
+      });
       S.hls.on(Hls.Events.ERROR,(e,d)=>{
         if(d.fatal){
           if(retryCount<3){
@@ -2228,6 +2266,16 @@ function initVodControls(){
     if(isFinite(v.duration)&&v.duration>0)document.getElementById('vcSeekBar').value=(v.currentTime/v.duration)*1000;
   });
   v.addEventListener('durationchange',()=>{document.getElementById('vcDuration').textContent=vcFmt(v.duration)});
+  // MEJORA: Detectar cuando el servidor interrumpe la conexión sin responder
+  v.addEventListener('suspend', () => {
+    if (v.readyState < 2 && !v.error && v.src) {
+      const item = S.current;
+      if (item && item.type === 'vod') {
+        showOverlay(true, false, '❌ El servidor interrumpió la conexión\nPosible error 403/406 o URL inaccesible');
+        setStatus('error');
+      }
+    }
+  });
 }
 
 
