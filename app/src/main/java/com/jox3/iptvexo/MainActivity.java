@@ -5,8 +5,11 @@ import android.content.Intent;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
+import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -34,6 +37,12 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQ_PLAYER   = 1001;
     private static final int REQ_M3U_FILE = 1002;
     private OkHttpClient httpClient;
+    
+    // User-Agent personalizado que simula un reproductor IPTV moderno
+    private static final String CUSTOM_USER_AGENT = 
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36 " +
+        "ExoPlayer/2.18.1 (Linux;Android 10) ExoPlayerLib/2.18.1";
 
     @SuppressLint({"SetJavaScriptEnabled","TrustAllX509TrustManager"})
     @Override
@@ -52,12 +61,34 @@ public class MainActivity extends AppCompatActivity {
         ws.setAllowUniversalAccessFromFileURLs(true);
         ws.setAllowFileAccessFromFileURLs(true);
         ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        
+        // ========== MEJORA CRÍTICA: User-Agent personalizado ==========
+        ws.setUserAgentString(CUSTOM_USER_AGENT);
+        
         webView.clearCache(true);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
                 handler.proceed();
+            }
+            
+            // ========== MEJORA: Logging de errores HTTP ==========
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request, 
+                                           WebResourceResponse errorResponse) {
+                Log.e("IPTV_EXO", "Error HTTP " + errorResponse.getStatusCode() + 
+                      " al cargar: " + request.getUrl());
+                super.onReceivedHttpError(view, request, errorResponse);
+            }
+            
+            // ========== MEJORA: Logging de errores de carga ==========
+            @Override
+            public void onReceivedError(WebView view, int errorCode, 
+                                       String description, String failingUrl) {
+                Log.e("IPTV_EXO", "Error de carga (" + errorCode + "): " + 
+                      description + " - URL: " + failingUrl);
+                super.onReceivedError(view, errorCode, description, failingUrl);
             }
         });
 
@@ -196,7 +227,7 @@ public class MainActivity extends AppCompatActivity {
         private String doFetch(String url) throws Exception {
             Request req = new Request.Builder()
                 .url(url)
-                .header("User-Agent", "Mozilla/5.0")
+                .header("User-Agent", CUSTOM_USER_AGENT)
                 .header("Accept", "application/json, */*")
                 .build();
             Response resp = httpClient.newCall(req).execute();
