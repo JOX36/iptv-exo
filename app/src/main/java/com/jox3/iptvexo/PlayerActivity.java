@@ -884,9 +884,15 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void enterPip() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && player != null) {
-            enteredPiP = true;
-            enterPictureInPictureMode(new PictureInPictureParams.Builder()
-                .setAspectRatio(new Rational(16, 9)).build());
+            try {
+                enteredPiP = true;
+                enterPictureInPictureMode(new PictureInPictureParams.Builder()
+                    .setAspectRatio(new Rational(16, 9)).build());
+            } catch (Exception e) {
+                // El sistema rechazó PiP (falta soporte o restricción del fabricante)
+                enteredPiP = false;
+                toast("\u26A0\uFE0F PiP no disponible en este dispositivo");
+            }
         }
     }
 
