@@ -33,6 +33,7 @@ import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
+import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
@@ -517,7 +518,15 @@ public class PlayerActivity extends AppCompatActivity {
 
         PlayerView pv = isVodType() ? vodPlayerView : playerView;
         OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
+
+        // Renderers con extensión FFmpeg habilitada — si el decodificador de hardware
+        // no soporta el codec (HEVC/AC3/DTS típicos en VOD/series), cae automáticamente
+        // al decodificador por software antes de fallar.
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+
         player = new ExoPlayer.Builder(this)
+                .setRenderersFactory(renderersFactory)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
                 .build();
         pv.setPlayer(player);
