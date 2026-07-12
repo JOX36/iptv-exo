@@ -154,7 +154,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .acc-body .ch-grid,.acc-body .vod-grid{padding:4px 12px 14px}
 .acc-loading,.acc-empty{color:var(--muted);font-size:.7rem;padding:6px 2px}
 /* ═══ BANNER ROTATIVO HOME ═══ */
-.home-hero-rot{height:240px}
+.home-hero-rot{height:270px}
 .hero-slide{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;pointer-events:none}
 .hero-slide.active{opacity:1;z-index:2;pointer-events:auto}
 .hero-kb{animation:heroKb 9s ease-in-out infinite alternate}
@@ -2645,79 +2645,24 @@ async function loadCatItemsDirect(sec, catId, limit=20){
 
 function renderHome(liveItems, vodItems, seriesItems, _unused){
   const hist = S.history || [];
+  window._homeData = {live:liveItems||[], vod:vodItems||[], series:seriesItems||[]};
   let html = '<div class="home-screen">';
 
-  // ── HERO ROTATIVO — recomendaciones aleatorias ────────────────
-  const heroPool=[];
-  if(hist[0]?.item) heroPool.push(hist[0].item);
-  const _rndPick=(arr,n)=>{const a=[...arr];const out=[];while(a.length&&out.length<n){out.push(a.splice(Math.floor(Math.random()*a.length),1)[0])}return out};
-  const heroSource=(typeof IDX!=='undefined'&&IDX.items.length>50)?IDX.items:[...(liveItems||[]),...(vodItems||[]),...(seriesItems||[])];
-  _rndPick(heroSource,8).forEach(i=>{
-    if(heroPool.length>=5)return;
-    if(!heroPool.find(p=>String(p.id)===String(i.id)&&p.type===i.type)) heroPool.push(i);
-  });
-  const heroSlides=heroPool.slice(0,5);
-  if(heroSlides.length){
-    html += `<div class="home-hero home-hero-rot" id="homeHeroRot">`;
-    heroSlides.forEach((it,ix)=>{
-      const bg = it.cover || it.logo || '';
-      const badgeLabel = it.type==='live'?'🔴 EN VIVO AHORA':it.type==='series'?'🎭 Serie recomendada':'🎬 Película recomendada';
-      html += `<div class="hero-slide${ix===0?' active':''}">
-        ${bg?`<div class="home-hero-bg hero-kb" style="background-image:url('${esc(bg)}')"></div>`:`<div class="home-hero-bg" style="background:linear-gradient(140deg,var(--bg3),var(--bg2))"></div>`}
-        <div class="home-hero-grad"></div>
-        <div class="home-hero-content">
-          <div class="home-hero-badge">${badgeLabel}</div>
-          <div class="home-hero-title">${esc(it.name)}</div>
-          <div class="home-hero-meta">${esc(it.group||'')}${it.rating?' · ⭐ '+esc(String(it.rating)):''}</div>
-          <div class="home-hero-btns">
-            <button class="home-hero-play" onclick='play(${js(it)})'>▶ Reproducir</button>
-            <button class="home-hero-more" onclick='openItemInfo(${js(it)})'>ℹ</button>
-          </div>
-        </div>
-      </div>`;
-    });
-    html += `<div class="hero-dots">${heroSlides.map((_,i)=>`<div class="hero-dot${i===0?' active':''}"></div>`).join('')}</div></div>`;
-  } else {
-    // Hero placeholder si aún no hay contenido
-    html += `<div class="home-hero" style="background:linear-gradient(135deg,var(--bg2),var(--bg3))">
-      <div class="home-hero-content">
-        <div class="home-hero-badge">✨ Bienvenido</div>
-        <div class="home-hero-title">${esc(S.user)} · JOX3 TV</div>
-        <div class="home-hero-meta">Selecciona un canal o película para empezar</div>
-        <div class="home-hero-btns">
-          <button class="home-hero-play" onclick="switchSec('live')">📺 Ver Live TV</button>
-          <button class="home-hero-more" onclick="switchSec('vod')">🎬 Ver Películas</button>
-        </div>
-      </div>
-    </div>`;
+  // ── HERO: slot vacío — se llena aparte con renderHeroSlides (auto-recuperable) ──
+  html += '<div id="homeHeroSlot"></div>';
+
+  try{
+
+  // ── CONTINÚA TUS PELÍCULAS ────────────────────────────────────
+  const contVod = hist.filter(h=>h.item.type==='vod' && !h.item._isSeries);
+  if(contVod.length){
+    html += homeContRow('🎬 Continúa tus películas', contVod);
   }
 
-  // ── CONTINUAR VIENDO ──────────────────────────────────────────
-  if(hist.length > 0){
-    html += `<div class="home-row">
-      <div class="home-row-title">⏱ Continuar viendo <span>${hist.length}</span></div>
-      <div class="home-row-scroll">`;
-    hist.slice(0,12).forEach(h=>{
-      const item = h.item;
-      const thumb = item.cover || item.logo || '';
-      const isSeries = item.type==='series' || item._isSeries;
-      const badgeCls = item.type==='live'?'live':isSeries?'series':'vod';
-      const badgeTxt = item.type==='live'?'LIVE':isSeries?'SERIE':'VOD';
-      const pct = (item.type==='vod'||item.type==='series') ? vodProgressPct(item.id) : 0;
-      const progHtml = pct>0 ? `<div class="home-cont-prog"><div class="home-cont-prog-fill" style="width:${pct}%"></div></div>` : '';
-      html += `<div class="home-cont-card" onclick='play(${js(item)})'>
-        <span class="home-cont-badge ${badgeCls}">${badgeTxt}</span>
-        ${thumb
-          ?`<img class="home-cont-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
-          :''}
-        <div class="home-cont-thumb-ph" ${thumb?'style="display:none"':''}>
-          ${item.type==='live'?'📺':isSeries?'🎭':'🎬'}
-        </div>
-        ${progHtml}
-        <div class="home-cont-name">${esc(item.name)}</div>
-      </div>`;
-    });
-    html += '</div></div>';
+  // ── CONTINÚA TUS SERIES ───────────────────────────────────────
+  const contSeries = hist.filter(h=>h.item.type==='series' || h.item._isSeries);
+  if(contSeries.length){
+    html += homeContRow('🎭 Continúa tus series', contSeries);
   }
 
   // ── CANALES RECIENTES (live del historial) ────────────────────
@@ -2740,20 +2685,26 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
     html += '</div></div>';
   }
 
+  // ── PORQUE VISTE X — recomendaciones similares ────────────────
+  const lastWatched = hist.find(h=>h.item.type==='vod'||h.item.type==='series'||h.item._isSeries);
+  if(lastWatched){
+    const base = lastWatched.item;
+    const recs = similarToItem(base, 12);
+    if(recs.length){
+      html += `<div class="home-row">
+        <div class="home-row-title">💡 Porque viste <span style="color:var(--accent)">${esc(base.name)}</span></div>
+        <div class="home-row-scroll">`;
+      recs.forEach(item=>{ html += homeVodCard(item); });
+      html += '</div></div>';
+    }
+  }
+
   // ── TENDENCIAS VOD ────────────────────────────────────────────
   if(vodItems && vodItems.length > 0){
     html += `<div class="home-row">
       <div class="home-row-title">🔥 Películas destacadas</div>
       <div class="home-row-scroll">`;
-    vodItems.forEach(item=>{
-      const thumb = item.cover||item.logo||'';
-      html += `<div class="home-vod-card" onclick='openItemInfo(${js(item)})'>
-        ${thumb?`<img class="home-vod-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
-        <div class="home-vod-thumb-ph" ${thumb?'style="display:none"':''}>🎬</div>
-        <div class="home-vod-name">${esc(item.name)}</div>
-        ${item.rating?`<div class="home-vod-rating">⭐ ${esc(item.rating)}</div>`:''}
-      </div>`;
-    });
+    vodItems.forEach(item=>{ html += homeVodCard(item); });
     html += '</div></div>';
   } else {
     html += `<div class="home-row">
@@ -2771,15 +2722,7 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
     html += `<div class="home-row">
       <div class="home-row-title">🎭 Series destacadas</div>
       <div class="home-row-scroll">`;
-    seriesItems.forEach(item=>{
-      const thumb = item.cover||item.logo||'';
-      html += `<div class="home-vod-card" onclick='play(${js(item)})'>
-        ${thumb?`<img class="home-vod-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
-        <div class="home-vod-thumb-ph" ${thumb?'style="display:none"':''}>🎭</div>
-        <div class="home-vod-name">${esc(item.name)}</div>
-        ${item.rating?`<div class="home-vod-rating">⭐ ${esc(item.rating)}</div>`:''}
-      </div>`;
-    });
+    seriesItems.forEach(item=>{ html += homeVodCard(item); });
     html += '</div></div>';
   } else {
     html += `<div class="home-row">
@@ -2792,23 +2735,136 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
     </div>`;
   }
 
+  }catch(e){ /* una fila falló — el hero y el resto siguen vivos */ }
+
   html += '<div style="height:20px"></div></div>';
   setContent(html);
+  renderHeroSlides(0);
+}
 
-  // Rotación del banner cada 5s
-  clearInterval(window._heroTimer);
-  const rotEl=document.getElementById('homeHeroRot');
-  if(rotEl && rotEl.querySelectorAll('.hero-slide').length>1){
-    let _hx=0;
-    window._heroTimer=setInterval(()=>{
-      const rot=document.getElementById('homeHeroRot');
-      if(!rot){clearInterval(window._heroTimer);return}
-      const ss=rot.querySelectorAll('.hero-slide');
-      const dd=rot.querySelectorAll('.hero-dot');
-      ss[_hx].classList.remove('active');if(dd[_hx])dd[_hx].classList.remove('active');
-      _hx=(_hx+1)%ss.length;
-      ss[_hx].classList.add('active');if(dd[_hx])dd[_hx].classList.add('active');
-    },5000);
+// ── Fila "continuar viendo" (películas o series) ──
+function homeContRow(title, arr){
+  let html = `<div class="home-row">
+    <div class="home-row-title">${title} <span>${arr.length}</span></div>
+    <div class="home-row-scroll">`;
+  arr.slice(0,12).forEach(h=>{
+    const item = h.item;
+    const thumb = item.cover || item.logo || '';
+    const isSeries = item.type==='series' || item._isSeries;
+    const pct = vodProgressPct(item.id);
+    const progHtml = pct>0 ? `<div class="home-cont-prog"><div class="home-cont-prog-fill" style="width:${pct}%"></div></div>` : '';
+    html += `<div class="home-cont-card" onclick='play(${js(item)})'>
+      <span class="home-cont-badge ${isSeries?'series':'vod'}">${isSeries?'SERIE':'VOD'}</span>
+      ${thumb?`<img class="home-cont-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
+      <div class="home-cont-thumb-ph" ${thumb?'style="display:none"':''}>${isSeries?'🎭':'🎬'}</div>
+      ${progHtml}
+      <div class="home-cont-name">${esc(item.name)}</div>
+    </div>`;
+  });
+  return html + '</div></div>';
+}
+
+// ── Tarjeta VOD/serie del home ──
+function homeVodCard(item){
+  const thumb = item.cover || item.logo || '';
+  const isSeries = item.type==='series';
+  const click = isSeries ? `play(${js(item)})` : `openItemInfo(${js(item)})`;
+  return `<div class="home-vod-card" onclick='${click}'>
+    ${thumb?`<img class="home-vod-thumb" src="${esc(thumb)}" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`:''}
+    <div class="home-vod-thumb-ph" ${thumb?'style="display:none"':''}>${isSeries?'🎭':'🎬'}</div>
+    <div class="home-vod-name">${esc(item.name)}</div>
+    ${item.rating?`<div class="home-vod-rating">⭐ ${esc(String(item.rating))}</div>`:''}
+  </div>`;
+}
+
+// ── Fuente de contenido para hero y recomendaciones ──
+function _heroPoolSource(){
+  if(typeof IDX!=='undefined' && IDX.items.length>50) return IDX.items;
+  const flat=[];
+  ['live','vod','series'].forEach(sec=>(S.cats[sec]||[]).forEach(c=>{if(c.loaded)flat.push(...c.items.map(i=>({...i,_sec:sec})))}));
+  if(flat.length>10) return flat;
+  const d=window._homeData||{};
+  return [...(d.live||[]),...(d.vod||[]),...(d.series||[])];
+}
+
+// ── Recomendaciones similares (misma categoría, mismo tipo) ──
+function similarToItem(base, n){
+  const pool=_heroPoolSource().filter(i=>{
+    const t=i.type||i._sec; const bt=base.type||'vod';
+    return t===bt && String(i.id)!==String(base.id);
+  });
+  const sameGroup=pool.filter(i=>i.group && base.group && i.group===base.group);
+  const src=sameGroup.length>=4?sameGroup:pool;
+  const out=[];const a=[...src];
+  while(a.length && out.length<n){out.push(a.splice(Math.floor(Math.random()*a.length),1)[0])}
+  return out;
+}
+
+// ── HERO ROTATIVO auto-recuperable ──
+function renderHeroSlides(retry){
+  const slot=document.getElementById('homeHeroSlot');
+  if(!slot) return; // salimos del home — no hacer nada
+  const hist=S.history||[];
+  const heroPool=[];
+  if(hist[0]?.item) heroPool.push(hist[0].item);
+  const a=[..._heroPoolSource()];
+  while(a.length && heroPool.length<5){
+    const i=a.splice(Math.floor(Math.random()*a.length),1)[0];
+    if(!heroPool.find(p=>String(p.id)===String(i.id)&&(p.type||'')===(i.type||''))) heroPool.push(i);
+  }
+  const slides=heroPool.slice(0,5);
+
+  if(!slides.length){
+    slot.innerHTML=`<div class="home-hero" style="background:linear-gradient(135deg,var(--bg2),var(--bg3))">
+      <div class="home-hero-content">
+        <div class="home-hero-badge">✨ Bienvenido</div>
+        <div class="home-hero-title">${esc(S.user)} · JOX3 TV</div>
+        <div class="home-hero-meta">Cargando recomendaciones...</div>
+      </div>
+    </div>`;
+  }else{
+    let h=`<div class="home-hero home-hero-rot" id="homeHeroRot">`;
+    slides.forEach((it,ix)=>{
+      const bg = it.cover || it.logo || '';
+      const badgeLabel = it.type==='live'?'🔴 EN VIVO AHORA':it.type==='series'?'🎭 Serie recomendada':'🎬 Película recomendada';
+      h += `<div class="hero-slide${ix===0?' active':''}">
+        ${bg?`<div class="home-hero-bg hero-kb" style="background-image:url('${esc(bg)}')"></div>`:`<div class="home-hero-bg" style="background:linear-gradient(140deg,var(--bg3),var(--bg2))"></div>`}
+        <div class="home-hero-grad"></div>
+        <div class="home-hero-content">
+          <div class="home-hero-badge">${badgeLabel}</div>
+          <div class="home-hero-title">${esc(it.name)}</div>
+          <div class="home-hero-meta">${esc(it.group||'')}${it.rating?' · ⭐ '+esc(String(it.rating)):''}</div>
+          <div class="home-hero-btns">
+            <button class="home-hero-play" onclick='play(${js(it)})'>▶ Reproducir</button>
+            <button class="home-hero-more" onclick='openItemInfo(${js(it)})'>ℹ</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    h += `<div class="hero-dots">${slides.map((_,i)=>`<div class="hero-dot${i===0?' active':''}"></div>`).join('')}</div></div>`;
+    slot.innerHTML=h;
+
+    clearInterval(window._heroTimer);
+    if(slides.length>1){
+      let _hx=0;
+      window._heroTimer=setInterval(()=>{
+        const rot=document.getElementById('homeHeroRot');
+        if(!rot){clearInterval(window._heroTimer);return}
+        const ss=rot.querySelectorAll('.hero-slide');
+        const dd=rot.querySelectorAll('.hero-dot');
+        if(!ss.length)return;
+        ss[_hx%ss.length].classList.remove('active');
+        if(dd[_hx%ss.length])dd[_hx%ss.length].classList.remove('active');
+        _hx=(_hx+1)%ss.length;
+        ss[_hx].classList.add('active');
+        if(dd[_hx])dd[_hx].classList.add('active');
+      },5000);
+    }
+  }
+
+  // Auto-reintento: si hay pocas slides, reintenta cuando el índice de fondo cargue más contenido
+  if(slides.length<3 && retry<10){
+    setTimeout(()=>{ if(document.getElementById('homeHeroSlot')) renderHeroSlides(retry+1) }, 3000);
   }
 }
 
