@@ -624,8 +624,16 @@ public class PlayerActivity extends AppCompatActivity {
                 if (!isVodType()) retrySmarter(e);
                 else {
                     showLoading(false);
-                    toast("\uD83D\uDCFA Abriendo en reproductor externo...");
-                    handler.postDelayed(() -> launchExternal(), 800);
+                    // Diagnóstico: mostrar código de error exacto antes de ofrecer externo
+                    String detalle = e.getErrorCodeName() + " (" + e.errorCode + ")";
+                    Throwable causa = e.getCause();
+                    if (causa != null) detalle += "\n\n" + causa.getClass().getSimpleName() + ":\n" + causa.getMessage();
+                    new android.app.AlertDialog.Builder(PlayerActivity.this)
+                        .setTitle("Error de reproducci\u00f3n")
+                        .setMessage(detalle)
+                        .setPositiveButton("\uD83D\uDCF2 Abrir externo", (d, w) -> launchExternal())
+                        .setNegativeButton("Cerrar", null)
+                        .show();
                 }
             }
         });
