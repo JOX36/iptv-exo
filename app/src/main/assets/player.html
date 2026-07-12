@@ -821,6 +821,16 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 </div>
 
 <script>
+// ══ DETECTOR DE ERRORES (diagnóstico) ══
+window.onerror=function(msg,src,line){
+  try{
+    var t=document.getElementById('toast');
+    if(t){t.textContent='🐞 JS: '+msg+' (L'+line+')';t.classList.add('show');
+      clearTimeout(window._errToastT);window._errToastT=setTimeout(function(){t.classList.remove('show')},6000);}
+  }catch(e){}
+  return false;
+};
+
 // ══ STATE ══
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
 const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3'};
@@ -2779,12 +2789,18 @@ function homeVodCard(item){
 
 // ── Fuente de contenido para hero y recomendaciones ──
 function _heroPoolSource(){
-  if(typeof IDX!=='undefined' && IDX.items.length>50) return IDX.items;
-  const flat=[];
-  ['live','vod','series'].forEach(sec=>(S.cats[sec]||[]).forEach(c=>{if(c.loaded)flat.push(...c.items.map(i=>({...i,_sec:sec})))}));
-  if(flat.length>10) return flat;
-  const d=window._homeData||{};
-  return [...(d.live||[]),...(d.vod||[]),...(d.series||[])];
+  try{
+    if(typeof IDX!=='undefined' && IDX.items && IDX.items.length>50) return IDX.items;
+    let flat=[];
+    ['live','vod','series'].forEach(sec=>{
+      (S.cats[sec]||[]).forEach(c=>{
+        if(c.loaded && c.items && c.items.length) flat = flat.concat(c.items); // concat: seguro con catálogos grandes
+      });
+    });
+    if(flat.length>10) return flat;
+    const d=window._homeData||{};
+    return (d.live||[]).concat(d.vod||[], d.series||[]);
+  }catch(e){ return []; }
 }
 
 // ── Recomendaciones similares (misma categoría, mismo tipo) ──
@@ -2804,6 +2820,7 @@ function similarToItem(base, n){
 function renderHeroSlides(retry){
   const slot=document.getElementById('homeHeroSlot');
   if(!slot) return; // salimos del home — no hacer nada
+  try{
   const hist=S.history||[];
   const heroPool=[];
   if(hist[0]?.item) heroPool.push(hist[0].item);
@@ -2865,6 +2882,16 @@ function renderHeroSlides(retry){
   // Auto-reintento: si hay pocas slides, reintenta cuando el índice de fondo cargue más contenido
   if(slides.length<3 && retry<10){
     setTimeout(()=>{ if(document.getElementById('homeHeroSlot')) renderHeroSlides(retry+1) }, 3000);
+  }
+  }catch(err){
+    // Nunca dejar el banner vacío: hero estático de emergencia + error visible para diagnóstico
+    slot.innerHTML=`<div class="home-hero" style="background:linear-gradient(135deg,var(--bg2),var(--bg3))">
+      <div class="home-hero-content">
+        <div class="home-hero-badge">⚠️ BANNER ERROR</div>
+        <div class="home-hero-title">${esc(S.user||'')} · JOX3 TV</div>
+        <div class="home-hero-meta" style="color:var(--yellow);word-break:break-all">${esc(String(err&&err.message||err))}</div>
+      </div>
+    </div>`;
   }
 }
 
