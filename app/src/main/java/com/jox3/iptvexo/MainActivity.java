@@ -148,6 +148,46 @@ public class MainActivity extends AppCompatActivity {
             return resultStore.remove(callbackId); // devuelve y elimina
         }
 
+        // Descarga nativa con DownloadManager: notificación con progreso,
+        // archivo en Descargas/JOX3. Llamado desde dlFromVodModal() en el HTML.
+        @JavascriptInterface
+        public void downloadFile(String url, String name) {
+            try {
+                // Extensión real desde la URL (mkv/mp4/avi/ts)
+                String ext = "mp4";
+                int dot = url.lastIndexOf('.');
+                if (dot > 0 && dot > url.lastIndexOf('/')) {
+                    String cand = url.substring(dot + 1);
+                    if (cand.length() <= 5 && cand.matches("[A-Za-z0-9]+")) ext = cand;
+                }
+                // Nombre de archivo seguro
+                String safe = (name == null || name.trim().isEmpty() ? "video" : name)
+                        .replaceAll("[^\\p{L}\\p{N} ._()\\-]", "").trim();
+                if (safe.isEmpty()) safe = "video";
+                if (safe.length() > 80) safe = safe.substring(0, 80);
+
+                android.app.DownloadManager.Request req =
+                    new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                req.setTitle(safe);
+                req.setDescription("Descargando desde JOX3 TV");
+                req.setMimeType("video/*");
+                req.setNotificationVisibility(
+                    android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                req.setDestinationInExternalPublicDir(
+                    android.os.Environment.DIRECTORY_DOWNLOADS, "JOX3/" + safe + "." + ext);
+                req.setAllowedOverMetered(true);
+                req.setAllowedOverRoaming(true);
+
+                android.app.DownloadManager dm =
+                    (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+                dm.enqueue(req);
+            } catch (Exception e) {
+                runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this,
+                    "Error al iniciar descarga: " + e.getMessage(),
+                    android.widget.Toast.LENGTH_LONG).show());
+            }
+        }
+
         // Devolver progreso guardado en SharedPreferences al WebView
         @JavascriptInterface
         public String getAllVodProgress() {
@@ -348,17 +388,24 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
-        if (webView.canGoBack()) {
-            webView.goBack();
-        } else {
-            if (System.currentTimeMillis() - backPressedTime < 2000) {
-                super.onBackPressed();
-            } else {
-                backPressedTime = System.currentTimeMillis();
-                android.widget.Toast.makeText(this,
-                    "Presiona atrás de nuevo para salir",
-                    android.widget.Toast.LENGTH_SHORT).show();
-            }
-        }
+        // Preguntar primero al HTML: cierra modales, sale de categorías, vuelve al home...
+        webView.evaluateJavascript(
+            "(function(){try{return (typeof appBack==='function')?appBack():'exit'}catch(e){return 'exit'}})()",
+            value -> {
+                if (value != null && value.contains("handled")) {
+                    return; // el HTML manejó el atrás (cerró algo o navegó)
+                }
+                // El HTML dice 'exit' — aplicar doble-atrás para salir
+                runOnUiThread(() -> {
+                    if (System.currentTimeMillis() - backPressedTime < 2000) {
+                        finish();
+                    } else {
+                        backPressedTime = System.currentTimeMillis();
+                        android.widget.Toast.makeText(MainActivity.this,
+                            "Presiona atrás de nuevo para salir",
+                            android.widget.Toast.LENGTH_SHORT).show();
+                    }
+                });
+            });
     }
 }
