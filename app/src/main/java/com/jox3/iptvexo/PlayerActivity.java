@@ -357,8 +357,12 @@ public class PlayerActivity extends AppCompatActivity {
                         try { title = new String(android.util.Base64.decode(title, android.util.Base64.DEFAULT)); } catch (Exception ex) {}
                     }
                     try {
-                        java.util.Date start = sdf.parse(e.optString("start", ""));
-                        java.util.Date end   = sdf.parse(e.optString("end", ""));
+                        // Preferir timestamps Unix (universales) — el texto viene en zona horaria del servidor
+                        long stTs = 0, enTs = 0;
+                        try { stTs = Long.parseLong(e.optString("start_timestamp", "0")); } catch (Exception ig) {}
+                        try { enTs = Long.parseLong(e.optString("stop_timestamp", "0")); } catch (Exception ig) {}
+                        java.util.Date start = stTs > 0 ? new java.util.Date(stTs * 1000L) : sdf.parse(e.optString("start", ""));
+                        java.util.Date end   = enTs > 0 ? new java.util.Date(enTs * 1000L) : sdf.parse(e.optString("end", ""));
                         if (start == null || end == null) continue;
                         if (now.after(start) && now.before(end)) {
                             epgNow = title;
@@ -523,7 +527,8 @@ public class PlayerActivity extends AppCompatActivity {
         if (gestFeedbackLayout == null) initGestureOverlay();
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
             @Override
-            public boolean onSingleTapUp(MotionEvent e) {
+            public boolean onSingleTapConfirmed(MotionEvent e) {
+                // Confirmed: solo dispara si NO fue el inicio de un doble tap (evita conflicto con ±10s)
                 if (isVodFullscreen) toggleVodFsBars();
                 return true;
             }
@@ -815,7 +820,7 @@ public class PlayerActivity extends AppCompatActivity {
         handler.postDelayed(() -> {
             vodFsTop.setVisibility(View.GONE);
             vodFsBottom.setVisibility(View.GONE);
-        }, 4000);
+        }, 7000);
     }
 
     // ══ LIVE BARS ══
@@ -841,7 +846,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void scheduleLiveHideBars() {
         if (isTvMode) return; // TV: no programar ocultado
         handler.removeCallbacksAndMessages(null);
-        handler.postDelayed(this::hideLiveBars, 4000);
+        handler.postDelayed(this::hideLiveBars, 7000);
     }
 
     // ══ AUDIO / SUBS ══
@@ -1364,14 +1369,12 @@ public class PlayerActivity extends AppCompatActivity {
                     break;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL:
-                    if (!gestureActive) {
-                        // Fue tap — pasar al detector normal
-                        gestureDetector.onTouchEvent(event);
-                    }
                     hideGestureFeedbackDelayed();
                     gestureActive = false;
                     break;
             }
+            // Entregar el evento UNA sola vez al detector (antes iba duplicado
+            // en ACTION_UP y eso hacía que cada tap alternara las barras 2 veces)
             gestureDetector.onTouchEvent(event);
             return true;
         });
