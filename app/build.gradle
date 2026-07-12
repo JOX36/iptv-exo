@@ -23,6 +23,8 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
+        // Requerido por media3-ffmpeg-decoder (Jellyfin)
+        coreLibraryDesugaringEnabled true
     }
 }
 
@@ -41,8 +43,10 @@ dependencies {
     implementation 'androidx.media3:media3-datasource-okhttp:1.3.1'
 
     // Decodificador FFmpeg precompilado (Jellyfin) — soporte HEVC/AC3/DTS por software
-    // cuando el hardware del dispositivo no puede decodificarlos nativamente.
     implementation 'org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+2'
+
+    // Desugaring — requerido por el decodificador FFmpeg
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.1.5'
