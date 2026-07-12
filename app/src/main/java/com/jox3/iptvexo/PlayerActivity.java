@@ -37,7 +37,9 @@ import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
 import androidx.media3.ui.AspectRatioFrameLayout;
+import androidx.media3.ui.DefaultTimeBar;
 import androidx.media3.ui.PlayerView;
+import androidx.media3.ui.TimeBar;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
@@ -68,7 +70,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView liveEpgNow, liveEpgTime, liveEpgNext;
     private ProgressBar liveEpgProgress;
     private ImageButton liveBtnBack, liveBtnFav;
-    private Button liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop, liveBtnPrev, liveBtnNext;
+    private ImageButton liveBtnAudio, liveBtnPip, liveBtnExt, liveBtnStop, liveBtnPrev, liveBtnNext;
 
     // VOD
     private LinearLayout vodLayout;
@@ -77,13 +79,24 @@ public class PlayerActivity extends AppCompatActivity {
     private ImageButton vodBtnBack, vodBtnFav;
     private TextView vodTxtTitleBar, vodTxtTitle, vodTxtYear, vodTxtDuration, vodTxtRating, vodTxtPlot;
     private ScrollView vodScroll;
-    private Button vodBtnFullscreen, vodBtnPip, vodBtnExt, vodBtnCopy, vodBtnStop, vodBtnAudio, vodBtnSubs;
+    private ImageButton vodBtnFullscreen, vodBtnPip, vodBtnExt, vodBtnCopy, vodBtnStop, vodBtnAudio, vodBtnSubs;
 
     // VOD fullscreen overlay
     private LinearLayout vodFsTop, vodFsBottom;
     private TextView vodFsTxtTitle;
-    private Button vodFsBtnExit, vodFsBtnPip, vodFsBtnExt, vodFsBtnUrl, vodFsBtnSubs;
-    private Button vodFsBtnPause, vodFsBtnStop;
+    private ImageButton vodFsBtnExit, vodFsBtnPip, vodFsBtnExt, vodFsBtnUrl, vodFsBtnSubs;
+    private ImageButton vodFsBtnPause, vodFsBtnStop;
+    // Nuevos controles VOD fullscreen
+    private ImageButton vodFsBtnRew, vodFsBtnFfw, vodFsBtnDl, vodFsBtnResize;
+    private Button vodFsBtnSpeed;
+    private DefaultTimeBar vodFsSeek;
+    private TextView vodFsTimeCur, vodFsTimeTot;
+    private final Handler seekUiHandler = new Handler();
+    private Runnable seekUiRunnable;
+    private boolean seekScrubbing = false;
+    private int speedIdx = 0;
+    private static final float[] SPEEDS = {1f, 1.25f, 1.5f, 2f};
+    private int vodResizeIdx = 0; // 0=FIT 1=FILL 2=ZOOM
 
     // Datos
     private String url, name, group, type, logo, itemId;
@@ -180,7 +193,6 @@ public class PlayerActivity extends AppCompatActivity {
         String epgTime = getIntent().getStringExtra("epg_time");
 
         bindViews();
-        setEmojiLabels();
 
         if (isVodType()) setupVod();
         else setupLive();
@@ -270,6 +282,14 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnSubs  = findViewById(R.id.vod_fs_btn_subs);
         vodFsBtnPause = findViewById(R.id.vod_fs_btn_pause);
         vodFsBtnStop  = findViewById(R.id.vod_fs_btn_stop);
+        vodFsBtnRew   = findViewById(R.id.vod_fs_btn_rew);
+        vodFsBtnFfw   = findViewById(R.id.vod_fs_btn_ffw);
+        vodFsBtnDl    = findViewById(R.id.vod_fs_btn_dl);
+        vodFsBtnResize= findViewById(R.id.vod_fs_btn_resize);
+        vodFsBtnSpeed = findViewById(R.id.vod_fs_btn_speed);
+        vodFsSeek     = findViewById(R.id.vod_fs_seekbar);
+        vodFsTimeCur  = findViewById(R.id.vod_fs_time_cur);
+        vodFsTimeTot  = findViewById(R.id.vod_fs_time_tot);
 
         // Siguiente episodio
         nextEpOverlay  = findViewById(R.id.next_ep_overlay);
@@ -288,23 +308,6 @@ public class PlayerActivity extends AppCompatActivity {
         // Gestos volumen/brillo
         audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-    }
-
-    // Emojis puestos desde Java para evitar corrupcion UTF-8 en XML
-    private void setEmojiLabels() {
-        liveBtnAudio.setText("\uD83D\uDD0A Audio");
-        liveBtnExt.setText("\uD83D\uDCF2 Externo");
-        liveBtnStop.setText("\u23F9 Detener");
-        vodBtnFullscreen.setText("\u26F6 Pantalla completa");
-        vodBtnExt.setText("\uD83D\uDCF2 Externo");
-        vodBtnCopy.setText("\uD83D\uDCCB URL");
-        vodBtnStop.setText("\u23F9 Detener");
-        vodBtnAudio.setText("\uD83D\uDD0A Audio");
-        vodBtnSubs.setText("\uD83D\uDCAC Subtitulos");
-        vodFsBtnExit.setText("\u2715 Salir");
-        vodFsBtnExt.setText("\uD83D\uDCF2 Externo");
-        vodFsBtnUrl.setText("\uD83D\uDCCB URL");
-        vodFsBtnSubs.setText("\uD83D\uDCAC Subs");
     }
 
     private void showEpg(String now, String time, String next, int progress) {
@@ -458,21 +461,60 @@ public class PlayerActivity extends AppCompatActivity {
             if (player == null) return;
             if (player.isPlaying()) {
                 player.pause();
-                vodFsBtnPause.setText("\u25B6");
-                vodFsBtnPause.setTextColor(0xFF00FF88);
+                vodFsBtnPause.setImageResource(R.drawable.ic_play);
             } else {
                 player.play();
-                vodFsBtnPause.setText("\u23F8");
-                vodFsBtnPause.setTextColor(0xFF00D4FF);
+                vodFsBtnPause.setImageResource(R.drawable.ic_pause);
             }
         });
 
         // Detener — sale de fullscreen y pausa
         vodFsBtnStop.setOnClickListener(v -> {
             if (player != null) player.pause();
-            vodFsBtnPause.setText("\u25B6");
-            vodFsBtnPause.setTextColor(0xFF00FF88);
+            vodFsBtnPause.setImageResource(R.drawable.ic_play);
             if (isVodFullscreen) exitVodFullscreen();
+        });
+
+        // −10s / +10s
+        vodFsBtnRew.setOnClickListener(v -> {
+            if (player != null) { player.seekTo(Math.max(0, player.getCurrentPosition() - 10000)); showSeekFeedback(-10); }
+        });
+        vodFsBtnFfw.setOnClickListener(v -> {
+            if (player != null) { player.seekTo(Math.min(player.getDuration(), player.getCurrentPosition() + 10000)); showSeekFeedback(+10); }
+        });
+
+        // Velocidad 1x → 1.25x → 1.5x → 2x
+        vodFsBtnSpeed.setOnClickListener(v -> {
+            speedIdx = (speedIdx + 1) % SPEEDS.length;
+            float sp = SPEEDS[speedIdx];
+            if (player != null) player.setPlaybackSpeed(sp);
+            vodFsBtnSpeed.setText(sp == 1f ? "1x" : (sp + "x").replace(".0", ""));
+            vodFsBtnSpeed.setTextColor(sp == 1f ? 0xFFFFFFFF : 0xFF00D4FF);
+        });
+
+        // Tamaño FIT / FILL / ZOOM
+        vodFsBtnResize.setOnClickListener(v -> {
+            vodResizeIdx = (vodResizeIdx + 1) % 3;
+            int mode = vodResizeIdx == 0 ? AspectRatioFrameLayout.RESIZE_MODE_FIT
+                     : vodResizeIdx == 1 ? AspectRatioFrameLayout.RESIZE_MODE_FILL
+                     : AspectRatioFrameLayout.RESIZE_MODE_ZOOM;
+            vodPlayerView.setResizeMode(mode);
+            toast(vodResizeIdx == 0 ? "Ajustar (FIT)" : vodResizeIdx == 1 ? "Estirar (FILL)" : "Recortar (ZOOM)");
+        });
+
+        // Descargar
+        vodFsBtnDl.setOnClickListener(v -> downloadCurrent());
+
+        // Seekbar arrastrable
+        vodFsSeek.addListener(new TimeBar.OnScrubListener() {
+            @Override public void onScrubStart(TimeBar timeBar, long position) { seekScrubbing = true; }
+            @Override public void onScrubMove(TimeBar timeBar, long position) {
+                if (vodFsTimeCur != null) vodFsTimeCur.setText(fmtTime(position));
+            }
+            @Override public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
+                seekScrubbing = false;
+                if (!canceled && player != null) player.seekTo(position);
+            }
         });
 
         vodPlayerView.setOnClickListener(v -> { if (isVodFullscreen) toggleVodFsBars(); });
@@ -598,6 +640,8 @@ public class PlayerActivity extends AppCompatActivity {
                         }
                         stopProgressSaver();
                         startProgressSaver();
+                        startSeekUi();
+                        if (vodFsBtnPause != null) vodFsBtnPause.setImageResource(R.drawable.ic_pause);
                         // Iniciar chequeo de fin de episodio para series
                         if (isSeriesType()) {
                             startEndCheck();
@@ -689,6 +733,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void stopAndRelease() {
         handler.removeCallbacksAndMessages(null);
         stopProgressSaver();
+        stopSeekUi();
         stopEndCheck();
         hideNextEpOverlay();
         if (player != null) {
@@ -868,6 +913,79 @@ public class PlayerActivity extends AppCompatActivity {
                 });
             } catch (Exception e) { runOnUiThread(() -> vodTxtPlot.setText("Sin informacion disponible.")); }
         }).start();
+    }
+
+    // ══ SEEKBAR UI (VOD fullscreen) ══
+    private void startSeekUi() {
+        stopSeekUi();
+        if (!isVodType()) return;
+        seekUiRunnable = new Runnable() {
+            @Override public void run() {
+                if (player != null && !seekScrubbing) {
+                    long dur = player.getDuration();
+                    long pos = player.getCurrentPosition();
+                    long buf = player.getBufferedPosition();
+                    if (dur > 0 && vodFsSeek != null) {
+                        vodFsSeek.setDuration(dur);
+                        vodFsSeek.setPosition(pos);
+                        vodFsSeek.setBufferedPosition(buf);
+                        if (vodFsTimeCur != null) vodFsTimeCur.setText(fmtTime(pos));
+                        if (vodFsTimeTot != null) vodFsTimeTot.setText(fmtTime(dur));
+                    }
+                }
+                seekUiHandler.postDelayed(this, 500);
+            }
+        };
+        seekUiHandler.postDelayed(seekUiRunnable, 500);
+    }
+
+    private void stopSeekUi() {
+        if (seekUiRunnable != null) {
+            seekUiHandler.removeCallbacks(seekUiRunnable);
+            seekUiRunnable = null;
+        }
+    }
+
+    private String fmtTime(long ms) {
+        long s = Math.max(0, ms / 1000);
+        long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
+        return h > 0 ? String.format(java.util.Locale.US, "%d:%02d:%02d", h, m, sec)
+                     : String.format(java.util.Locale.US, "%d:%02d", m, sec);
+    }
+
+    // ══ DESCARGA NATIVA (DownloadManager) ══
+    private void downloadCurrent() {
+        if (url == null || url.isEmpty()) { toast("Sin URL"); return; }
+        try {
+            String ext = "mp4";
+            int dot = url.lastIndexOf('.');
+            if (dot > 0 && dot > url.lastIndexOf('/')) {
+                String cand = url.substring(dot + 1);
+                if (cand.length() <= 5 && cand.matches("[A-Za-z0-9]+")) ext = cand;
+            }
+            String safe = (name == null || name.trim().isEmpty() ? "video" : name)
+                    .replaceAll("[^\\p{L}\\p{N} ._()\\-]", "").trim();
+            if (safe.isEmpty()) safe = "video";
+            if (safe.length() > 80) safe = safe.substring(0, 80);
+
+            android.app.DownloadManager.Request req =
+                new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+            req.setTitle(safe);
+            req.setDescription("Descargando desde JOX3 TV");
+            req.setMimeType("video/*");
+            req.setNotificationVisibility(
+                android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+            req.setDestinationInExternalPublicDir(
+                android.os.Environment.DIRECTORY_DOWNLOADS, "JOX3/" + safe + "." + ext);
+            req.setAllowedOverMetered(true);
+            req.setAllowedOverRoaming(true);
+            android.app.DownloadManager dm =
+                (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            dm.enqueue(req);
+            toast("\u2B07 Descarga iniciada \u2014 revisa la notificaci\u00f3n");
+        } catch (Exception e) {
+            toast("Error al descargar: " + e.getMessage());
+        }
     }
 
     // ══ HELPERS ══
