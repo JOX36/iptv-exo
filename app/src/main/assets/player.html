@@ -383,8 +383,8 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 
 /* Hero */
 .home-hero{position:relative;width:100%;height:200px;overflow:hidden;flex-shrink:0;background:var(--bg2)}
-.home-hero-bg{position:absolute;inset:0;background-size:cover;background-position:center top;filter:brightness(.8) saturate(1.15)}
-.home-hero-grad{position:absolute;inset:0;background:linear-gradient(to top,var(--bg) 2%,rgba(10,14,20,.35) 40%,transparent 68%)}
+.home-hero-bg{position:absolute;inset:0;background-size:cover;background-position:center top;filter:brightness(.95) saturate(1.2)}
+.home-hero-grad{position:absolute;inset:0;background:linear-gradient(to top,var(--bg) 2%,rgba(10,14,20,.25) 32%,transparent 58%)}
 .home-hero-content{position:relative;z-index:2;padding:16px 14px;display:flex;flex-direction:column;justify-content:flex-end;height:100%}
 .home-hero-badge{font-size:.58rem;font-weight:700;letter-spacing:1px;color:var(--accent);text-transform:uppercase;margin-bottom:4px}
 .home-hero-title{font-family:'Rajdhani',sans-serif;font-size:1.5rem;font-weight:700;color:#fff;line-height:1.1;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;text-shadow:0 2px 8px rgba(0,0,0,.8)}
@@ -822,6 +822,14 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 
 <script>
 // ══ STATE ══
+
+// Fecha EPG robusta: usa el timestamp Unix (universal); si falta, cae al texto del servidor
+function epgDate(e,isEnd){
+  const ts=isEnd?(e.stop_timestamp||e.end_timestamp):e.start_timestamp;
+  const n=parseInt(ts);
+  if(n>0) return new Date(n*1000);
+  return new Date(String(isEnd?e.end:e.start).replace(' ','T'));
+}
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
 const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3'};
 
@@ -1880,7 +1888,7 @@ async function loadEpg(streamId){
   EPG.streamId=streamId;clearInterval(EPG.timer);document.getElementById('epgBar').classList.remove('visible');
   try{
     const data=await xApi('get_short_epg',`&stream_id=${streamId}&limit=6`);const list=data?.epg_listings||[];if(!list.length)return;
-    EPG.data=list.map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:new Date(e.start.replace(' ','T')),end:new Date(e.end.replace(' ','T'))}));
+    EPG.data=list.map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:epgDate(e,false),end:epgDate(e,true)}));
     const now=new Date();const cur=EPG.data.find(e=>now>=e.start&&now<e.end);
     if(cur) EPG_CACHE[streamId]={title:cur.title,ts:Date.now()};
     renderEpgBar();EPG.timer=setInterval(renderEpgBar,30000);
@@ -1892,7 +1900,7 @@ async function loadEpgForCards(items){
     const batch=liveItems.slice(i,i+5);
     await Promise.allSettled(batch.map(async item=>{
       if(EPG_CACHE[item.id]&&Date.now()-EPG_CACHE[item.id].ts<600000)return;
-      try{const data=await xApi('get_short_epg',`&stream_id=${item.id}&limit=2`);const list=data?.epg_listings||[];const now=new Date();const cur=list.map(e=>({title:e.title?atob(e.title):'',start:new Date(e.start.replace(' ','T')),end:new Date(e.end.replace(' ','T'))})).find(e=>now>=e.start&&now<e.end);if(cur?.title)EPG_CACHE[item.id]={title:cur.title,ts:Date.now()}}catch(e){}
+      try{const data=await xApi('get_short_epg',`&stream_id=${item.id}&limit=2`);const list=data?.epg_listings||[];const now=new Date();const cur=list.map(e=>({title:e.title?atob(e.title):'',start:epgDate(e,false),end:epgDate(e,true)})).find(e=>now>=e.start&&now<e.end);if(cur?.title)EPG_CACHE[item.id]={title:cur.title,ts:Date.now()}}catch(e){}
     }));
     refreshCardEpg();await new Promise(r=>setTimeout(r,300));
   }
@@ -1930,7 +1938,7 @@ async function openEpgModal(){
   body.innerHTML=`<div class="modal-loading"><div class="p-spinner"></div><p>Cargando guía...</p></div>`;
   try{
     const data=await xApi('get_epg',`&stream_id=${S.current.id}`);
-    const list=(data?.epg_listings||[]).map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:new Date(e.start.replace(' ','T')),end:new Date(e.end.replace(' ','T'))}));
+    const list=(data?.epg_listings||[]).map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:epgDate(e,false),end:epgDate(e,true)}));
     if(!list.length){body.innerHTML=`<div class="empty"><div class="empty-icon">📅</div><p>Sin datos EPG</p></div>`;return}
     const now=new Date();const fmt=d=>d.toLocaleTimeString('es',{hour:'2-digit',minute:'2-digit'});const fmtDate=d=>d.toLocaleDateString('es',{weekday:'short',day:'numeric',month:'short'});
     let html='',lastDate='';
@@ -2204,6 +2212,20 @@ function playFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;cl
 function extFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();launchVLC(item.url,item.name)}
 function favFromVodModal(){if(!_vodModalItem)return;toggleFav(fk(_vodModalItem));updateVodModalFav()}
 function updateVodModalFav(){const b=document.getElementById('vodModalFavBtn');if(b&&_vodModalItem)b.classList.toggle('fav-on',S.favs.has(fk(_vodModalItem)))}
+function dlEpisodeByIdx(idx){
+  if(!seriesData?.currentEps)return;
+  const ep=seriesData.currentEps[idx];
+  if(!ep||!ep.url){toast('⚠️ Sin URL de descarga');return}
+  if(typeof AndroidPlayer!=='undefined' && AndroidPlayer.downloadFile){
+    AndroidPlayer.downloadFile(ep.url, ep.name||ep.title||'episodio');
+    toast('⬇ Descarga iniciada — revisa la notificación');
+  }else{
+    const a=document.createElement('a');a.href=ep.url;a.download=(ep.name||ep.title||'episodio');
+    document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),400);
+    toast('⬇ Descarga solicitada');
+  }
+}
+
 function dlFromVodModal(){
   if(!_vodModalItem||!_vodModalItem.url){toast('⚠️ Sin URL de descarga');return}
   const it=_vodModalItem;
@@ -2297,7 +2319,7 @@ function renderSeriesModal(seasonKeys){
       </div>
       <div class="ep-play-btns">
         <button class="ep-btn play" onclick="playEpisodeByIdx(${idx})">▶ Play</button>
-        <button class="ep-btn" onclick="openEpExtByIdx(${idx})">📲 Ext</button>
+        <button class="ep-btn" onclick="dlEpisodeByIdx(${idx})"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Bajar</button>
       </div>
     </div>`;
   }).join('')+`</div>`;
