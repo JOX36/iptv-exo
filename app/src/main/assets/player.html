@@ -2819,7 +2819,10 @@ function similarToItem(base, n){
 // ── HERO ROTATIVO auto-recuperable ──
 function renderHeroSlides(retry){
   const slot=document.getElementById('homeHeroSlot');
-  if(!slot) return; // salimos del home — no hacer nada
+  if(!slot){ // setContent pinta con retraso (fade 120ms) — reintentar hasta que exista
+    if((retry||0)<15) setTimeout(()=>renderHeroSlides((retry||0)+1),250);
+    return;
+  }
   try{
   const hist=S.history||[];
   const heroPool=[];
