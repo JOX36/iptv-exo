@@ -1112,14 +1112,12 @@ function renderAccordion(sec){
   const icon=accIcon(sec);
   let html='';
   cats.forEach(c=>{
-    const open=ACC_OPEN[sec]===String(c.id);
-    html+=`<div class="acc-cat${open?' open':''}" id="acc_${sec}_${c.id}">
+    html+=`<div class="acc-cat" id="acc_${sec}_${c.id}">
       <div class="acc-hdr" onclick="toggleAccCat('${sec}','${c.id}')">
         <div class="acc-hdr-title">${icon} ${esc(c.name)} <span class="acc-cnt" id="acccnt_${sec}_${c.id}">${c.loaded?c.items.length:'·'}</span></div>
-        <div class="acc-chevron">▼</div>
+        <div class="acc-chevron">›</div>
       </div>
       <div class="acc-preview" id="accprev_${sec}_${c.id}">${c.loaded?accPreviewHtml(c,sec):'<div class="acc-loading">⏳ Cargando...</div>'}</div>
-      <div class="acc-body" id="accbody_${sec}_${c.id}">${open&&c.loaded?accGridHtml(c,sec):''}</div>
     </div>`;
   });
   setContent(html);
@@ -1128,19 +1126,37 @@ function renderAccordion(sec){
 
 async function toggleAccCat(sec,id){
   id=String(id);
-  if(ACC_OPEN[sec]===id){ // cerrar la abierta
-    ACC_OPEN[sec]=null;
-    renderAccordion(sec);
-    return;
-  }
-  ACC_OPEN[sec]=id; // abrir esta (cierra automáticamente cualquier otra al re-renderizar)
+  ACC_OPEN[sec]=id; // recordar para restaurar scroll al volver
   const cat=S.cats[sec].find(c=>String(c.id)===id);
-  if(cat&&!cat.loaded){
-    try{await loadCatItems(sec,cat);}catch(e){toast('❌ '+e.message);ACC_OPEN[sec]=null;renderAccordion(sec);return}
+  if(!cat)return;
+  if(!cat.loaded){
+    setContent(`<div class="loading-ph"><div class="p-spinner"></div><p>Cargando ${esc(cat.name)}...</p></div>`);
+    try{await loadCatItems(sec,cat);}catch(e){toast('❌ '+e.message);renderAccordion(sec);return}
   }
-  if(cat){S.channels=[...cat.items];S.activeCat[sec]=cat.id;}
+  S.channels=[...cat.items];S.activeCat[sec]=cat.id;
+  renderCatFull(sec,cat);
+}
+
+// Vista de una sola categoría (pantalla completa) con botón volver
+function renderCatFull(sec,cat){
+  const icon=accIcon(sec);
+  let html=`<div class="acc-backbar" onclick="backToAccordion()" style="display:flex;align-items:center;gap:10px;padding:11px 12px;background:var(--bg2);border-bottom:1px solid var(--border);cursor:pointer;position:sticky;top:0;z-index:10">
+    <span style="color:var(--accent);font-size:1.05rem">←</span>
+    <span style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:.92rem">${icon} ${esc(cat.name)}</span>
+    <span class="acc-cnt">${cat.items.length}</span>
+    <span style="margin-left:auto;color:var(--muted);font-size:.65rem">Todas las categorías</span>
+  </div>`;
+  html+=accGridHtml(cat,sec);
+  setContent(html);
+  document.getElementById('contentArea').scrollTop=0;
+}
+
+function backToAccordion(){
+  const sec=S.sec;
+  const last=ACC_OPEN[sec];
+  ACC_OPEN[sec]=null;
   renderAccordion(sec);
-  setTimeout(()=>{const el=document.getElementById('acc_'+sec+'_'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},80);
+  if(last){setTimeout(()=>{const el=document.getElementById('acc_'+sec+'_'+last);if(el)el.scrollIntoView({block:'center'})},60)}
 }
 
 async function loadCatItems(sec,cat){
@@ -1161,10 +1177,9 @@ async function loadAccPreviews(sec){
       await new Promise(r=>setTimeout(r,250)); // throttle anti rate-limit
     }
     const prev=document.getElementById(`accprev_${sec}_${c.id}`);
-    if(prev&&ACC_OPEN[sec]!==String(c.id))prev.innerHTML=accPreviewHtml(c,sec);
+    if(prev)prev.innerHTML=accPreviewHtml(c,sec);
     const cnt=document.getElementById(`acccnt_${sec}_${c.id}`);
     if(cnt)cnt.textContent=c.items.length;
-    if(ACC_OPEN[sec]===String(c.id)){const b=document.getElementById(`accbody_${sec}_${c.id}`);if(b&&!b.innerHTML)b.innerHTML=accGridHtml(c,sec);}
   }
 }
 
@@ -2574,9 +2589,9 @@ async function showHome(){
   if(!S.isLocal){
     try {
       const [liveItems, vodItems, seriesItems] = await Promise.all([
-        fetchFirstCatItems('live', 20),
-        fetchFirstCatItems('vod', 16),
-        fetchFirstCatItems('series', 16),
+        fetchFirstCatItems('live', 20).catch(()=>[]),
+        fetchFirstCatItems('vod', 16).catch(()=>[]),
+        fetchFirstCatItems('series', 16).catch(()=>[]),
       ]);
       renderHome(liveItems, vodItems, seriesItems, []);
     } catch(e) {
