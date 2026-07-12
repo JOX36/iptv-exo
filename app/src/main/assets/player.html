@@ -154,7 +154,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .acc-body .ch-grid,.acc-body .vod-grid{padding:4px 12px 14px}
 .acc-loading,.acc-empty{color:var(--muted);font-size:.7rem;padding:6px 2px}
 /* ═══ BANNER ROTATIVO HOME ═══ */
-.home-hero-rot{height:270px}
+.home-hero-rot{height:320px}
 .hero-slide{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;pointer-events:none}
 .hero-slide.active{opacity:1;z-index:2;pointer-events:auto}
 .hero-kb{animation:heroKb 9s ease-in-out infinite alternate}
@@ -812,7 +812,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
       <div class="vod-modal-btns">
         <button class="vod-modal-play" id="vodModalPlayBtn" onclick="playFromVodModal()">▶ Reproducir</button>
         <button class="vod-modal-ext" id="vodModalFavBtn" onclick="favFromVodModal()">⭐<small>Favorito</small></button>
-        <button class="vod-modal-ext" id="vodModalDlBtn" onclick="dlFromVodModal()">⬇<small>Descargar</small></button>
+        <button class="vod-modal-ext" id="vodModalDlBtn" onclick="dlFromVodModal()"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg><small>Descargar</small></button>
       </div>
       <div id="vodModalCast"></div>
       <div id="vodModalSimilar"></div>
@@ -821,16 +821,6 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 </div>
 
 <script>
-// ══ DETECTOR DE ERRORES (diagnóstico) ══
-window.onerror=function(msg,src,line){
-  try{
-    var t=document.getElementById('toast');
-    if(t){t.textContent='🐞 JS: '+msg+' (L'+line+')';t.classList.add('show');
-      clearTimeout(window._errToastT);window._errToastT=setTimeout(function(){t.classList.remove('show')},6000);}
-  }catch(e){}
-  return false;
-};
-
 // ══ STATE ══
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
 const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3'};
@@ -1159,6 +1149,7 @@ function renderCatFull(sec,cat){
   html+=accGridHtml(cat,sec);
   setContent(html);
   document.getElementById('contentArea').scrollTop=0;
+  if(sec==='live') setTimeout(()=>loadEpgForCards(cat.items),200); // EPG del programa actual en cada canal
 }
 
 function backToAccordion(){
@@ -2040,6 +2031,29 @@ function playFromPanel(idx){const ch=S.channels[idx];if(!ch)return;closeChPanel(
 // ══ UTILS ══
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function js(obj){return JSON.stringify(obj).replace(/'/g,"&#39;")}
+// ══ BOTÓN ATRÁS FÍSICO (llamado desde MainActivity) ══
+function appBack(){
+  try{
+    // 1. Modal de película abierto → cerrarlo
+    const vm=document.getElementById('vodModal');
+    if(vm && !vm.classList.contains('hidden')){closeVodModal();return 'handled'}
+    // 2. Modal de serie abierto → cerrarlo
+    const sm=document.getElementById('seriesModal');
+    if(sm && !sm.classList.contains('hidden')){closeSeriesModal();return 'handled'}
+    // 3. Sidebar abierto → cerrarlo
+    const sb=document.getElementById('sidebar');
+    if(sb && sb.classList.contains('open')){sb.classList.remove('open');const ov=document.getElementById('sidebarOverlay');if(ov)ov.classList.remove('show');return 'handled'}
+    // 4. Búsqueda con texto → limpiarla
+    const q=document.getElementById('searchBox');
+    if(q && q.value.trim()){q.value='';doSearch('');return 'handled'}
+    // 5. Dentro de una categoría → volver a la lista de categorías
+    if(S.sec!=='home' && ACC_OPEN[S.sec] && document.querySelector('.acc-backbar')){backToAccordion();return 'handled'}
+    // 6. En una sección → volver al inicio
+    if(S.sec!=='home'){switchSec('home');return 'handled'}
+  }catch(e){}
+  return 'exit'; // en el home sin nada abierto → dejar salir
+}
+
 function toast(msg,ms=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms)}
 function timeAgo(ts){const d=Date.now()-ts,m=Math.floor(d/60000);if(m<1)return'ahora';if(m<60)return`${m}m`;const h=Math.floor(m/60);if(h<24)return`${h}h`;return`${Math.floor(h/24)}d`}
 
@@ -2887,12 +2901,12 @@ function renderHeroSlides(retry){
     setTimeout(()=>{ if(document.getElementById('homeHeroSlot')) renderHeroSlides(retry+1) }, 3000);
   }
   }catch(err){
-    // Nunca dejar el banner vacío: hero estático de emergencia + error visible para diagnóstico
+    // Nunca dejar el banner vacío: hero estático de emergencia
     slot.innerHTML=`<div class="home-hero" style="background:linear-gradient(135deg,var(--bg2),var(--bg3))">
       <div class="home-hero-content">
-        <div class="home-hero-badge">⚠️ BANNER ERROR</div>
+        <div class="home-hero-badge">✨ Bienvenido</div>
         <div class="home-hero-title">${esc(S.user||'')} · JOX3 TV</div>
-        <div class="home-hero-meta" style="color:var(--yellow);word-break:break-all">${esc(String(err&&err.message||err))}</div>
+        <div class="home-hero-meta">Selecciona algo para empezar</div>
       </div>
     </div>`;
   }
