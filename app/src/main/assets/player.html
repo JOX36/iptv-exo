@@ -139,6 +139,29 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .cat-item{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;border-bottom:1px solid rgba(26,37,53,.4);transition:background .15s}
 .cat-item:hover{background:var(--bg3)}
 .cat-item.active{background:rgba(0,212,255,.08);border-left:3px solid var(--accent)}
+/* ═══ CATEGORÍAS ACORDEÓN ═══ */
+.acc-cat{border-bottom:1px solid var(--border)}
+.acc-hdr{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;cursor:pointer;background:var(--bg2)}
+.acc-hdr:active{background:var(--bg3)}
+.acc-hdr-title{font-family:'Rajdhani',sans-serif;font-size:.92rem;font-weight:700;letter-spacing:.5px;display:flex;align-items:center;gap:8px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acc-cnt{background:var(--bg3);border-radius:10px;padding:2px 8px;font-size:.62rem;color:var(--muted);font-family:'Exo 2',sans-serif;font-weight:400;flex-shrink:0}
+.acc-chevron{color:var(--muted);font-size:.8rem;transition:transform .3s;flex-shrink:0;margin-left:8px}
+.acc-cat.open .acc-chevron{transform:rotate(180deg);color:var(--accent)}
+.acc-preview{display:flex;gap:8px;overflow-x:auto;padding:4px 12px 12px;scrollbar-width:none}
+.acc-preview::-webkit-scrollbar{display:none}
+.acc-preview .ch-card,.acc-preview .vod-card{width:110px;flex-shrink:0}
+.acc-cat.open .acc-preview{display:none}
+.acc-body .ch-grid,.acc-body .vod-grid{padding:4px 12px 14px}
+.acc-loading,.acc-empty{color:var(--muted);font-size:.7rem;padding:6px 2px}
+/* ═══ BANNER ROTATIVO HOME ═══ */
+.home-hero-rot{height:240px}
+.hero-slide{position:absolute;inset:0;opacity:0;transition:opacity .8s ease;pointer-events:none}
+.hero-slide.active{opacity:1;z-index:2;pointer-events:auto}
+.hero-kb{animation:heroKb 9s ease-in-out infinite alternate}
+@keyframes heroKb{from{transform:scale(1.02)}to{transform:scale(1.12)}}
+.hero-dots{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:5;display:flex;gap:5px}
+.hero-dot{width:6px;height:6px;border-radius:3px;background:rgba(255,255,255,.3);transition:all .3s}
+.hero-dot.active{width:18px;background:var(--accent)}
 .cat-name{font-size:.8rem;font-weight:500;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cat-cnt{background:var(--bg3);border-radius:10px;padding:2px 6px;font-size:.65rem;color:var(--muted);flex-shrink:0;margin-left:6px}
 .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:140}
@@ -533,7 +556,9 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .vod-modal-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .vod-modal-badge{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:2px 8px;font-size:.68rem;color:var(--muted2)}
 .vod-modal-rating{color:var(--yellow);font-size:.78rem;font-weight:600}
-.vod-modal-plot{font-size:.8rem;color:var(--muted2);line-height:1.6;margin-bottom:4px;overflow:hidden;max-height:72px;transition:max-height .3s}
+.vod-modal-plot{font-size:.8rem;color:var(--muted2);line-height:1.6;margin-bottom:10px}
+.vod-modal-ext small{display:block;font-size:.5rem;margin-top:1px;font-family:'Exo 2',sans-serif}
+.vod-modal-ext.fav-on{border-color:var(--yellow);color:var(--yellow);background:rgba(255,193,7,.08)}
 .vod-modal-plot.expanded{max-height:400px}
 .vod-modal-plot-btn{background:none;border:none;color:var(--accent);font-size:.72rem;cursor:pointer;padding:0;margin-bottom:14px;display:block}
 .vod-modal-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
@@ -604,7 +629,7 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
     <div class="topbar-row2">
       <button class="tb-btn" onclick="toggleSidebar()">☰</button>
       <div class="topbar-search"><input type="text" id="searchBox" placeholder="Buscar canales, películas, series..." oninput="debouncedSearch(this.value)" onfocus="onSearchFocus()"></div>
-      <button class="tb-btn" id="multiSearchBtn" onclick="toggleMultiSearch()" title="Buscar en todos los servidores">🌐</button>
+      <button class="tb-btn" id="multiSearchBtn" onclick="toggleMultiSearch()" title="Buscar en todos los servidores" style="display:none">🌐</button>
       <button class="tb-btn" id="themeBtn" onclick="toggleTheme()" title="Cambiar tema">🎨</button>
     </div>
     <div class="search-filters hidden" id="searchFilters" style="display:none!important"></div>
@@ -784,10 +809,10 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
       <div class="vod-modal-title" id="vodModalTitle">—</div>
       <div class="vod-modal-meta" id="vodModalMeta"></div>
       <div class="vod-modal-plot" id="vodModalPlot"></div>
-      <button class="vod-modal-plot-btn" id="vodModalPlotBtn" onclick="toggleVodPlot()" style="display:none">Ver más ▾</button>
       <div class="vod-modal-btns">
         <button class="vod-modal-play" id="vodModalPlayBtn" onclick="playFromVodModal()">▶ Reproducir</button>
-        <button class="vod-modal-ext" onclick="extFromVodModal()">📲 Externo</button>
+        <button class="vod-modal-ext" id="vodModalFavBtn" onclick="favFromVodModal()">⭐<small>Favorito</small></button>
+        <button class="vod-modal-ext" id="vodModalDlBtn" onclick="dlFromVodModal()">⬇<small>Descargar</small></button>
       </div>
       <div id="vodModalCast"></div>
       <div id="vodModalSimilar"></div>
@@ -1051,26 +1076,96 @@ async function loadSec(sec){
     }catch(e){setContent(`<div class="empty"><div class="empty-icon">❌</div><p>${e.message}</p></div>`);return}
   }
   renderSide();
-  const activeCat=S.activeCat[sec];
-  if(activeCat){const cat=S.cats[sec].find(c=>c.id===activeCat);if(cat?.loaded){renderItems(cat.items,cat.name);return}}
-  if(S.cats[sec].length>0) await selectCat(S.cats[sec][0].id);
-  else setContent(`<div class="empty"><div class="empty-icon">📂</div><p>Sin categorías</p></div>`);
+  renderAccordion(sec);
 }
 async function selectCat(catId){
   // Cuenta local — delegar a selectLocalCat
   if(S.isLocal){ selectLocalCat(catId); return; }
-  const sec=S.sec;S.activeCat[sec]=catId;document.getElementById('searchBox').value='';renderSide();
-  const cat=S.cats[sec].find(c=>c.id===catId);if(!cat)return;
-  if(!cat.loaded){
-    setContent(`<div class="loading-ph"><div class="p-spinner"></div><p>Cargando ${esc(cat.name)}...</p></div>`);
-    try{
-      if(sec==='live'){const d=await xApi('get_live_streams',`&category_id=${catId}`);cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',group:cat.name,type:'live',url:`${S.host}/live/${S.user}/${S.pass}/${s.stream_id}.m3u8`}))}
-      else if(sec==='vod'){const d=await xApi('get_vod_streams',`&category_id=${catId}`);cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',cover:s.stream_icon||'',rating:s.rating||'',group:cat.name,type:'vod',url:`${S.host}/movie/${S.user}/${S.pass}/${s.stream_id}.${s.container_extension||'mp4'}`}))}
-      else{const d=await xApi('get_series',`&category_id=${catId}`);cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.series_id,name:s.name||'?',logo:s.cover||'',cover:s.cover||'',rating:s.rating||'',group:cat.name,type:'series'}))}
-      cat.loaded=true;
-    }catch(e){setContent(`<div class="empty"><div class="empty-icon">❌</div><p>${e.message}</p></div>`);return}
+  document.getElementById('searchBox').value='';
+  ACC_OPEN[S.sec]=null;
+  await toggleAccCat(S.sec, String(catId));
+  if(window.innerWidth<=580){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('show')}
+}
+
+// ══ CATEGORÍAS ACORDEÓN ══
+const ACC_OPEN={live:null,vod:null,series:null};
+let _accPrevToken=0;
+
+function accIcon(sec){return sec==='live'?'📺':sec==='vod'?'🎬':'🎭'}
+
+function accPreviewHtml(c,sec){
+  const items=(c.items||[]).slice(0,12);
+  if(!items.length) return '<div class="acc-empty">Sin contenido</div>';
+  return items.map(i=>sec==='live'?chCard(i):vodCard(i)).join('');
+}
+
+function accGridHtml(c,sec){
+  if(!(c.items||[]).length) return '<div class="acc-empty" style="padding:10px 14px">Sin contenido</div>';
+  return sec==='live'
+    ? `<div class="ch-grid">`+c.items.map(chCard).join('')+`</div>`
+    : `<div class="vod-grid">`+c.items.map(vodCard).join('')+`</div>`;
+}
+
+function renderAccordion(sec){
+  const cats=S.cats[sec];
+  if(!cats||!cats.length){setContent(`<div class="empty"><div class="empty-icon">📂</div><p>Sin categorías</p></div>`);return}
+  const icon=accIcon(sec);
+  let html='';
+  cats.forEach(c=>{
+    const open=ACC_OPEN[sec]===String(c.id);
+    html+=`<div class="acc-cat${open?' open':''}" id="acc_${sec}_${c.id}">
+      <div class="acc-hdr" onclick="toggleAccCat('${sec}','${c.id}')">
+        <div class="acc-hdr-title">${icon} ${esc(c.name)} <span class="acc-cnt" id="acccnt_${sec}_${c.id}">${c.loaded?c.items.length:'·'}</span></div>
+        <div class="acc-chevron">▼</div>
+      </div>
+      <div class="acc-preview" id="accprev_${sec}_${c.id}">${c.loaded?accPreviewHtml(c,sec):'<div class="acc-loading">⏳ Cargando...</div>'}</div>
+      <div class="acc-body" id="accbody_${sec}_${c.id}">${open&&c.loaded?accGridHtml(c,sec):''}</div>
+    </div>`;
+  });
+  setContent(html);
+  loadAccPreviews(sec);
+}
+
+async function toggleAccCat(sec,id){
+  id=String(id);
+  if(ACC_OPEN[sec]===id){ // cerrar la abierta
+    ACC_OPEN[sec]=null;
+    renderAccordion(sec);
+    return;
   }
-  renderItems(cat.items,cat.name);
+  ACC_OPEN[sec]=id; // abrir esta (cierra automáticamente cualquier otra al re-renderizar)
+  const cat=S.cats[sec].find(c=>String(c.id)===id);
+  if(cat&&!cat.loaded){
+    try{await loadCatItems(sec,cat);}catch(e){toast('❌ '+e.message);ACC_OPEN[sec]=null;renderAccordion(sec);return}
+  }
+  if(cat){S.channels=[...cat.items];S.activeCat[sec]=cat.id;}
+  renderAccordion(sec);
+  setTimeout(()=>{const el=document.getElementById('acc_'+sec+'_'+id);if(el)el.scrollIntoView({behavior:'smooth',block:'start'})},80);
+}
+
+async function loadCatItems(sec,cat){
+  if(cat.loaded)return;
+  if(sec==='live'){const d=await xApi('get_live_streams',`&category_id=${cat.id}`);cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',group:cat.name,type:'live',url:`${S.host}/live/${S.user}/${S.pass}/${s.stream_id}.m3u8`}))}
+  else if(sec==='vod'){const d=await xApi('get_vod_streams',`&category_id=${cat.id}`);cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.stream_id,name:s.name||'?',logo:s.stream_icon||'',cover:s.stream_icon||'',rating:s.rating||'',group:cat.name,type:'vod',url:`${S.host}/movie/${S.user}/${S.pass}/${s.stream_id}.${s.container_extension||'mp4'}`}))}
+  else{const d=await xApi('get_series',`&category_id=${cat.id}`);cat.items=(Array.isArray(d)?d:[]).map(s=>({id:s.series_id,name:s.name||'?',logo:s.cover||'',cover:s.cover||'',rating:s.rating||'',group:cat.name,type:'series'}))}
+  cat.loaded=true;
+}
+
+async function loadAccPreviews(sec){
+  const token=++_accPrevToken;
+  for(const c of S.cats[sec]){
+    if(token!==_accPrevToken||S.sec!==sec)return; // cambió de sección — abortar
+    if(!c.loaded){
+      try{await loadCatItems(sec,c);}catch(e){continue}
+      if(token!==_accPrevToken||S.sec!==sec)return;
+      await new Promise(r=>setTimeout(r,250)); // throttle anti rate-limit
+    }
+    const prev=document.getElementById(`accprev_${sec}_${c.id}`);
+    if(prev&&ACC_OPEN[sec]!==String(c.id))prev.innerHTML=accPreviewHtml(c,sec);
+    const cnt=document.getElementById(`acccnt_${sec}_${c.id}`);
+    if(cnt)cnt.textContent=c.items.length;
+    if(ACC_OPEN[sec]===String(c.id)){const b=document.getElementById(`accbody_${sec}_${c.id}`);if(b&&!b.innerHTML)b.innerHTML=accGridHtml(c,sec);}
+  }
 }
 
 // ══ RENDER ══
@@ -1250,11 +1345,11 @@ function onSearchFocus(){
   }
 }
 
-// Debounce — espera 350ms después de la última tecla antes de buscar
+// Debounce — espera 400ms después de la última tecla antes de buscar
 let _searchTimer = null;
 function debouncedSearch(q){
   clearTimeout(_searchTimer);
-  _searchTimer = setTimeout(() => doSearch(q), 350);
+  _searchTimer = setTimeout(() => doSearch(q), 400);
 }
 
 function doSearch(q){
@@ -1263,13 +1358,17 @@ function doSearch(q){
   q=q.trim().toLowerCase();
   if(!q){
     filters.classList.add('hidden');
+    if(!S.isLocal){renderAccordion(S.sec);return}
     const catId=S.activeCat[S.sec];
     if(catId){const cat=S.cats[S.sec].find(c=>c.id===catId);if(cat?.loaded){renderItems(cat.items,cat.name);return}}
     setContent(`<div class="empty"><div class="empty-icon">📂</div><p>Elige una categoría</p></div>`);
     return;
   }
 
-  if(multiSearchActive){
+  // Búsqueda global automática — si hay varias cuentas guardadas, busca en todas sin activar nada
+  const _accsGlobal = lsGet(K.ACCS)||[];
+  if(multiSearchActive || _accsGlobal.length>1){
+    if(!MIDX.done && !MIDX.running) startMultiIndex();
     doMultiSearch(q);
     return;
   }
@@ -1927,7 +2026,7 @@ async function openVodInfo(item){
   document.getElementById('vodModalTitle').textContent=item.name;
   document.getElementById('vodModalMeta').innerHTML='<span class="vod-modal-badge">⏳ Cargando...</span>';
   document.getElementById('vodModalPlot').textContent='';
-  document.getElementById('vodModalPlotBtn').style.display='none';
+  updateVodModalFav();
   document.getElementById('vodModalCast').innerHTML='';
   document.getElementById('vodModalSimilar').innerHTML='';
   const coverEl=document.getElementById('vodModalCover');
@@ -1957,16 +2056,10 @@ async function openVodInfo(item){
     // Guardar género para recomendaciones
     if(info.genre) _vodModalItem.genre = info.genre;
 
-    // Sinopsis expandible
+    // Sinopsis completa siempre visible
     const plot = info.plot||info.description||'Sin sinopsis disponible.';
     const plotEl = document.getElementById('vodModalPlot');
     plotEl.textContent = plot;
-    plotEl.classList.remove('expanded');
-    const plotBtn = document.getElementById('vodModalPlotBtn');
-    if(plot.length > 150){
-      plotBtn.style.display='block';
-      plotBtn.textContent='Ver más ▾';
-    }
 
     // Reparto
     const cast = info.cast||info.actors||'';
@@ -2070,6 +2163,22 @@ function loadSimilarMovies(item){
 function closeVodModal(){document.getElementById('vodModal').classList.add('hidden');_vodModalItem=null}
 function playFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();play(item)}
 function extFromVodModal(){if(!_vodModalItem)return;const item=_vodModalItem;closeVodModal();launchVLC(item.url,item.name)}
+function favFromVodModal(){if(!_vodModalItem)return;toggleFav(fk(_vodModalItem));updateVodModalFav()}
+function updateVodModalFav(){const b=document.getElementById('vodModalFavBtn');if(b&&_vodModalItem)b.classList.toggle('fav-on',S.favs.has(fk(_vodModalItem)))}
+function dlFromVodModal(){
+  if(!_vodModalItem||!_vodModalItem.url){toast('⚠️ Sin URL de descarga');return}
+  const it=_vodModalItem;
+  if(typeof AndroidPlayer!=='undefined' && AndroidPlayer.downloadFile){
+    // Descarga nativa con DownloadManager (notificación con progreso)
+    AndroidPlayer.downloadFile(it.url, it.name||'video');
+    toast('⬇ Descarga iniciada — revisa la notificación');
+  }else{
+    // Navegador/WebView sin soporte nativo: enlace de descarga directo
+    const a=document.createElement('a');a.href=it.url;a.download=(it.name||'video');
+    document.body.appendChild(a);a.click();setTimeout(()=>a.remove(),400);
+    toast('⬇ Descarga solicitada');
+  }
+}
 
 // ══ SERIES ══
 let seriesData=null;
@@ -2523,26 +2632,38 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
   const hist = S.history || [];
   let html = '<div class="home-screen">';
 
-  // ── HERO ──────────────────────────────────────────────────────
-  const heroItem = hist[0]?.item || null;
-  if(heroItem){
-    const bg = heroItem.cover || heroItem.logo || '';
-    const badgeLabel = heroItem.type==='live'?'🔴 EN VIVO':heroItem.type==='series'?'🎭 Serie':'🎬 Película';
-    html += `<div class="home-hero">
-      ${bg?`<div class="home-hero-bg" style="background-image:url('${esc(bg)}')"></div>`:''}
-      <div class="home-hero-grad"></div>
-      <div class="home-hero-content">
-        <div class="home-hero-badge">${badgeLabel}</div>
-        <div class="home-hero-title">${esc(heroItem.name)}</div>
-        <div class="home-hero-meta">${esc(heroItem.group||'')}</div>
-        <div class="home-hero-btns">
-          <button class="home-hero-play" onclick='play(${js(heroItem)})'>▶ Reproducir</button>
-          <button class="home-hero-more" onclick='openItemInfo(${js(heroItem)})'>ℹ Más info</button>
+  // ── HERO ROTATIVO — recomendaciones aleatorias ────────────────
+  const heroPool=[];
+  if(hist[0]?.item) heroPool.push(hist[0].item);
+  const _rndPick=(arr,n)=>{const a=[...arr];const out=[];while(a.length&&out.length<n){out.push(a.splice(Math.floor(Math.random()*a.length),1)[0])}return out};
+  const heroSource=(typeof IDX!=='undefined'&&IDX.items.length>50)?IDX.items:[...(liveItems||[]),...(vodItems||[]),...(seriesItems||[])];
+  _rndPick(heroSource,8).forEach(i=>{
+    if(heroPool.length>=5)return;
+    if(!heroPool.find(p=>String(p.id)===String(i.id)&&p.type===i.type)) heroPool.push(i);
+  });
+  const heroSlides=heroPool.slice(0,5);
+  if(heroSlides.length){
+    html += `<div class="home-hero home-hero-rot" id="homeHeroRot">`;
+    heroSlides.forEach((it,ix)=>{
+      const bg = it.cover || it.logo || '';
+      const badgeLabel = it.type==='live'?'🔴 EN VIVO AHORA':it.type==='series'?'🎭 Serie recomendada':'🎬 Película recomendada';
+      html += `<div class="hero-slide${ix===0?' active':''}">
+        ${bg?`<div class="home-hero-bg hero-kb" style="background-image:url('${esc(bg)}')"></div>`:`<div class="home-hero-bg" style="background:linear-gradient(140deg,var(--bg3),var(--bg2))"></div>`}
+        <div class="home-hero-grad"></div>
+        <div class="home-hero-content">
+          <div class="home-hero-badge">${badgeLabel}</div>
+          <div class="home-hero-title">${esc(it.name)}</div>
+          <div class="home-hero-meta">${esc(it.group||'')}${it.rating?' · ⭐ '+esc(String(it.rating)):''}</div>
+          <div class="home-hero-btns">
+            <button class="home-hero-play" onclick='play(${js(it)})'>▶ Reproducir</button>
+            <button class="home-hero-more" onclick='openItemInfo(${js(it)})'>ℹ</button>
+          </div>
         </div>
-      </div>
-    </div>`;
+      </div>`;
+    });
+    html += `<div class="hero-dots">${heroSlides.map((_,i)=>`<div class="hero-dot${i===0?' active':''}"></div>`).join('')}</div></div>`;
   } else {
-    // Hero placeholder si no hay historial
+    // Hero placeholder si aún no hay contenido
     html += `<div class="home-hero" style="background:linear-gradient(135deg,var(--bg2),var(--bg3))">
       <div class="home-hero-content">
         <div class="home-hero-badge">✨ Bienvenido</div>
@@ -2658,6 +2779,22 @@ function renderHome(liveItems, vodItems, seriesItems, _unused){
 
   html += '<div style="height:20px"></div></div>';
   setContent(html);
+
+  // Rotación del banner cada 5s
+  clearInterval(window._heroTimer);
+  const rotEl=document.getElementById('homeHeroRot');
+  if(rotEl && rotEl.querySelectorAll('.hero-slide').length>1){
+    let _hx=0;
+    window._heroTimer=setInterval(()=>{
+      const rot=document.getElementById('homeHeroRot');
+      if(!rot){clearInterval(window._heroTimer);return}
+      const ss=rot.querySelectorAll('.hero-slide');
+      const dd=rot.querySelectorAll('.hero-dot');
+      ss[_hx].classList.remove('active');if(dd[_hx])dd[_hx].classList.remove('active');
+      _hx=(_hx+1)%ss.length;
+      ss[_hx].classList.add('active');if(dd[_hx])dd[_hx].classList.add('active');
+    },5000);
+  }
 }
 
 // Abrir info según tipo
