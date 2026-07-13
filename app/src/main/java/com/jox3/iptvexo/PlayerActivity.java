@@ -525,10 +525,10 @@ public class PlayerActivity extends AppCompatActivity {
             vodFsBtnEpPrev.setVisibility(View.VISIBLE);
             vodFsBtnEpNext.setVisibility(View.VISIBLE);
         }
-        // DIAGNÓSTICO TEMPORAL: confirma si detectó la lista de episodios completa
-        if (isSeriesType()) {
-            toast("\uD83C\uDFAD Serie: " + channels.size() + " episodio(s) detectado(s) en la lista");
-        }
+        // DIAGNÓSTICO TEMPORAL: verdad cruda, sin condiciones, para ubicar la causa exacta
+        handler.postDelayed(() -> toast(
+            "\uD83D\uDD0D isSeries=" + isSeries + " isSeriesType=" + isSeriesType() + " channels=" + channels.size()
+        ), 1200);
 
         // Seekbar arrastrable
         vodFsSeek.addListener(new TimeBar.OnScrubListener() {
