@@ -653,16 +653,30 @@
                 android:visibility="gone"
                 android:contentDescription="Episodio anterior" />
 
-            <ImageButton
-                android:id="@+id/vod_fs_btn_rew"
-                android:layout_width="46dp"
-                android:layout_height="46dp"
-                android:background="@drawable/bg_btn_circle"
-                android:src="@drawable/ic_rew10"
-                android:scaleType="centerInside"
-                android:padding="11dp"
-                android:layout_marginEnd="26dp"
-                android:contentDescription="Retroceder 10s" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginEnd="26dp">
+                <ImageButton
+                    android:id="@+id/vod_fs_btn_rew"
+                    android:layout_width="46dp"
+                    android:layout_height="46dp"
+                    android:background="@drawable/bg_btn_circle"
+                    android:src="@drawable/ic_rew10"
+                    android:scaleType="centerInside"
+                    android:padding="11dp"
+                    android:contentDescription="Retroceder 10s" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="10s"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="1dp" />
+            </LinearLayout>
 
             <ImageButton
                 android:id="@+id/vod_fs_btn_pause"
@@ -675,16 +689,30 @@
                 app:tint="#00D4FF"
                 android:contentDescription="Play / Pausa" />
 
-            <ImageButton
-                android:id="@+id/vod_fs_btn_ffw"
-                android:layout_width="46dp"
-                android:layout_height="46dp"
-                android:background="@drawable/bg_btn_circle"
-                android:src="@drawable/ic_ffw10"
-                android:scaleType="centerInside"
-                android:padding="11dp"
-                android:layout_marginStart="26dp"
-                android:contentDescription="Adelantar 10s" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginStart="26dp">
+                <ImageButton
+                    android:id="@+id/vod_fs_btn_ffw"
+                    android:layout_width="46dp"
+                    android:layout_height="46dp"
+                    android:background="@drawable/bg_btn_circle"
+                    android:src="@drawable/ic_ffw10"
+                    android:scaleType="centerInside"
+                    android:padding="11dp"
+                    android:contentDescription="Adelantar 10s" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="10s"
+                    android:textColor="#B3FFFFFF"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    android:layout_marginTop="1dp" />
+            </LinearLayout>
 
             <ImageButton
                 android:id="@+id/vod_fs_btn_ep_next"
