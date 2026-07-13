@@ -97,6 +97,7 @@ public class PlayerActivity extends AppCompatActivity {
     private int speedIdx = 0;
     private static final float[] SPEEDS = {1f, 1.25f, 1.5f, 2f};
     private int vodResizeIdx = 0; // 0=FIT 1=FILL 2=ZOOM
+    private boolean triedFromStart = false; // reintento único desde 0 si la posición guardada quedó fuera de rango
 
     // Datos
     private String url, name, group, type, logo, itemId;
@@ -645,7 +646,13 @@ public class PlayerActivity extends AppCompatActivity {
                     } else {
                         // Buscar posición guardada en el primer STATE_READY
                         if (savedPosition > 0) {
-                            player.seekTo(savedPosition);
+                            long dur = player.getDuration();
+                            if (dur > 0 && savedPosition > dur - 5000) {
+                                // El archivo cambió o la posición quedó al borde: arrancar de cero
+                                clearVodProgress(itemId);
+                            } else {
+                                player.seekTo(savedPosition);
+                            }
                             savedPosition = 0;
                         }
                         stopProgressSaver();
@@ -676,6 +683,16 @@ public class PlayerActivity extends AppCompatActivity {
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
                 if (!isVodType()) retrySmarter(e);
+                else if (e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
+                         && !triedFromStart) {
+                    // La posición guardada quedó fuera del archivo (el proveedor lo reemplazó):
+                    // limpiar progreso y reintentar automáticamente desde el inicio
+                    triedFromStart = true;
+                    if (itemId != null) clearVodProgress(itemId);
+                    savedPosition = 0;
+                    toast("\u23EE Reiniciando desde el inicio...");
+                    handler.postDelayed(PlayerActivity.this::initPlayer, 600);
+                }
                 else {
                     showLoading(false);
                     // Diagnóstico: mostrar código de error exacto antes de ofrecer externo
@@ -1638,6 +1655,7 @@ public class PlayerActivity extends AppCompatActivity {
         parseChannels(intent.getStringExtra("channels_json"));
         retryCount = 0;
         enteredPiP = false;
+        triedFromStart = false;
         savedPosition = 0; // resetear posición guardada al cambiar de contenido
         // Actualizar UI y reiniciar player
         if (isVodType()) {
