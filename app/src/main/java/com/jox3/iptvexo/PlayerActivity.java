@@ -350,33 +350,38 @@ public class PlayerActivity extends AppCompatActivity {
                 String epgNow = "", epgNext = "", epgTime = "";
                 int epgProgress = 0;
                 java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault());
-                for (int i = 0; i < list.length(); i++) {
+                // La PRIMERA entrada de get_short_epg es el programa actual (el servidor
+                // la ordena con su propio reloj) — así evitamos peleas de zona horaria.
+                for (int i = 0; i < Math.min(list.length(), 2); i++) {
                     org.json.JSONObject e = list.getJSONObject(i);
                     String title = e.optString("title", "");
                     if (!title.isEmpty()) {
                         try { title = new String(android.util.Base64.decode(title, android.util.Base64.DEFAULT)); } catch (Exception ex) {}
                     }
-                    try {
-                        // Preferir timestamps Unix (universales) — el texto viene en zona horaria del servidor
-                        long stTs = 0, enTs = 0;
-                        try { stTs = Long.parseLong(e.optString("start_timestamp", "0")); } catch (Exception ig) {}
-                        try { enTs = Long.parseLong(e.optString("stop_timestamp", "0")); } catch (Exception ig) {}
-                        java.util.Date start = stTs > 0 ? new java.util.Date(stTs * 1000L) : sdf.parse(e.optString("start", ""));
-                        java.util.Date end   = enTs > 0 ? new java.util.Date(enTs * 1000L) : sdf.parse(e.optString("end", ""));
-                        if (start == null || end == null) continue;
-                        if (now.after(start) && now.before(end)) {
-                            epgNow = title;
-                            long dur = end.getTime() - start.getTime();
-                            long elapsed = now.getTime() - start.getTime();
-                            epgProgress = dur > 0 ? (int)((elapsed * 100) / dur) : 0;
-                            java.text.SimpleDateFormat fmt = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault());
-                            epgTime = fmt.format(start) + " – " + fmt.format(end);
-                        } else if (now.before(start) && !epgNow.isEmpty() && epgNext.isEmpty()) {
-                            epgNext = title;
-                        }
-                    } catch (Exception ex) {}
+                    if (i == 0) {
+                        epgNow = title;
+                        try {
+                            long stTs = 0, enTs = 0;
+                            try { stTs = Long.parseLong(e.optString("start_timestamp", "0")); } catch (Exception ig) {}
+                            try { enTs = Long.parseLong(e.optString("stop_timestamp", "0")); } catch (Exception ig) {}
+                            java.util.Date start = stTs > 0 ? new java.util.Date(stTs * 1000L) : sdf.parse(e.optString("start", ""));
+                            java.util.Date end   = enTs > 0 ? new java.util.Date(enTs * 1000L) : sdf.parse(e.optString("end", ""));
+                            if (start != null && end != null) {
+                                long dur = end.getTime() - start.getTime();
+                                long elapsed = now.getTime() - start.getTime();
+                                epgProgress = dur > 0 ? (int) Math.max(0, Math.min(100, (elapsed * 100) / dur)) : 0;
+                                // Mostrar la franja horaria tal como la publica la guía (texto del servidor)
+                                String sTxt = e.optString("start", ""), eTxt = e.optString("end", "");
+                                if (sTxt.length() >= 16 && eTxt.length() >= 16) {
+                                    epgTime = sTxt.substring(11, 16) + " \u2013 " + eTxt.substring(11, 16);
+                                }
+                            }
+                        } catch (Exception ex) {}
+                    } else {
+                        epgNext = title;
+                    }
                 }
-                final String fNow = epgNow, fTime = epgTime, fNext = epgNext;
+                                final String fNow = epgNow, fTime = epgTime, fNext = epgNext;
                 final int fProg = epgProgress;
                 runOnUiThread(() -> showEpg(fNow, fTime, fNext, fProg));
             } catch (Exception e) { /* EPG no disponible */ }
