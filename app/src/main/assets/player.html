@@ -1576,15 +1576,27 @@ function play(item){
         epgProgress=epg.progress||0;
       }
     }
-    // Pasar lista de canales para live (solo categoría actual, no todos)
+    // Pasar lista de canales para live — con búsqueda de la categoría si S.channels no lo contiene
     let channelsJson='[]';
     let channelIndex=-1;
-    if(item.type==='live'&&S.channels&&S.channels.length>0){
+    if(item.type==='live'){
       try{
-        const slim=S.channels.slice(0,200).map(c=>({url:c.url||'',name:c.name||'',id:String(c.id||''),type:'live',logo:c.logo||'',group:c.group||''}));
-        channelsJson=JSON.stringify(slim);
-        channelIndex=slim.findIndex(c=>String(c.id)===String(item.id));
-      }catch(e){channelsJson='[]';}
+        let src=(S.channels&&S.channels.length&&S.channels.some(c=>String(c.id)===String(item.id)))?S.channels:null;
+        if(!src){
+          // Reproducido desde preview/home: localizar la categoría cargada que contiene este canal
+          const cat=(S.cats.live||[]).find(c=>c.loaded&&c.items.some(x=>String(x.id)===String(item.id)));
+          if(cat){src=cat.items;S.channels=[...cat.items];}
+        }
+        if(src&&src.length){
+          // Ventana de 200 canales ALREDEDOR del actual (antes cortaba en los primeros 200)
+          const fullIdx=src.findIndex(c=>String(c.id)===String(item.id));
+          const from=Math.max(0,fullIdx-100);
+          const win=src.slice(from,from+200);
+          const slim=win.map(c=>({url:c.url||'',name:c.name||'',id:String(c.id||''),type:'live',logo:c.logo||'',group:c.group||''}));
+          channelsJson=JSON.stringify(slim);
+          channelIndex=slim.findIndex(c=>String(c.id)===String(item.id));
+        }
+      }catch(e){channelsJson='[]';channelIndex=-1;}
     }
     // Pasar lista de episodios para series (reproducción continua)
     let episodesJson='[]';
@@ -1889,7 +1901,7 @@ async function loadEpg(streamId){
   try{
     const data=await xApi('get_short_epg',`&stream_id=${streamId}&limit=6`);const list=data?.epg_listings||[];if(!list.length)return;
     EPG.data=list.map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:epgDate(e,false),end:epgDate(e,true)}));
-    const now=new Date();const cur=EPG.data.find(e=>now>=e.start&&now<e.end);
+    const now=new Date();const cur=EPG.data.find(e=>now>=e.start&&now<e.end)||EPG.data[0];
     if(cur) EPG_CACHE[streamId]={title:cur.title,ts:Date.now()};
     renderEpgBar();EPG.timer=setInterval(renderEpgBar,30000);
   }catch(e){}
@@ -1900,7 +1912,7 @@ async function loadEpgForCards(items){
     const batch=liveItems.slice(i,i+5);
     await Promise.allSettled(batch.map(async item=>{
       if(EPG_CACHE[item.id]&&Date.now()-EPG_CACHE[item.id].ts<600000)return;
-      try{const data=await xApi('get_short_epg',`&stream_id=${item.id}&limit=2`);const list=data?.epg_listings||[];const now=new Date();const cur=list.map(e=>({title:e.title?atob(e.title):'',start:epgDate(e,false),end:epgDate(e,true)})).find(e=>now>=e.start&&now<e.end);if(cur?.title)EPG_CACHE[item.id]={title:cur.title,ts:Date.now()}}catch(e){}
+      try{const data=await xApi('get_short_epg',`&stream_id=${item.id}&limit=2`);const list=data?.epg_listings||[];const first=list[0];let t='';try{t=first&&first.title?atob(first.title):''}catch(e2){t=first?.title||''}if(t)EPG_CACHE[item.id]={title:t,ts:Date.now()}}catch(e){}
     }));
     refreshCardEpg();await new Promise(r=>setTimeout(r,300));
   }
