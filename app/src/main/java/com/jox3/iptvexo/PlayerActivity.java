@@ -98,7 +98,8 @@ public class PlayerActivity extends AppCompatActivity {
     private int speedIdx = 0;
     private static final float[] SPEEDS = {1f, 1.25f, 1.5f, 2f};
     private int vodResizeIdx = 0; // 0=FIT 1=FILL 2=ZOOM
-    private boolean triedFromStart = false; // reintento único desde 0 si la posición guardada quedó fuera de rango
+    private boolean triedFromStart = false;
+    private TextView debugTxt; // reintento único desde 0 si la posición guardada quedó fuera de rango
 
     // Datos
     private String url, name, group, type, logo, itemId;
@@ -294,6 +295,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsSeek     = findViewById(R.id.vod_fs_seekbar);
         vodFsTimeCur  = findViewById(R.id.vod_fs_time_cur);
         vodFsTimeTot  = findViewById(R.id.vod_fs_time_tot);
+        debugTxt      = findViewById(R.id.debug_txt);
 
         // Siguiente episodio
         nextEpOverlay  = findViewById(R.id.next_ep_overlay);
@@ -525,10 +527,11 @@ public class PlayerActivity extends AppCompatActivity {
             vodFsBtnEpPrev.setVisibility(View.VISIBLE);
             vodFsBtnEpNext.setVisibility(View.VISIBLE);
         }
-        // DIAGNÓSTICO TEMPORAL: verdad cruda, sin condiciones, para ubicar la causa exacta
-        handler.postDelayed(() -> toast(
-            "\uD83D\uDD0D isSeries=" + isSeries + " isSeriesType=" + isSeriesType() + " channels=" + channels.size()
-        ), 1200);
+        // DIAGNÓSTICO TEMPORAL: texto fijo en pantalla (no depende de permisos de notificación de MIUI)
+        if (debugTxt != null) {
+            debugTxt.setText("isSeries=" + isSeries + "  isSeriesType=" + isSeriesType() + "  channels=" + channels.size() + "  itemId=" + itemId);
+            debugTxt.setVisibility(View.VISIBLE);
+        }
 
         // Seekbar arrastrable
         vodFsSeek.addListener(new TimeBar.OnScrubListener() {
@@ -1227,7 +1230,15 @@ public class PlayerActivity extends AppCompatActivity {
                 if (itemId.equals(channels.get(i).optString("id", ""))) { channelIndex = i; break; }
             }
         }
-        if (channelIndex < 0 || channels.isEmpty()) { finish(); return; }
+        if (channelIndex < 0 || channels.isEmpty()) {
+            if (debugTxt != null) {
+                debugTxt.setText("FIN EPISODIO \u2192 channelIndex=" + channelIndex + " channels=" + channels.size() + " \u2192 CIERRA");
+                debugTxt.setVisibility(View.VISIBLE);
+                handler.postDelayed(this::finish, 4000); // dar tiempo a leer el mensaje antes de cerrar
+                return;
+            }
+            finish(); return;
+        }
         int nextIdx = channelIndex + 1;
         // Caso 3 — último episodio de la última temporada
         if (nextIdx >= channels.size()) {
