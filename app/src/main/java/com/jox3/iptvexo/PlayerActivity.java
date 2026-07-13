@@ -88,6 +88,7 @@ public class PlayerActivity extends AppCompatActivity {
     private ImageButton vodFsBtnPause, vodFsBtnStop;
     // Nuevos controles VOD fullscreen
     private ImageButton vodFsBtnRew, vodFsBtnFfw, vodFsBtnDl, vodFsBtnResize;
+    private ImageButton vodFsBtnEpPrev, vodFsBtnEpNext;
     private Button vodFsBtnSpeed;
     private DefaultTimeBar vodFsSeek;
     private TextView vodFsTimeCur, vodFsTimeTot;
@@ -287,6 +288,8 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnFfw   = findViewById(R.id.vod_fs_btn_ffw);
         vodFsBtnDl    = findViewById(R.id.vod_fs_btn_dl);
         vodFsBtnResize= findViewById(R.id.vod_fs_btn_resize);
+        vodFsBtnEpPrev= findViewById(R.id.vod_fs_btn_ep_prev);
+        vodFsBtnEpNext= findViewById(R.id.vod_fs_btn_ep_next);
         vodFsBtnSpeed = findViewById(R.id.vod_fs_btn_speed);
         vodFsSeek     = findViewById(R.id.vod_fs_seekbar);
         vodFsTimeCur  = findViewById(R.id.vod_fs_time_cur);
@@ -514,6 +517,14 @@ public class PlayerActivity extends AppCompatActivity {
 
         // Descargar
         vodFsBtnDl.setOnClickListener(v -> downloadCurrent());
+
+        // Navegación de episodios (solo visible en series)
+        vodFsBtnEpNext.setOnClickListener(v -> { stopEndCheck(); playNextEpisode(); });
+        vodFsBtnEpPrev.setOnClickListener(v -> { stopEndCheck(); playPrevEpisode(); });
+        if (isSeriesType() && channels.size() > 1) {
+            vodFsBtnEpPrev.setVisibility(View.VISIBLE);
+            vodFsBtnEpNext.setVisibility(View.VISIBLE);
+        }
 
         // Seekbar arrastrable
         vodFsSeek.addListener(new TimeBar.OnScrubListener() {
@@ -1206,6 +1217,12 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void onEpisodeEnded() {
+        // Robustez: si el índice llegó perdido, re-localizar el episodio actual por su ID
+        if (channelIndex < 0 && !channels.isEmpty() && itemId != null) {
+            for (int i = 0; i < channels.size(); i++) {
+                if (itemId.equals(channels.get(i).optString("id", ""))) { channelIndex = i; break; }
+            }
+        }
         if (channelIndex < 0 || channels.isEmpty()) { finish(); return; }
         int nextIdx = channelIndex + 1;
         // Caso 3 — último episodio de la última temporada
@@ -1221,9 +1238,25 @@ public class PlayerActivity extends AppCompatActivity {
         } catch (Exception e) { finish(); }
     }
 
+    private String seasonOf(String epName) {
+        if (epName == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("T(\\d+)E").matcher(epName);
+        return m.find() ? m.group(1) : "";
+    }
+
     private void showNextEpOverlay(String nextName, int nextIdx) {
         if (nextEpOverlay == null) return;
-        nextEpTitle.setText(nextName);
+        // Resetear estado (por si venimos de "Serie completada")
+        nextEpBtnNow.setVisibility(View.VISIBLE);
+        nextEpBtnCancel.setText("\u2715 Cancelar");
+        nextEpBtnCancel.setOnClickListener(v -> hideNextEpOverlay());
+        // Detectar cambio de temporada comparando T{n} del nombre actual vs siguiente
+        String curSeason = seasonOf(name), nextSeason = seasonOf(nextName);
+        if (!nextSeason.isEmpty() && !nextSeason.equals(curSeason)) {
+            nextEpTitle.setText("\uD83C\uDF89 Nueva temporada \u2014 T" + nextSeason + "\n" + nextName);
+        } else {
+            nextEpTitle.setText(nextName);
+        }
         nextEpOverlay.setVisibility(View.VISIBLE);
         countdownSeconds = 5;
         nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
@@ -1252,6 +1285,7 @@ public class PlayerActivity extends AppCompatActivity {
             name   = next.optString("name", "");
             itemId = next.optString("id", "");
             savedPosition = getVodProgress(itemId);
+            episodeEndHandled = false;
             vodTxtTitleBar.setText(name);
             vodTxtTitle.setText(name);
             vodFsTxtTitle.setText(name);
@@ -1259,6 +1293,25 @@ public class PlayerActivity extends AppCompatActivity {
             retryCount = 0;
             initPlayer();
         } catch (Exception e) { finish(); }
+    }
+
+    private void playPrevEpisode() {
+        hideNextEpOverlay();
+        if (channelIndex - 1 < 0 || channels.isEmpty()) { toast("Ya est\u00e1s en el primer episodio"); return; }
+        channelIndex--;
+        try {
+            JSONObject prev = channels.get(channelIndex);
+            url    = prev.optString("url", "");
+            name   = prev.optString("name", "");
+            itemId = prev.optString("id", "");
+            savedPosition = getVodProgress(itemId);
+            episodeEndHandled = false;
+            vodTxtTitleBar.setText(name);
+            vodTxtTitle.setText(name);
+            vodFsTxtTitle.setText(name);
+            retryCount = 0;
+            initPlayer();
+        } catch (Exception e) { toast("Error al cambiar episodio"); }
     }
 
     private void hideNextEpOverlay() {
