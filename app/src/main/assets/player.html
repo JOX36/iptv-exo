@@ -1643,6 +1643,11 @@ function play(item){
         }catch(e){episodesJson='[]';}
       }
     }
+    // DIAGNOSTICO TEMPORAL: toast del propio HTML (inmune a bloqueos de MIUI)
+    if(item._isSeries){
+      const seasonCount = seriesData ? Object.keys(seriesData.seasons||{}).length : -1;
+      toast('DEBUG seriesData=' + (!!seriesData) + ' seasons=' + seasonCount + ' flatEps=' + (episodesJson.length>2?JSON.parse(episodesJson).length:0) + ' idx=' + episodeIndex, 6000);
+    }
     AndroidPlayer.openPlayer(
       item.url||'',
       item.name||'',
