@@ -642,6 +642,18 @@
             android:layout_marginBottom="10dp">
 
             <ImageButton
+                android:id="@+id/vod_fs_btn_ep_prev"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_btn_circle"
+                android:src="@drawable/ic_prev"
+                android:scaleType="centerInside"
+                android:padding="10dp"
+                android:layout_marginEnd="18dp"
+                android:visibility="gone"
+                android:contentDescription="Episodio anterior" />
+
+            <ImageButton
                 android:id="@+id/vod_fs_btn_rew"
                 android:layout_width="46dp"
                 android:layout_height="46dp"
@@ -673,6 +685,18 @@
                 android:padding="11dp"
                 android:layout_marginStart="26dp"
                 android:contentDescription="Adelantar 10s" />
+
+            <ImageButton
+                android:id="@+id/vod_fs_btn_ep_next"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_btn_circle"
+                android:src="@drawable/ic_next"
+                android:scaleType="centerInside"
+                android:padding="10dp"
+                android:layout_marginStart="18dp"
+                android:visibility="gone"
+                android:contentDescription="Episodio siguiente" />
 
         </LinearLayout>
 
