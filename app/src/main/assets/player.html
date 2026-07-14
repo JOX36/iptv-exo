@@ -1643,12 +1643,7 @@ function play(item){
         }catch(e){episodesJson='[]';}
       }
     }
-    // DIAGNOSTICO TEMPORAL: toast del propio HTML (inmune a bloqueos de MIUI)
-    if(item._isSeries){
-      const seasonCount = seriesData ? Object.keys(seriesData.seasons||{}).length : -1;
-      toast('DEBUG seriesData=' + (!!seriesData) + ' seasons=' + seasonCount + ' flatEps=' + (episodesJson.length>2?JSON.parse(episodesJson).length:0) + ' idx=' + episodeIndex, 6000);
-    }
-    AndroidPlayer.openPlayer(
+    const _openNative = () => AndroidPlayer.openPlayer(
       item.url||'',
       item.name||'',
       item.group||'',
@@ -1659,6 +1654,15 @@ function play(item){
       item._isSeries ? episodeIndex : channelIndex,
       item._isSeries ? true : false
     );
+    if(item._isSeries){
+      // DIAGNOSTICO TEMPORAL: dar tiempo a que el toast se PINTE antes de saltar al player nativo
+      const seasonCount = seriesData ? Object.keys(seriesData.seasons||{}).length : -1;
+      const flatCount = episodesJson.length>2 ? JSON.parse(episodesJson).length : 0;
+      toast('DEBUG seriesData=' + (!!seriesData) + ' seasons=' + seasonCount + ' flatEps=' + flatCount + ' idx=' + episodeIndex, 3000);
+      setTimeout(_openNative, 1800);
+    } else {
+      _openNative();
+    }
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
