@@ -529,7 +529,11 @@ public class PlayerActivity extends AppCompatActivity {
         }
         // DIAGNÓSTICO TEMPORAL: texto fijo en pantalla (no depende de permisos de notificación de MIUI)
         if (debugTxt != null) {
-            debugTxt.setText("isSeries=" + isSeries + "  isSeriesType=" + isSeriesType() + "  channels=" + channels.size() + "  itemId=" + itemId);
+            String htmlDebug = getIntent().getStringExtra("debug_info");
+            debugTxt.setText(
+                "isSeries=" + isSeries + "  isSeriesType=" + isSeriesType() + "  channels=" + channels.size() + "  itemId=" + itemId
+                + (htmlDebug != null && !htmlDebug.isEmpty() ? "\n" + htmlDebug : "\n(sin debug_info del HTML)")
+            );
             debugTxt.setVisibility(View.VISIBLE);
         }
 
