@@ -1222,11 +1222,18 @@ public class PlayerActivity extends AppCompatActivity {
     private void showAudioTracks() {
         if (player == null) return;
         List<String> labels = new ArrayList<>(), langs = new ArrayList<>();
+        int n = 0;
         for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
             if (g.getType() == C.TRACK_TYPE_AUDIO) {
                 for (int i = 0; i < g.length; i++) {
-                    String lang = g.getTrackFormat(i).language;
-                    labels.add(lang != null && !lang.isEmpty() ? lang.toUpperCase() : "Pista " + (labels.size()+1));
+                    n++;
+                    androidx.media3.common.Format f = g.getTrackFormat(i);
+                    String lang = f.language;
+                    // Preferir el nombre real de la pista si el proveedor lo trae (ej. "Español Latino")
+                    String base = (f.label != null && !f.label.trim().isEmpty()) ? f.label.trim()
+                                : (lang != null && !lang.isEmpty() ? lang.toUpperCase() : "Pista");
+                    String extra = trackExtraInfo(f);
+                    labels.add(base + extra + " \u00b7 Pista " + n);
                     langs.add(lang != null ? lang : "");
                 }
             }
@@ -1238,15 +1245,39 @@ public class PlayerActivity extends AppCompatActivity {
                     .buildUpon().setPreferredAudioLanguage(langs.get(w)).build())).show();
     }
 
+    // Info adicional para distinguir pistas que comparten el mismo idioma (canal + codec)
+    private String trackExtraInfo(androidx.media3.common.Format f) {
+        StringBuilder sb = new StringBuilder();
+        if (f.channelCount > 0) {
+            sb.append(" \u00b7 ").append(f.channelCount >= 6 ? "5.1" : f.channelCount == 1 ? "Mono" : "Estereo");
+        }
+        if (f.sampleMimeType != null) {
+            String m = f.sampleMimeType.toLowerCase();
+            String codec = m.contains("ac3") && m.contains("eac3") ? "E-AC3"
+                         : m.contains("eac3") ? "E-AC3"
+                         : m.contains("ac3") ? "AC3"
+                         : m.contains("aac") ? "AAC"
+                         : m.contains("dts") ? "DTS"
+                         : "";
+            if (!codec.isEmpty()) sb.append(" \u00b7 ").append(codec);
+        }
+        return sb.toString();
+    }
+
     private void showSubtitleTracks() {
         if (player == null) return;
         List<String> labels = new ArrayList<>(), langs = new ArrayList<>();
         labels.add("Ninguno"); langs.add("");
+        int n = 0;
         for (Tracks.Group g : player.getCurrentTracks().getGroups()) {
             if (g.getType() == C.TRACK_TYPE_TEXT) {
                 for (int i = 0; i < g.length; i++) {
-                    String lang = g.getTrackFormat(i).language;
-                    labels.add(lang != null && !lang.isEmpty() ? lang.toUpperCase() : "Sub " + labels.size());
+                    n++;
+                    androidx.media3.common.Format f = g.getTrackFormat(i);
+                    String lang = f.language;
+                    String base = (f.label != null && !f.label.trim().isEmpty()) ? f.label.trim()
+                                : (lang != null && !lang.isEmpty() ? lang.toUpperCase() : "Subtitulo");
+                    labels.add(base + " \u00b7 " + n);
                     langs.add(lang != null ? lang : "");
                 }
             }
