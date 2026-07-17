@@ -89,6 +89,8 @@ public class PlayerActivity extends AppCompatActivity {
     // Nuevos controles VOD fullscreen
     private ImageButton vodFsBtnRew, vodFsBtnFfw, vodFsBtnDl, vodFsBtnResize;
     private ImageButton vodFsBtnEpPrev, vodFsBtnEpNext;
+    private ImageButton liveBtnRefresh, btnLock;
+    private boolean screenLocked = false;
     private Button vodFsBtnSpeed;
     private DefaultTimeBar vodFsSeek;
     private TextView vodFsTimeCur, vodFsTimeTot;
@@ -98,8 +100,7 @@ public class PlayerActivity extends AppCompatActivity {
     private int speedIdx = 0;
     private static final float[] SPEEDS = {1f, 1.25f, 1.5f, 2f};
     private int vodResizeIdx = 0; // 0=FIT 1=FILL 2=ZOOM
-    private boolean triedFromStart = false;
-    private TextView debugTxt; // reintento único desde 0 si la posición guardada quedó fuera de rango
+    private boolean triedFromStart = false; // reintento único desde 0 si la posición guardada quedó fuera de rango
 
     // Datos
     private String url, name, group, type, logo, itemId;
@@ -247,6 +248,9 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnStop   = findViewById(R.id.live_btn_stop);
         liveBtnPrev   = findViewById(R.id.live_btn_prev);
         liveBtnNext   = findViewById(R.id.live_btn_next);
+        liveBtnRefresh= findViewById(R.id.live_btn_refresh);
+        btnLock       = findViewById(R.id.btn_lock);
+        btnLock.setOnClickListener(v -> toggleScreenLock());
         liveEpgContainer = findViewById(R.id.live_epg_container);
         liveEpgNow    = findViewById(R.id.live_epg_now);
         liveEpgTime   = findViewById(R.id.live_epg_time);
@@ -295,7 +299,6 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsSeek     = findViewById(R.id.vod_fs_seekbar);
         vodFsTimeCur  = findViewById(R.id.vod_fs_time_cur);
         vodFsTimeTot  = findViewById(R.id.vod_fs_time_tot);
-        debugTxt      = findViewById(R.id.debug_txt);
 
         // Siguiente episodio
         nextEpOverlay  = findViewById(R.id.next_ep_overlay);
@@ -421,6 +424,11 @@ public class PlayerActivity extends AppCompatActivity {
         liveBtnAudio.setOnClickListener(v -> showAudioTracks());
         liveBtnPrev.setOnClickListener(v -> navigateChannel(-1));
         liveBtnNext.setOnClickListener(v -> navigateChannel(1));
+        liveBtnRefresh.setOnClickListener(v -> {
+            toast("\uD83D\uDD04 Actualizando transmisi\u00f3n...");
+            retryCount = 0;
+            initPlayer();
+        });
 
         // Tap para barras — sin swipe de canal
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -526,15 +534,6 @@ public class PlayerActivity extends AppCompatActivity {
         if (isSeriesType() && channels.size() > 1) {
             vodFsBtnEpPrev.setVisibility(View.VISIBLE);
             vodFsBtnEpNext.setVisibility(View.VISIBLE);
-        }
-        // DIAGNÓSTICO TEMPORAL: texto fijo en pantalla (no depende de permisos de notificación de MIUI)
-        if (debugTxt != null) {
-            String htmlDebug = getIntent().getStringExtra("debug_info");
-            debugTxt.setText(
-                "isSeries=" + isSeries + "  isSeriesType=" + isSeriesType() + "  channels=" + channels.size() + "  itemId=" + itemId
-                + (htmlDebug != null && !htmlDebug.isEmpty() ? "\n" + htmlDebug : "\n(sin debug_info del HTML)")
-            );
-            debugTxt.setVisibility(View.VISIBLE);
         }
 
         // Seekbar arrastrable
@@ -893,6 +892,29 @@ public class PlayerActivity extends AppCompatActivity {
         handler.postDelayed(this::hideLiveBars, 7000);
     }
 
+    // ══ CANDADO DE PANTALLA ══
+    private void toggleScreenLock() {
+        screenLocked = !screenLocked;
+        btnLock.setImageResource(screenLocked ? R.drawable.ic_lock : R.drawable.ic_lock_open);
+        btnLock.setAlpha(screenLocked ? 1f : 0.55f);
+        if (screenLocked) {
+            // Ocultar todas las barras — solo el candado queda visible y tocable
+            if (isVodType()) {
+                if (isVodFullscreen) { vodFsTop.setVisibility(View.GONE); vodFsBottom.setVisibility(View.GONE); }
+            } else {
+                hideLiveBars();
+            }
+            toast("\uD83D\uDD12 Pantalla bloqueada");
+        } else {
+            if (isVodType()) {
+                if (isVodFullscreen) { vodFsTop.setVisibility(View.VISIBLE); vodFsBottom.setVisibility(View.VISIBLE); scheduleHideVodFs(); }
+            } else {
+                showLiveBars();
+            }
+            toast("\uD83D\uDD13 Pantalla desbloqueada");
+        }
+    }
+
     // ══ AUDIO / SUBS ══
     private void showAudioTracks() {
         if (player == null) return;
@@ -1043,8 +1065,11 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void toggleFav(ImageButton btn) {
         isFav = !isFav; favChanged = true; favAdded = isFav;
-        btn.setImageResource(isFav ? android.R.drawable.btn_star_big_on : android.R.drawable.btn_star_big_off);
-        toast(isFav ? "Favorito guardado" : "Quitado de favoritos");
+        btn.setImageResource(isFav ? R.drawable.ic_star : R.drawable.ic_star_outline);
+        // Sincronizar el otro botón de favorito (live/vod) si ambos existen en pantalla
+        ImageButton other = (btn == liveBtnFav) ? vodBtnFav : liveBtnFav;
+        if (other != null) other.setImageResource(isFav ? R.drawable.ic_star : R.drawable.ic_star_outline);
+        toast(isFav ? "\u2B50 Agregado a favoritos" : "Quitado de favoritos");
     }
 
     private boolean enteredPiP = false;
@@ -1234,15 +1259,7 @@ public class PlayerActivity extends AppCompatActivity {
                 if (itemId.equals(channels.get(i).optString("id", ""))) { channelIndex = i; break; }
             }
         }
-        if (channelIndex < 0 || channels.isEmpty()) {
-            if (debugTxt != null) {
-                debugTxt.setText("FIN EPISODIO \u2192 channelIndex=" + channelIndex + " channels=" + channels.size() + " \u2192 CIERRA");
-                debugTxt.setVisibility(View.VISIBLE);
-                handler.postDelayed(this::finish, 4000); // dar tiempo a leer el mensaje antes de cerrar
-                return;
-            }
-            finish(); return;
-        }
+        if (channelIndex < 0 || channels.isEmpty()) { finish(); return; }
         int nextIdx = channelIndex + 1;
         // Caso 3 — último episodio de la última temporada
         if (nextIdx >= channels.size()) {
@@ -1382,6 +1399,8 @@ public class PlayerActivity extends AppCompatActivity {
     @SuppressLint("ClickableViewAccessibility")
     private void attachGestureListener(View view) {
         view.setOnTouchListener((v, event) -> {
+            // Pantalla bloqueada: ignorar todo toque sobre el video (el candado sigue tocable aparte)
+            if (screenLocked) return true;
             // Solo en fullscreen
             if (!isFullscreenMode()) {
                 gestureDetector.onTouchEvent(event);
@@ -1798,6 +1817,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override
     public void onBackPressed() {
+        if (screenLocked) {
+            toast("\uD83D\uDD12 Desbloquea la pantalla para salir");
+            return;
+        }
         if (isVodFullscreen) {
             exitVodFullscreen();
         } else {

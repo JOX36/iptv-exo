@@ -294,9 +294,8 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void openPlayer(String url, String name, String group, String type,
                                String logo, String itemId, String channelsJson, int channelIndex,
-                               boolean isSeries, String debugInfo) {
+                               boolean isSeries) {
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
-            i.putExtra("debug_info", debugInfo);
             i.putExtra("url", url);
             i.putExtra("name", name);
             i.putExtra("group", group);
