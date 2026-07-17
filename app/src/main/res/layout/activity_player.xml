@@ -246,6 +246,17 @@
                 android:contentDescription="Refrescar transmision" />
 
             <ImageButton
+                android:id="@+id/live_btn_grid"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_btn_circle"
+                android:src="@drawable/ic_grid"
+                android:scaleType="centerInside"
+                android:padding="10dp"
+                android:layout_marginEnd="10dp"
+                android:contentDescription="Lista de canales" />
+
+            <ImageButton
                 android:id="@+id/live_btn_stop"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
@@ -626,7 +637,19 @@
             android:src="@drawable/ic_pip"
             android:scaleType="centerInside"
             android:padding="9dp"
+            android:layout_marginEnd="8dp"
             android:contentDescription="PiP" />
+
+        <ImageButton
+            android:id="@+id/vod_fs_btn_fav"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/bg_btn_circle"
+            android:src="@drawable/ic_star_outline"
+            android:scaleType="centerInside"
+            android:padding="9dp"
+            app:tint="#FFC107"
+            android:contentDescription="Favorito" />
 
     </LinearLayout>
 
@@ -724,6 +747,18 @@
                     android:textStyle="bold"
                     android:layout_marginTop="1dp" />
             </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/vod_fs_btn_grid"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_btn_circle"
+                android:src="@drawable/ic_grid"
+                android:scaleType="centerInside"
+                android:padding="10dp"
+                android:layout_marginStart="14dp"
+                android:visibility="gone"
+                android:contentDescription="Lista de episodios" />
 
             <ImageButton
                 android:id="@+id/vod_fs_btn_ep_next"
@@ -1017,6 +1052,91 @@
             android:textSize="10sp"
             android:layout_marginTop="6dp"
             android:text="50%" />
+
+    </LinearLayout>
+
+    <!-- ═══════════ PANEL DE CANALES/EPISODIOS ═══════════ -->
+    <View
+        android:id="@+id/drawer_scrim"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/channel_drawer"
+        android:layout_width="290dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="start"
+        android:orientation="vertical"
+        android:background="@drawable/bg_drawer"
+        android:visibility="gone"
+        android:elevation="12dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:padding="14dp">
+
+            <TextView
+                android:id="@+id/drawer_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Canales"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <ImageButton
+                android:id="@+id/drawer_close"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:background="@drawable/bg_btn_circle"
+                android:src="@drawable/ic_close"
+                android:scaleType="centerInside"
+                android:padding="8dp"
+                android:contentDescription="Cerrar" />
+
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:id="@+id/drawer_chip_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:scrollbars="none"
+            android:paddingBottom="10dp">
+            <LinearLayout
+                android:id="@+id/drawer_chip_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="10dp"
+                android:paddingEnd="10dp" />
+        </HorizontalScrollView>
+
+        <ProgressBar
+            android:id="@+id/drawer_loading"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:indeterminate="true"
+            android:indeterminateTint="#00D4FF"
+            android:visibility="gone" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+            <LinearLayout
+                android:id="@+id/drawer_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="20dp" />
+        </ScrollView>
 
     </LinearLayout>
 
