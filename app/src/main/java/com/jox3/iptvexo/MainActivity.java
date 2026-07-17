@@ -19,14 +19,9 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import org.json.JSONObject;
 
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
@@ -99,12 +94,6 @@ public class MainActivity extends AppCompatActivity {
 
         webView.addJavascriptInterface(new Bridge(), "AndroidPlayer");
 
-        // ========== VERIFICADOR (fusión con jox3-m3u-verifier) ==========
-        // Portado de MainActivity.kt del verifier. Se mantiene en Java (no se
-        // agregó el plugin de Kotlin al proyecto) para no tocar el toolchain
-        // de build que ya compila bien en GitHub Actions.
-        webView.addJavascriptInterface(new NativeChecker(), "NativeChecker");
-
         // Detectar TV Box y cargar versión optimizada
         boolean isTv = getPackageManager().hasSystemFeature(
             android.content.pm.PackageManager.FEATURE_LEANBACK);
@@ -125,75 +114,6 @@ public class MainActivity extends AppCompatActivity {
         } else {
             webView.loadUrl("file:///android_asset/player.html");
         }
-    }
-
-    // ========== VERIFICADOR — pool de hilos para no bloquear la UI ==========
-    // 6 hilos, igual que en MainActivity.kt del verifier original.
-    private final ExecutorService checkExecutor = Executors.newFixedThreadPool(6);
-
-    /**
-     * Verifica si una URL de stream responde correctamente.
-     * Intenta primero con HEAD (más liviano); si el servidor no lo soporta
-     * (405/501/400, algo común en paneles Xtream), reintenta con GET + Range
-     * para no descargar el stream completo. Portado tal cual del verifier.
-     */
-    private boolean checkStreamUrl(String urlStr) {
-        HttpURLConnection connection = null;
-        try {
-            URL url = new URL(urlStr);
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("HEAD");
-            connection.setConnectTimeout(6000);
-            connection.setReadTimeout(6000);
-            connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("User-Agent", "VLC/3.0.0");
-
-            int code = connection.getResponseCode();
-
-            if (code == 405 || code == 501 || code == 400) {
-                connection.disconnect();
-                connection = (HttpURLConnection) url.openConnection();
-                connection.setRequestMethod("GET");
-                connection.setConnectTimeout(6000);
-                connection.setReadTimeout(6000);
-                connection.setInstanceFollowRedirects(true);
-                connection.setRequestProperty("User-Agent", "VLC/3.0.0");
-                connection.setRequestProperty("Range", "bytes=0-2048");
-                code = connection.getResponseCode();
-            }
-
-            return code >= 200 && code < 300;
-        } catch (Exception e) {
-            return false;
-        } finally {
-            if (connection != null) connection.disconnect();
-        }
-    }
-
-    /**
-     * Puente JS -> Java. Desde player.html se llama como:
-     * NativeChecker.checkStream(url, id)
-     * Esto evita CORS por completo porque la petición HTTP la hace Java
-     * (HttpURLConnection), no el navegador dentro del WebView.
-     */
-    class NativeChecker {
-        @JavascriptInterface
-        public void checkStream(String url, String id) {
-            checkExecutor.execute(() -> {
-                boolean online = checkStreamUrl(url);
-                String safeId = JSONObject.quote(id); // evita romper el JS si el id trae caracteres raros
-                webView.post(() -> webView.evaluateJavascript(
-                    "window.onStreamChecked && window.onStreamChecked(" + safeId + "," + online + ");",
-                    null
-                ));
-            });
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        checkExecutor.shutdownNow();
-        super.onDestroy();
     }
 
     @SuppressLint("TrustAllX509TrustManager")
@@ -226,50 +146,6 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public String getResult(String callbackId) {
             return resultStore.remove(callbackId); // devuelve y elimina
-        }
-
-        // ========== VERIFICADOR/TELEGRAM: guardar texto generado en JS (M3U de Mi Lista) ==========
-        // El WebView no dispara descargas de blob: sin un DownloadListener adicional,
-        // así que en vez de pelear con eso, Java escribe el archivo directamente.
-        @JavascriptInterface
-        public void saveTextFile(String content, String filename) {
-            try {
-                String safe = (filename == null || filename.trim().isEmpty() ? "lista.m3u" : filename)
-                        .replaceAll("[^\\p{L}\\p{N} ._()\\-]", "").trim();
-                if (safe.isEmpty()) safe = "lista.m3u";
-
-                if (android.os.Build.VERSION.SDK_INT >= 29) {
-                    android.content.ContentValues values = new android.content.ContentValues();
-                    values.put(android.provider.MediaStore.Downloads.DISPLAY_NAME, safe);
-                    values.put(android.provider.MediaStore.Downloads.MIME_TYPE, "text/plain");
-                    values.put(android.provider.MediaStore.Downloads.RELATIVE_PATH,
-                            android.os.Environment.DIRECTORY_DOWNLOADS + "/JOX3");
-                    Uri uri = getContentResolver().insert(
-                            android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-                    if (uri != null) {
-                        try (java.io.OutputStream os = getContentResolver().openOutputStream(uri)) {
-                            if (os != null) os.write(content.getBytes("UTF-8"));
-                        }
-                    } else {
-                        throw new Exception("No se pudo crear el archivo");
-                    }
-                } else {
-                    java.io.File dir = new java.io.File(
-                            android.os.Environment.getExternalStoragePublicDirectory(
-                                    android.os.Environment.DIRECTORY_DOWNLOADS), "JOX3");
-                    if (!dir.exists()) dir.mkdirs();
-                    java.io.File file = new java.io.File(dir, safe);
-                    try (java.io.FileOutputStream fos = new java.io.FileOutputStream(file)) {
-                        fos.write(content.getBytes("UTF-8"));
-                    }
-                }
-                final String savedName = safe;
-                runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this,
-                        "✅ Guardado en Descargas/JOX3/" + savedName, android.widget.Toast.LENGTH_LONG).show());
-            } catch (Exception e) {
-                runOnUiThread(() -> android.widget.Toast.makeText(MainActivity.this,
-                        "❌ Error al guardar: " + e.getMessage(), android.widget.Toast.LENGTH_LONG).show());
-            }
         }
 
         // Descarga nativa con DownloadManager: notificación con progreso,
