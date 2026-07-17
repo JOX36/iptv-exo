@@ -84,11 +84,22 @@
             android:visibility="gone" />
 
         <ImageButton
+            android:id="@+id/live_btn_ext"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:background="@drawable/bg_btn_circle"
+            android:src="@drawable/ic_ext"
+            android:scaleType="centerInside"
+            android:padding="8dp"
+            android:layout_marginEnd="8dp"
+            android:contentDescription="Reproductor externo" />
+
+        <ImageButton
             android:id="@+id/live_btn_fav"
             android:layout_width="38dp"
             android:layout_height="38dp"
             android:background="@drawable/bg_btn_circle"
-            android:src="@drawable/ic_star"
+            android:src="@drawable/ic_star_outline"
             android:scaleType="centerInside"
             android:padding="9dp"
             app:tint="#FFC107"
@@ -224,15 +235,15 @@
                 android:contentDescription="Audio" />
 
             <ImageButton
-                android:id="@+id/live_btn_ext"
+                android:id="@+id/live_btn_refresh"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:background="@drawable/bg_btn_circle"
-                android:src="@drawable/ic_ext"
+                android:src="@drawable/ic_refresh"
                 android:scaleType="centerInside"
                 android:padding="10dp"
                 android:layout_marginEnd="10dp"
-                android:contentDescription="Reproductor externo" />
+                android:contentDescription="Refrescar transmision" />
 
             <ImageButton
                 android:id="@+id/live_btn_stop"
@@ -326,7 +337,7 @@
                     android:layout_width="36dp"
                     android:layout_height="36dp"
                     android:background="@drawable/bg_btn_circle"
-                    android:src="@drawable/ic_star"
+                    android:src="@drawable/ic_star_outline"
                     android:scaleType="centerInside"
                     android:padding="8dp"
                     app:tint="#FFC107"
@@ -828,20 +839,19 @@
 
     </LinearLayout>
 
-    <!-- DIAGNÓSTICO TEMPORAL — texto fijo, no depende de permisos de notificación -->
-    <TextView
-        android:id="@+id/debug_txt"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="60dp"
-        android:background="#DD000000"
-        android:textColor="#00FF88"
-        android:textSize="12sp"
-        android:fontFamily="monospace"
-        android:padding="8dp"
-        android:text=""
-        android:visibility="gone" />
+    <!-- ═══════════ CANDADO — persistente, esquina inferior derecha ═══════════ -->
+    <ImageButton
+        android:id="@+id/btn_lock"
+        android:layout_width="42dp"
+        android:layout_height="42dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="14dp"
+        android:background="@drawable/bg_btn_circle"
+        android:src="@drawable/ic_lock_open"
+        android:scaleType="centerInside"
+        android:padding="10dp"
+        android:alpha="0.55"
+        android:contentDescription="Bloquear pantalla" />
 
     <!-- ═══════════ LOADING ═══════════ -->
     <LinearLayout
