@@ -1,51 +1,67 @@
-plugins {
+complementos {
     id 'com.android.application'
 }
 
-android {
-    namespace 'com.jox3.iptvexo'
+Android {
+    espacio de nombres 'com.jox3.iptvexo'
     compileSdk 34
 
-    defaultConfig {
-        applicationId "com.jox3.iptvexo"
+    Configuración predeterminada {
+        ID de aplicación "com.jox3.iptvexo"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        Código de versión 1
+        nombre de la versión "1.0"
+    }
+
+    // Keystore de debug FIJO — sin esto, cada compilación de GitHub Actions corre en una
+    // máquina nueva y Gradle genera un almacén de claves distinto cada vez, obligando a
+    // desinstalar la aplicación antes de poder instalar la compilación siguiente.
+    Configuración de firma {
+        depurar {
+            almacenarArchivo archivo('debug.keystore')
+            Contraseña de la tienda 'jox3debug123'
+            keyAlias ​​'jox3debugkey'
+            Contraseña 'jox3debug123'
+        }
     }
 
     buildTypes {
-        release {
-            minifyEnabled false
+        depurar {
+            Configuración de firma Configuración de firma.debug
+        }
+        liberar {
+            Configuración de firma Configuración de firma.debug
+            minifyEnabled falso
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
+    opciones de compilación {
+        Compatibilidad de origen JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
-        // Requerido por media3-ffmpeg-decoder (Jellyfin)
+        // Solicitado por media3-ffmpeg-decoder (Jellyfin)
         coreLibraryDesugaringEnabled true
     }
 }
 
-dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.9.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+dependencias {
+    implementación 'androidx.appcompat:appcompat:1.6.1'
+    implementación 'com.google.android.material:material:1.9.0'
+    implementación 'androidx.constraintlayout:constraintlayout:2.1.4'
 
     // OkHttp
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementación 'com.squareup.okhttp3:okhttp:4.12.0'
 
     // Media3 / ExoPlayer
-    implementation 'androidx.media3:media3-exoplayer:1.3.1'
-    implementation 'androidx.media3:media3-ui:1.3.1'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.3.1'
-    implementation 'androidx.media3:media3-datasource-okhttp:1.3.1'
+    implementación 'androidx.media3:media3-exoplayer:1.3.1'
+    implementación 'androidx.media3:media3-ui:1.3.1'
+    implementación 'androidx.media3:media3-exoplayer-hls:1.3.1'
+    implementación 'androidx.media3:media3-datasource-okhttp:1.3.1'
 
     // Decodificador FFmpeg precompilado (Jellyfin) — soporte HEVC/AC3/DTS por software
-    implementation 'org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+2'
+    implementación 'org.jellyfin.media3:media3-ffmpeg-decoder:1.3.1+2'
 
-    // Desugaring — requerido por el decodificador FFmpeg
+    // Desazucaring — requerido por el decodificador FFmpeg
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 
     testImplementation 'junit:junit:4.13.2'
