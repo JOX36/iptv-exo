@@ -472,33 +472,6 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
 .ch-card:active{transform:translateY(0) scale(.97) !important;transition:transform .08s !important;filter:brightness(1.3)}
 .ch-card.active{border-color:var(--accent);background:rgba(0,212,255,.08);box-shadow:0 0 0 2px rgba(0,212,255,.25)}
 
-/* ═══ VERIFICADOR (fusión con jox3-m3u-verifier) ═══ */
-.ch-status-dot{position:absolute;top:6px;right:6px;width:8px;height:8px;border-radius:50%;z-index:2}
-.ch-status-dot.st-on{background:var(--green);box-shadow:0 0 6px var(--green)}
-.ch-status-dot.st-off{background:#ff4567;box-shadow:0 0 6px #ff4567}
-.ch-status-dot.st-pend{background:var(--yellow);box-shadow:0 0 6px var(--yellow);animation:vfPulse 1s infinite}
-@keyframes vfPulse{0%,100%{opacity:1}50%{opacity:.3}}
-.ch-card.st-off{opacity:.7}
-.verify-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:14px}
-.verify-hdr{font-family:'Rajdhani',sans-serif;font-size:.95rem;font-weight:700;color:var(--accent);margin-bottom:10px;letter-spacing:.5px}
-.verify-input-row{display:flex;gap:8px;margin-bottom:10px}
-.verify-input-row input{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-family:'Exo 2',sans-serif;font-size:.8rem;outline:none}
-.verify-input-row input:focus{border-color:var(--accent)}
-.verify-btn{background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;padding:9px 16px;color:#0a0e14;font-weight:700;font-size:.8rem;cursor:pointer;white-space:nowrap}
-.verify-btn:disabled{opacity:.5}
-.verify-stats{display:flex;gap:12px;font-size:.7rem;color:var(--muted2);flex-wrap:wrap}
-.verify-stats b{font-family:'Rajdhani',sans-serif;font-size:.85rem}
-.verify-stats .st-ok b{color:var(--green)}
-.verify-stats .st-off b{color:#ff4567}
-.verify-stats .st-pend b{color:var(--yellow)}
-.verify-filters{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
-.verify-filter-chip{background:var(--bg3);border:1px solid var(--border);border-radius:16px;padding:5px 12px;font-size:.7rem;color:var(--muted2);cursor:pointer}
-.verify-filter-chip.active{background:rgba(0,212,255,.12);color:var(--accent);border-color:var(--accent)}
-.status-pill{display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:20px}
-.status-pill.on{background:rgba(0,255,136,.12);color:var(--green);border:1px solid rgba(0,255,136,.35)}
-.status-pill.off{background:rgba(255,69,103,.12);color:#ff4567;border:1px solid rgba(255,69,103,.35)}
-.status-pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
-
 /* VOD cards con animación */
 .vod-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;cursor:pointer;transition:transform .25s cubic-bezier(.34,1.56,.64,1),box-shadow .25s,border-color .2s;overflow:hidden;position:relative;animation:fadeInUp .3s ease both}
 .vod-card::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.7) 0%,transparent 50%);opacity:0;transition:opacity .3s;pointer-events:none}
@@ -650,7 +623,6 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
         <div class="sec-tab"        id="secLive"   onclick="switchSec('live')">📺 Live</div>
         <div class="sec-tab"        id="secVod"    onclick="switchSec('vod')">🎬 VOD</div>
         <div class="sec-tab"        id="secSeries" onclick="switchSec('series')">🎭 Series</div>
-        <div class="sec-tab"        id="secVerify" onclick="showVerifier()">🛠 Verificador</div>
         <div class="sec-tab"        id="secInfo"   onclick="showAccountInfo()">ℹ️ Cuenta</div>
       </div>
     </div>
@@ -848,28 +820,6 @@ body{font-family:'Exo 2',sans-serif;font-size:14px;color:var(--text)}
   </div>
 </div>
 
-<!-- VERIFICADOR — MODAL DE RESULTADO -->
-<div class="modal-bg hidden" id="verifyModal" onclick="if(event.target===this)closeVerifyModal()">
-  <div class="modal">
-    <div class="modal-header">
-      <img id="vmImg" src="" onerror="this.style.display='none'">
-      <div class="modal-title">
-        <h3 id="vmName">—</h3>
-        <p id="vmMeta">—</p>
-      </div>
-      <button class="modal-close" onclick="closeVerifyModal()">✕</button>
-    </div>
-    <div class="modal-body">
-      <div class="modal-btns" style="display:flex;flex-direction:column;gap:8px">
-        <button class="vod-modal-play" id="vmPlayBtn" style="width:100%" onclick="verifyModalPlay()">▶ Reproducir ahora</button>
-        <button class="vod-modal-ext" id="vmListBtn" style="width:100%;justify-content:center;display:flex;gap:6px;align-items:center" onclick="verifyModalAddToList()">⭐ Agregar a Mi Lista</button>
-        <button class="vod-modal-ext" id="vmRetryBtn" style="width:100%;justify-content:center;display:none;gap:6px;align-items:center;border-color:var(--accent);color:var(--accent)" onclick="verifyModalRetry()">🔁 Reintentar verificación</button>
-        <button class="vod-modal-ext" style="width:100%;justify-content:center;display:flex;gap:6px;align-items:center;border-color:#ff4567;color:#ff4567" onclick="verifyModalDiscard()">🗑 Descartar de resultados</button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <script>
 // ══ STATE ══
 
@@ -881,7 +831,7 @@ function epgDate(e,isEnd){
   return new Date(String(isEnd?e.end:e.start).replace(' ','T'));
 }
 const S={host:'',user:'',pass:'',sec:'live',sTab:'cat',cats:{live:[],vod:[],series:[]},activeCat:{live:null,vod:null,series:null},channels:[],current:null,hls:null,favs:new Set(),history:[],searchFilter:'all'};
-const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3',TG:'iptv_tg1'};
+const K={ACCS:'iptv_accs3',FAVS:'iptv_favs3',HIST:'iptv_hist3',LAST:'iptv_last3',PROG:'iptv_prog3',EPLIST:'iptv_eplist3'};
 
 // MEJORA: Timeout de carga para evitar URLs colgadas
 let _playLoadTimer = null;
@@ -1052,16 +1002,15 @@ async function xApi(action, extra=''){
 
 // ══ SECTIONS ══
 function switchSec(sec){
-  // Desactivar tabs especiales si estaban activos
+  // Desactivar tab info si estaba activo
   document.getElementById('secInfo').classList.remove('active');
-  document.getElementById('secVerify').classList.remove('active');
   if(sec==='home'){ showHome(); return; }
   loadSec(sec);
   if(window.innerWidth<=580){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('show')}
 }
 
 async function showAccountInfo(){
-  ['secLive','secVod','secSeries','secVerify'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  ['secLive','secVod','secSeries'].forEach(id=>document.getElementById(id).classList.remove('active'));
   document.getElementById('secInfo').classList.add('active');
   setContent(`<div class="loading-ph"><div class="p-spinner"></div><p>Cargando información...</p></div>`);
   try{
@@ -1073,8 +1022,6 @@ async function showAccountInfo(){
     const daysColor=daysLeft<7?'#ef4444':daysLeft<30?'#ffc107':'#00ff88';
     const conns=`${info.active_cons||0} / ${info.max_connections||'?'}`;
     const status=info.status||'—';
-    // Guardar para el reporte de Telegram (sendAccountToTelegram)
-    S._lastAccountInfo = {info, expDate, daysLeft, conns, status};
     setContent(`
       <div style="max-width:400px;margin:20px auto;display:flex;flex-direction:column;gap:12px">
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px">
@@ -1108,13 +1055,8 @@ async function showAccountInfo(){
         </div>
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
           <div style="font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--muted2);margin-bottom:12px">🌐 Servidor</div>
-          <div style="font-size:.75rem;color:var(--muted);word-break:break-all;margin-bottom:12px">${esc(S.host)}</div>
-          <div style="display:flex;gap:8px">
-            <button class="tb-btn" style="flex:1;font-size:.7rem;padding:8px" onclick="copyAccountLink('m3u')">📋 Enlace M3U</button>
-            <button class="tb-btn" style="flex:1;font-size:.7rem;padding:8px" onclick="copyAccountLink('epg')">📋 Enlace EPG</button>
-          </div>
+          <div style="font-size:.75rem;color:var(--muted);word-break:break-all">${esc(S.host)}</div>
         </div>
-        <button class="verify-btn" style="padding:12px;font-size:.85rem" onclick="sendAccountToTelegram()">📤 Enviar esta info a Telegram</button>
       </div>
     `);
   }catch(e){
@@ -1325,26 +1267,15 @@ function renderSide(){
     if(!cats.length){el.innerHTML=`<div class="empty" style="padding:20px"><p>Sin categorías</p></div>`;return}
     el.innerHTML=cats.map(c=>`<div class="cat-item${c.id===act?' active':''}" onclick="selectCat('${c.id}')"><span class="cat-name">${esc(c.name)}</span><span class="cat-cnt">${c.loaded?c.items.length:'·'}</span></div>`).join('');
   }else if(t==='fav'){
-    const uniq=resolveFavItems();
+    const allItems=Object.values(S.cats).flat().filter(c=>c.loaded).flatMap(c=>c.items);
+    const hItems=S.history.map(h=>h.item);
+    const uniq=[...new Map([...allItems,...hItems].filter(i=>S.favs.has(fk(i))).map(i=>[fk(i),i])).values()];
     if(!uniq.length){el.innerHTML=`<div class="empty" style="padding:20px"><div class="empty-icon">⭐</div><p>Sin favoritos</p></div>`;return}
-    const actions=`<div style="display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border)">
-      <button class="tb-btn" style="flex:1;font-size:.65rem" onclick="downloadFavsM3U()">📥 M3U</button>
-      <button class="tb-btn" style="flex:1;font-size:.65rem" onclick="sendMyListToTelegram()">📤 Telegram</button>
-    </div>`;
-    el.innerHTML=actions+uniq.map(i=>`<div class="list-item" onclick='play(${js(i)})'><div class="li-logo">${i.logo?`<img src="${esc(i.logo)}" onerror="this.textContent='📺'">`:'📺'}</div><div class="li-info"><div class="li-name">${esc(i.name)}</div><div class="li-sub">${esc(i.group||'')}</div></div></div>`).join('');
+    el.innerHTML=uniq.map(i=>`<div class="list-item" onclick='play(${js(i)})'><div class="li-logo">${i.logo?`<img src="${esc(i.logo)}" onerror="this.textContent='📺'">`:'📺'}</div><div class="li-info"><div class="li-name">${esc(i.name)}</div><div class="li-sub">${esc(i.group||'')}</div></div></div>`).join('');
   }else{
     if(!S.history.length){el.innerHTML=`<div class="empty" style="padding:20px"><div class="empty-icon">🕐</div><p>Sin historial</p></div>`;return}
     el.innerHTML=S.history.map(h=>`<div class="list-item" onclick='play(${js(h.item)})'><div class="li-logo">${h.item.logo?`<img src="${esc(h.item.logo)}" onerror="this.textContent='📺'">`:'📺'}</div><div class="li-info"><div class="li-name">${esc(h.item.name)}</div><div class="li-sub">${esc(h.item.group||'')}</div></div><div class="li-time">${timeAgo(h.ts)}</div></div>`).join('');
   }
-}
-// Resuelve las claves de S.favs a objetos completos, cruzando categorías cargadas + historial
-// (mismo criterio que ya usaba la app para pintar la pestaña de Favoritos — lo reuso también
-// para descargar/enviar Mi Lista. Limitación heredada: solo encuentra items ya vistos en esta
-// sesión — si un favorito nunca se cargó ni está en historial, no aparecerá aquí).
-function resolveFavItems(){
-  const allItems=Object.values(S.cats).flat().filter(c=>c.loaded).flatMap(c=>c.items);
-  const hItems=S.history.map(h=>h.item);
-  return [...new Map([...allItems,...hItems].filter(i=>S.favs.has(fk(i))).map(i=>[fk(i),i])).values()];
 }
 function sideTab(t){S.sTab=t;['cat','fav','hist'].forEach(x=>document.getElementById('tab'+x.charAt(0).toUpperCase()+x.slice(1)).classList.toggle('active',x===t));renderSide()}
 
@@ -2508,16 +2439,6 @@ function copyStreamURL(){
     const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('📋 URL copiada');
   });
 }
-// Enlaces M3U/EPG de la cuenta activa (restaura copyM3ULink/copyEPGLink del verifier)
-function copyAccountLink(kind){
-  if(!S.host||!S.user){toast('⚠️ Sin cuenta activa');return}
-  const url = kind==='epg'
-    ? `${S.host}/xmltv.php?username=${S.user}&password=${S.pass}`
-    : `${S.host}/get.php?username=${S.user}&password=${S.pass}&type=m3u_plus`;
-  navigator.clipboard.writeText(url).then(()=>toast('📋 Enlace copiado')).catch(()=>{
-    const ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('📋 Enlace copiado');
-  });
-}
 // ══ CONTROLES VOD ══
 let _vcDragging=false;
 function vcFmt(s){if(!s||!isFinite(s))return'--:--';s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
@@ -2712,7 +2633,6 @@ async function showHome(){
     if(el) el.classList.toggle('active', id==='secHome');
   });
   document.getElementById('secInfo')?.classList.remove('active');
-  document.getElementById('secVerify')?.classList.remove('active');
   document.getElementById('searchBox').value='';
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebarOverlay').classList.remove('show');
@@ -3188,410 +3108,6 @@ async function xApiFor(acc, action, extra=''){
 initSetup();
 initSwipe();
 initVodControls();
-// ══════════════════════════════════════════════════════
-// VERIFICADOR — fusión con jox3-m3u-verifier
-// Usa el bridge nativo "NativeChecker" (portado de MainActivity.kt
-// del verifier a Java, ver MainActivity.java) para probar cada URL
-// sin bloquear CORS ni saturar el hilo principal.
-// ══════════════════════════════════════════════════════
-const V = { items: [], results: {}, filter: 'all', loading: false };
-
-function showVerifier(){
-  ['secLive','secVod','secSeries'].forEach(id=>document.getElementById(id).classList.remove('active'));
-  document.getElementById('secInfo').classList.remove('active');
-  document.getElementById('secVerify').classList.add('active');
-  S.sec = 'verify';
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebarOverlay').classList.remove('show');
-  setContent(verifyShell());
-}
-
-function verifyShell(){
-  const tg = lsGet(K.TG) || {};
-  return `
-    <div class="verify-card">
-      <div class="verify-hdr">🛠 Verificador de listas</div>
-      <div class="verify-input-row">
-        <input type="text" id="verifyUrlInput" placeholder="Pegar URL M3U / Xtream...">
-        <button class="verify-btn" id="verifyRunBtn" onclick="runVerify()">Verificar</button>
-      </div>
-      <div class="verify-stats" id="verifyStats"></div>
-    </div>
-    <div class="verify-filters" id="verifyFilters" style="display:none">
-      <div class="verify-filter-chip active" data-f="all" onclick="setVerifyFilter('all')">Todos</div>
-      <div class="verify-filter-chip" data-f="on" onclick="setVerifyFilter('on')">Activos</div>
-      <div class="verify-filter-chip" data-f="off" onclick="setVerifyFilter('off')">Caídos</div>
-      <div class="verify-filter-chip" onclick="sendVerifyResultsToTelegram()" style="margin-left:auto">📤 Enviar activos a Telegram</div>
-    </div>
-    <div id="verifyGrid"></div>
-
-    <div class="verify-card" style="margin-top:16px">
-      <div class="verify-hdr">✈️ Telegram</div>
-      <div class="verify-input-row">
-        <input type="password" id="tgToken" placeholder="Token del bot" value="${esc(tg.token||'')}" onchange="saveTgConfig()">
-      </div>
-      <div class="verify-input-row">
-        <input type="text" id="tgChatId" placeholder="Chat ID" value="${esc(tg.chatId||'')}" onchange="saveTgConfig()">
-        <button class="verify-btn" onclick="testTelegram()">🧪 Probar</button>
-      </div>
-      <div id="tgStatusWrap" style="font-size:.7rem;color:var(--muted2);margin-top:4px"></div>
-    </div>
-  `;
-}
-
-async function runVerify(){
-  const input = document.getElementById('verifyUrlInput');
-  const url = input.value.trim();
-  if(!url){ toast('❌ Pega una URL de lista M3U o Xtream'); return; }
-  if(V.loading) return;
-  V.loading = true;
-  const btn = document.getElementById('verifyRunBtn');
-  btn.disabled = true; btn.textContent = '⏳...';
-  document.getElementById('verifyGrid').innerHTML = `<div class="loading-ph"><div class="p-spinner"></div><p>Descargando lista...</p></div>`;
-
-  try{
-    let text;
-    if(typeof AndroidPlayer !== 'undefined'){
-      text = await javaFetch(url);
-    } else {
-      const r = await fetch(url);
-      text = await r.text();
-    }
-    const items = parseM3U(text);
-    if(!items.length){ toast('❌ No se encontraron canales en esa URL'); document.getElementById('verifyGrid').innerHTML=''; return; }
-
-    // Límite de seguridad para no saturar el hilo pool nativo ni la UI
-    V.items = items.slice(0, 300);
-    V.results = {};
-    V.filter = 'all';
-    document.querySelectorAll('.verify-filter-chip').forEach(c=>c.classList.toggle('active', c.dataset.f==='all'));
-    document.getElementById('verifyFilters').style.display = 'flex';
-
-    renderVerifyGrid();
-    updateVerifyStats();
-    toast(`🔎 Verificando ${V.items.length} canales...`);
-
-    V.items.forEach(it=>checkItem(it));
-
-  }catch(e){
-    toast('❌ Error al cargar la lista: ' + e.message);
-    document.getElementById('verifyGrid').innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>No se pudo descargar la lista</p></div>`;
-  }finally{
-    V.loading = false;
-    btn.disabled = false; btn.textContent = 'Verificar';
-  }
-}
-
-function checkItem(item){
-  V.results[item.id] = { status: 'pend' };
-  if(typeof NativeChecker !== 'undefined' && NativeChecker.checkStream){
-    NativeChecker.checkStream(item.url, item.id);
-  } else {
-    // Fallback navegador (sin bridge nativo) — no se puede verificar por CORS
-    V.results[item.id] = { status: 'off', error: 'Sin bridge nativo' };
-    refreshVerifyCard(item.id);
-  }
-}
-
-// Llamado desde MainActivity.java cuando NativeChecker termina de probar una URL
-function onStreamChecked(id, online){
-  V.results[id] = { status: online ? 'on' : 'off' };
-  refreshVerifyCard(id);
-  updateVerifyStats();
-}
-window.onStreamChecked = onStreamChecked;
-
-function verifyCardHtml(item){
-  const r = V.results[item.id] || { status: 'pend' };
-  const dotClass = r.status === 'on' ? 'st-on' : r.status === 'off' ? 'st-off' : 'st-pend';
-  const cardClass = r.status === 'off' ? 'st-off' : '';
-  const sub = r.status === 'on' ? 'Activo' : r.status === 'off' ? 'Caído' : 'Verificando...';
-  return `<div class="ch-card ${cardClass}" id="vc-${esc(item.id)}" onclick="openVerifyModal('${esc(item.id)}')">
-    <div class="ch-status-dot ${dotClass}"></div>
-    ${item.logo?`<img src="${esc(item.logo)}" style="width:100%;height:64px;object-fit:cover;border-radius:6px;margin-bottom:6px" onerror="this.style.display='none'">`:''}
-    <div style="font-size:.68rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(item.name)}</div>
-    <div style="font-size:.6rem;color:var(--muted)">${sub}</div>
-  </div>`;
-}
-
-function refreshVerifyCard(id){
-  const el = document.getElementById('vc-' + id);
-  const item = V.items.find(i=>i.id===id);
-  if(!el || !item) return;
-  if(V.filter !== 'all' && V.results[id]?.status !== V.filter){ el.remove(); return; }
-  el.outerHTML = verifyCardHtml(item);
-}
-
-function renderVerifyGrid(){
-  const grid = document.getElementById('verifyGrid');
-  if(!grid) return;
-  const list = V.filter === 'all' ? V.items : V.items.filter(i => V.results[i.id]?.status === V.filter);
-  if(!list.length){ grid.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><p>Sin resultados en este filtro</p></div>`; return; }
-  grid.innerHTML = `<div class="ch-grid">${list.map(verifyCardHtml).join('')}</div>`;
-}
-
-function setVerifyFilter(f){
-  V.filter = f;
-  document.querySelectorAll('.verify-filter-chip').forEach(c=>c.classList.toggle('active', c.dataset.f===f));
-  renderVerifyGrid();
-}
-
-function updateVerifyStats(){
-  const total = V.items.length;
-  let on=0, off=0, pend=0;
-  V.items.forEach(i=>{
-    const s = V.results[i.id]?.status;
-    if(s==='on') on++; else if(s==='off') off++; else pend++;
-  });
-  const el = document.getElementById('verifyStats');
-  if(el) el.innerHTML = `<span>Total: <b>${total}</b></span><span class="st-ok">Activos: <b>${on}</b></span><span class="st-off">Caídos: <b>${off}</b></span><span class="st-pend">Verificando: <b>${pend}</b></span>`;
-}
-
-// ── Modal de confirmación ──
-let _vmItemId = null;
-function openVerifyModal(id){
-  const item = V.items.find(i=>i.id===id);
-  if(!item) return;
-  const r = V.results[id] || { status:'pend' };
-  if(r.status === 'pend'){ toast('⏳ Todavía verificando este canal...'); return; }
-  _vmItemId = id;
-
-  document.getElementById('vmImg').src = item.logo || '';
-  document.getElementById('vmImg').style.display = item.logo ? '' : 'none';
-  document.getElementById('vmName').textContent = item.name;
-
-  const playBtn = document.getElementById('vmPlayBtn');
-  const listBtn = document.getElementById('vmListBtn');
-  const retryBtn = document.getElementById('vmRetryBtn');
-
-  if(r.status === 'on'){
-    document.getElementById('vmMeta').innerHTML = `<span class="status-pill on"><span class="dot"></span>Activo</span>`;
-    playBtn.style.display=''; playBtn.disabled=false; playBtn.style.opacity=1;
-    listBtn.style.display='';
-    retryBtn.style.display='none';
-  } else {
-    document.getElementById('vmMeta').innerHTML = `<span class="status-pill off"><span class="dot"></span>Caído</span>`;
-    playBtn.style.display='none';
-    listBtn.style.display='none';
-    retryBtn.style.display='flex';
-  }
-
-  const isFav = S.favs.has(fk({...item, type: item.type||'live'}));
-  listBtn.innerHTML = isFav ? '💛 Ya está en Mi Lista' : '⭐ Agregar a Mi Lista';
-
-  document.getElementById('verifyModal').classList.remove('hidden');
-}
-
-function closeVerifyModal(){
-  document.getElementById('verifyModal').classList.add('hidden');
-  _vmItemId = null;
-}
-
-function verifyModalPlay(){
-  const item = V.items.find(i=>i.id===_vmItemId);
-  if(!item) return;
-  closeVerifyModal();
-  play({ ...item, type: item.type || 'live' });
-}
-
-function verifyModalAddToList(){
-  const item = V.items.find(i=>i.id===_vmItemId);
-  if(!item) return;
-  const full = { ...item, type: item.type || 'live' };
-  const key = fk(full);
-  if(S.favs.has(key)){ toast('⭐ Ya estaba en Mi Lista'); return; }
-  S.favs.add(key); saveFavs();
-  toast('⭐ Agregado a Mi Lista');
-  document.getElementById('vmListBtn').innerHTML = '💛 Ya está en Mi Lista';
-}
-
-function verifyModalRetry(){
-  const item = V.items.find(i=>i.id===_vmItemId);
-  if(!item) return;
-  closeVerifyModal();
-  checkItem(item);
-  refreshVerifyCard(item.id);
-  updateVerifyStats();
-  toast('🔁 Reintentando...');
-}
-
-function verifyModalDiscard(){
-  if(!_vmItemId) return;
-  V.items = V.items.filter(i=>i.id !== _vmItemId);
-  delete V.results[_vmItemId];
-  closeVerifyModal();
-  renderVerifyGrid();
-  updateVerifyStats();
-}
-
-// ══════════════════════════════════════════════════════
-// TELEGRAM — fusión con jox3-m3u-verifier (función que se
-// había omitido en la primera pasada de la fusión)
-// ══════════════════════════════════════════════════════
-function getTg(){
-  const tokenEl = document.getElementById('tgToken');
-  const chatEl  = document.getElementById('tgChatId');
-  const saved = lsGet(K.TG) || {};
-  return {
-    token: (tokenEl ? tokenEl.value.trim() : '') || saved.token || '',
-    chatId: (chatEl ? chatEl.value.trim() : '') || saved.chatId || ''
-  };
-}
-
-function saveTgConfig(){
-  const token = document.getElementById('tgToken')?.value.trim() || '';
-  const chatId = document.getElementById('tgChatId')?.value.trim() || '';
-  lsSet(K.TG, {token, chatId});
-}
-
-async function tgSendText(token, chatId, text){
-  const MAX = 4096, parts = [];
-  for(let i=0; i<text.length; i+=MAX) parts.push(text.slice(i, i+MAX));
-  for(const part of parts){
-    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({chat_id: chatId, text: part})
-    });
-    if(!res.ok){ const e = await res.json(); throw new Error(e.description || 'Error Telegram'); }
-  }
-}
-
-async function tgSendDoc(token, chatId, content, filename){
-  const blob = new Blob([content], {type:'text/plain'});
-  const fd = new FormData();
-  fd.append('chat_id', chatId);
-  fd.append('document', blob, filename);
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendDocument`, {method:'POST', body: fd});
-  if(!res.ok){ const e = await res.json(); throw new Error(e.description || 'Error enviando archivo'); }
-}
-
-async function tgSendPhoto(token, chatId, photoUrl, caption){
-  await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({chat_id: chatId, photo: photoUrl, caption: (caption||'').slice(0,1024)})
-  });
-}
-
-function favsToM3U(items){
-  let c = '#EXTM3U\n';
-  items.forEach(it => { c += `#EXTINF:-1 group-title="${it.group||''}",${it.name}\n${it.url}\n`; });
-  return c;
-}
-
-// Descargar Mi Lista como M3U — usa el bridge nativo saveTextFile() porque el WebView
-// no maneja descargas de blob: para contenido de texto generado en JS.
-function downloadFavsM3U(){
-  const items = resolveFavItems();
-  if(!items.length){ toast('❌ Mi Lista está vacía (o los favoritos no están cargados en esta sesión)'); return; }
-  const content = favsToM3U(items);
-  const filename = `JOX3_MiLista_${new Date().toISOString().slice(0,10)}.m3u`;
-  if(typeof AndroidPlayer !== 'undefined' && AndroidPlayer.saveTextFile){
-    AndroidPlayer.saveTextFile(content, filename);
-  } else {
-    const blob = new Blob([content], {type:'audio/x-mpegurl'});
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = filename; a.click();
-    toast('📥 Lista descargada');
-  }
-}
-
-// Enviar Mi Lista completa a Telegram: documento M3U + miniaturas (igual que el
-// sendListToTelegram() original del verifier)
-async function sendMyListToTelegram(){
-  const {token, chatId} = getTg();
-  if(!token || !chatId){ toast('❌ Configura Telegram primero (tab Verificador)'); return; }
-  const items = resolveFavItems();
-  if(!items.length){ toast('❌ Mi Lista está vacía (o los favoritos no están cargados en esta sesión)'); return; }
-  try{
-    toast('📤 Enviando lista...');
-    await tgSendDoc(token, chatId, favsToM3U(items), `JOX3_MiLista_${new Date().toISOString().slice(0,10)}.m3u`);
-    toast('✅ Lista enviada');
-    let sent = 0;
-    for(const it of items){
-      if(!it.logo) continue;
-      try{ await tgSendPhoto(token, chatId, it.logo, it.name); sent++; }catch(e){ /* miniatura individual falló, seguir */ }
-      if(sent >= 20) break; // límite de seguridad para no saturar/ratelimit de Telegram
-    }
-    if(sent) toast(`✅ ${sent} miniaturas enviadas`);
-  }catch(e){
-    toast('❌ ' + e.message);
-  }
-}
-
-async function testTelegram(){
-  saveTgConfig();
-  const {token, chatId} = getTg();
-  const wrap = document.getElementById('tgStatusWrap');
-  if(!token || !chatId){ toast('❌ Completa token y chat ID'); return; }
-  if(wrap) wrap.innerHTML = '⏳ Probando...';
-  try{
-    await tgSendText(token, chatId, '🌟 JOX3 TV — Conexión exitosa ✅');
-    if(wrap) wrap.innerHTML = '<span style="color:var(--green)">✅ Conexión exitosa</span>';
-    toast('✅ Telegram OK');
-  }catch(e){
-    if(wrap) wrap.innerHTML = `<span style="color:#ff4567">❌ ${esc(e.message)}</span>`;
-    toast('❌ Error Telegram: ' + e.message);
-  }
-}
-
-// Enviar los canales verificados como activos (tab Verificador) como documento M3U
-async function sendVerifyResultsToTelegram(){
-  const {token, chatId} = getTg();
-  if(!token || !chatId){ toast('❌ Configura Telegram primero'); showVerifier(); return; }
-  const activos = V.items.filter(i => V.results[i.id]?.status === 'on');
-  if(!activos.length){ toast('❌ No hay canales activos para enviar'); return; }
-  try{
-    toast('📤 Enviando...');
-    let c = '#EXTM3U\n';
-    activos.forEach(it => { c += `#EXTINF:-1 group-title="${it.group||''}",${it.name}\n${it.url}\n`; });
-    await tgSendDoc(token, chatId, c, `JOX3_Verificados_${new Date().toISOString().slice(0,10)}.m3u`);
-    await tgSendText(token, chatId, `✅ Verificación JOX3 TV\n📡 ${activos.length} canales activos de ${V.items.length} verificados\n📅 ${new Date().toLocaleString('es')}`);
-    toast(`✅ Enviado (${activos.length} canales)`);
-  }catch(e){
-    toast('❌ ' + e.message);
-  }
-}
-
-// Enviar el reporte de cuenta (host/estado/vencimiento + geo IP del servidor) — restaura
-// la función original sendToTelegram() del verifier, usando los datos que ya carga showAccountInfo()
-async function sendAccountToTelegram(){
-  const {token, chatId} = getTg();
-  if(!token || !chatId){ toast('❌ Configura Telegram primero (tab Verificador)'); return; }
-  const acc = S._lastAccountInfo;
-  if(!acc){ toast('❌ Primero carga la info de cuenta'); return; }
-  try{
-    toast('📤 Enviando...');
-    let geoLine = '📍 Ubicación: N/A';
-    try{
-      const hostname = new URL(S.host).hostname;
-      const geoRes = await (typeof AndroidPlayer!=='undefined'
-        ? javaFetch(`http://ip-api.com/json/${hostname}?fields=status,city,country,countryCode,isp,query`)
-        : fetch(`http://ip-api.com/json/${hostname}?fields=status,city,country,countryCode,isp,query`).then(r=>r.text()));
-      const geo = JSON.parse(geoRes);
-      if(geo.status === 'success'){
-        geoLine = `📍 Ubicación: ${[geo.city, geo.country].filter(Boolean).join(', ')||'N/A'}\n🏢 ISP: ${geo.isp||'N/A'}`;
-      }
-    }catch(e){ /* geo opcional — si falla, se omite sin bloquear el envío */ }
-
-    const info = acc.info || {};
-    const msg = `🎉 === Cuenta JOX3 TV === 🎉
-
-🌐 Host: ${S.host}
-👤 Usuario: ${S.user}
-🔑 Contraseña: ${S.pass}
-🟢 Estado: ${acc.status}
-🔗 Conexiones: ${acc.conns}
-🗓️ Vencimiento: ${acc.expDate}
-⌛ Días restantes: ${acc.daysLeft}
-${geoLine}
-📅 Consultado: ${new Date().toLocaleString('es')}`;
-
-    await tgSendText(token, chatId, msg);
-    toast('✅ Info de cuenta enviada');
-  }catch(e){
-    toast('❌ ' + e.message);
-  }
-}
 </script>
 </body>
 </html>
