@@ -1673,14 +1673,6 @@ async function play(item){
         }catch(e){episodesJson='[]';}
       }
     }
-    // DIAGNOSTICO TEMPORAL: se pasa como dato al nativo para mostrarlo en el texto fijo
-    // que ya confirmamos que SI se ve (no depende de que el WebView alcance a pintar nada).
-    let debugInfo = '';
-    if(item._isSeries){
-      const seasonCount = seriesData ? Object.keys(seriesData.seasons||{}).length : -1;
-      const flatCount = episodesJson.length>2 ? JSON.parse(episodesJson).length : 0;
-      debugInfo = 'HTML: seriesData=' + (!!seriesData) + ' seasons=' + seasonCount + ' flatEps=' + flatCount + ' idx=' + episodeIndex + ' seriesId=' + (item._seriesId||'?');
-    }
     AndroidPlayer.openPlayer(
       item.url||'',
       item.name||'',
@@ -1690,8 +1682,7 @@ async function play(item){
       String(item.id||''),
       item._isSeries ? episodesJson : channelsJson,
       item._isSeries ? episodeIndex : channelIndex,
-      item._isSeries ? true : false,
-      debugInfo
+      item._isSeries ? true : false
     );
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
