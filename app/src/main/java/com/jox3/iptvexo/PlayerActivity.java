@@ -95,6 +95,7 @@ public class PlayerActivity extends AppCompatActivity {
     private ImageButton liveBtnGrid, vodFsBtnGrid, drawerClose;
     private LinearLayout channelDrawer, drawerList, drawerCatDropdown;
     private LinearLayout drawerCatButton;
+    private ScrollView drawerCatDropdownScroll;
     private TextView drawerCatLabel;
     private ImageView drawerCatChevron;
     private boolean dropdownOpen = false;
@@ -320,6 +321,7 @@ public class PlayerActivity extends AppCompatActivity {
         drawerCatLabel    = findViewById(R.id.drawer_cat_label);
         drawerCatChevron  = findViewById(R.id.drawer_cat_chevron);
         drawerCatDropdown = findViewById(R.id.drawer_cat_dropdown);
+        drawerCatDropdownScroll = findViewById(R.id.drawer_cat_dropdown_scroll);
         drawerCatButton.setOnClickListener(v -> toggleCatDropdown());
         drawerList    = findViewById(R.id.drawer_list);
         drawerLoading = findViewById(R.id.drawer_loading);
@@ -935,7 +937,7 @@ public class PlayerActivity extends AppCompatActivity {
         if (drawerOpen) return;
         drawerOpen = true;
         dropdownOpen = false;
-        drawerCatDropdown.setVisibility(View.GONE);
+        drawerCatDropdownScroll.setVisibility(View.GONE);
         drawerCatChevron.setRotation(0);
         channelDrawer.setVisibility(View.VISIBLE);
         drawerScrim.setVisibility(View.VISIBLE);
@@ -961,7 +963,7 @@ public class PlayerActivity extends AppCompatActivity {
             renderDrawerListSeries();
         } else {
             drawerTitle.setText("Canales");
-            drawerCatLabel.setText("Todos los canales");
+            drawerCatLabel.setText((group != null && !group.trim().isEmpty()) ? group : "Todos los canales");
             renderDrawerListLive();
             loadLiveCategoryChips();
         }
@@ -982,13 +984,13 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void openCatDropdown() {
         dropdownOpen = true;
-        drawerCatDropdown.setVisibility(View.VISIBLE);
+        drawerCatDropdownScroll.setVisibility(View.VISIBLE);
         drawerCatChevron.animate().rotation(180).setDuration(150).start();
     }
 
     private void closeCatDropdown() {
         dropdownOpen = false;
-        drawerCatDropdown.setVisibility(View.GONE);
+        drawerCatDropdownScroll.setVisibility(View.GONE);
         drawerCatChevron.animate().rotation(0).setDuration(150).start();
     }
 
