@@ -88,11 +88,15 @@ public class PlayerActivity extends AppCompatActivity {
     private ImageButton vodFsBtnPause, vodFsBtnStop;
     // Nuevos controles VOD fullscreen
     private ImageButton vodFsBtnRew, vodFsBtnFfw, vodFsBtnDl, vodFsBtnResize;
-    private ImageButton vodFsBtnFav;
+    private ImageButton vodFsBtnFav, vodFsBtnAudio;
     private ImageButton vodFsBtnEpPrev, vodFsBtnEpNext;
     private ImageButton liveBtnRefresh, btnLock;
     private ImageButton liveBtnGrid, vodFsBtnGrid, drawerClose;
-    private LinearLayout channelDrawer, drawerChipRow, drawerList;
+    private LinearLayout channelDrawer, drawerList, drawerCatDropdown;
+    private LinearLayout drawerCatButton;
+    private TextView drawerCatLabel;
+    private ImageView drawerCatChevron;
+    private boolean dropdownOpen = false;
     private View drawerScrim;
     private TextView drawerTitle;
     private android.widget.ProgressBar drawerLoading;
@@ -297,6 +301,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExt   = findViewById(R.id.vod_fs_btn_ext);
         vodFsBtnUrl   = findViewById(R.id.vod_fs_btn_url);
         vodFsBtnSubs  = findViewById(R.id.vod_fs_btn_subs);
+        vodFsBtnAudio = findViewById(R.id.vod_fs_btn_audio);
         vodFsBtnPause = findViewById(R.id.vod_fs_btn_pause);
         vodFsBtnStop  = findViewById(R.id.vod_fs_btn_stop);
         vodFsBtnRew   = findViewById(R.id.vod_fs_btn_rew);
@@ -310,7 +315,11 @@ public class PlayerActivity extends AppCompatActivity {
         drawerScrim   = findViewById(R.id.drawer_scrim);
         drawerTitle   = findViewById(R.id.drawer_title);
         drawerClose   = findViewById(R.id.drawer_close);
-        drawerChipRow = findViewById(R.id.drawer_chip_row);
+        drawerCatButton   = findViewById(R.id.drawer_cat_button);
+        drawerCatLabel    = findViewById(R.id.drawer_cat_label);
+        drawerCatChevron  = findViewById(R.id.drawer_cat_chevron);
+        drawerCatDropdown = findViewById(R.id.drawer_cat_dropdown);
+        drawerCatButton.setOnClickListener(v -> toggleCatDropdown());
         drawerList    = findViewById(R.id.drawer_list);
         drawerLoading = findViewById(R.id.drawer_loading);
         drawerClose.setOnClickListener(v -> closeDrawer());
@@ -502,6 +511,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnExt.setOnClickListener(v -> launchExternal());
         vodFsBtnUrl.setOnClickListener(v -> copyUrl());
         vodFsBtnSubs.setOnClickListener(v -> showSubtitleTracks());
+        vodFsBtnAudio.setOnClickListener(v -> showAudioTracks());
 
         // Pausa/Play en fullscreen
         vodFsBtnPause.setOnClickListener(v -> {
@@ -670,6 +680,7 @@ public class PlayerActivity extends AppCompatActivity {
                         vodBtnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
                         vodBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
                         vodFsBtnSubs.setVisibility(fs ? View.VISIBLE : View.GONE);
+                        vodFsBtnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
                     } else {
                         liveBtnAudio.setVisibility(fa ? View.VISIBLE : View.GONE);
                     }
@@ -922,6 +933,9 @@ public class PlayerActivity extends AppCompatActivity {
     private void openDrawer() {
         if (drawerOpen) return;
         drawerOpen = true;
+        dropdownOpen = false;
+        drawerCatDropdown.setVisibility(View.GONE);
+        drawerCatChevron.setRotation(0);
         channelDrawer.setVisibility(View.VISIBLE);
         drawerScrim.setVisibility(View.VISIBLE);
         channelDrawer.setTranslationX(-channelDrawer.getWidth() > 0 ? -channelDrawer.getWidth() : -1000);
@@ -929,8 +943,6 @@ public class PlayerActivity extends AppCompatActivity {
 
         if (isVodType()) {
             drawerTitle.setText("Episodios");
-            drawerChipRow.removeAllViews();
-            // Chips de temporada — usa la lista ya cargada, sin red
             java.util.LinkedHashSet<String> seasons = new java.util.LinkedHashSet<>();
             for (JSONObject c : channels) {
                 String s = seasonOf(c.optString("name", ""));
@@ -938,15 +950,17 @@ public class PlayerActivity extends AppCompatActivity {
             }
             String curSeason = seasonOf(name);
             drawerActiveSeason = seasons.contains(curSeason) ? curSeason : (seasons.isEmpty() ? null : seasons.iterator().next());
-            for (String s : seasons) {
-                addDrawerChip("T" + s, s.equals(drawerActiveSeason), () -> {
-                    drawerActiveSeason = s;
-                    renderDrawerListSeries();
-                });
-            }
+            drawerCatLabel.setText(drawerActiveSeason != null ? "Temporada " + drawerActiveSeason : "Episodios");
+            buildDropdownItems(seasons, s -> "Temporada " + s, s -> s.equals(drawerActiveSeason), s -> {
+                drawerActiveSeason = s;
+                drawerCatLabel.setText("Temporada " + s);
+                closeCatDropdown();
+                renderDrawerListSeries();
+            });
             renderDrawerListSeries();
         } else {
             drawerTitle.setText("Canales");
+            drawerCatLabel.setText("Todos los canales");
             renderDrawerListLive();
             loadLiveCategoryChips();
         }
@@ -955,27 +969,42 @@ public class PlayerActivity extends AppCompatActivity {
     private void closeDrawer() {
         if (!drawerOpen) return;
         drawerOpen = false;
+        closeCatDropdown();
         channelDrawer.animate().translationX(-channelDrawer.getWidth()).setDuration(200)
             .withEndAction(() -> { channelDrawer.setVisibility(View.GONE); drawerScrim.setVisibility(View.GONE); }).start();
     }
 
-    private void addDrawerChip(String label, boolean selected, Runnable onClick) {
-        TextView chip = new TextView(this);
-        chip.setText(label);
-        chip.setTextColor(0xFFE0F4FF);
-        chip.setTextSize(12);
-        chip.setPadding(dp(14), dp(6), dp(14), dp(6));
-        chip.setBackgroundResource(R.drawable.bg_chip_selector);
-        chip.setSelected(selected);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        lp.setMarginEnd(dp(8));
-        chip.setLayoutParams(lp);
-        chip.setOnClickListener(v -> {
-            for (int i = 0; i < drawerChipRow.getChildCount(); i++) drawerChipRow.getChildAt(i).setSelected(false);
-            chip.setSelected(true);
-            onClick.run();
-        });
-        drawerChipRow.addView(chip);
+    // ── Boton unico desplegable — usado tanto para categorias (live) como temporadas (series) ──
+    private void toggleCatDropdown() {
+        if (dropdownOpen) closeCatDropdown(); else openCatDropdown();
+    }
+
+    private void openCatDropdown() {
+        dropdownOpen = true;
+        drawerCatDropdown.setVisibility(View.VISIBLE);
+        drawerCatChevron.animate().rotation(180).setDuration(150).start();
+    }
+
+    private void closeCatDropdown() {
+        dropdownOpen = false;
+        drawerCatDropdown.setVisibility(View.GONE);
+        drawerCatChevron.animate().rotation(0).setDuration(150).start();
+    }
+
+    // Construye la lista vertical del desplegable a partir de cualquier coleccion de valores
+    private <T> void buildDropdownItems(java.util.Collection<T> items, java.util.function.Function<T,String> label,
+                                         java.util.function.Function<T,Boolean> isSelected, java.util.function.Consumer<T> onPick) {
+        drawerCatDropdown.removeAllViews();
+        for (T item : items) {
+            TextView row = new TextView(this);
+            row.setText(label.apply(item));
+            row.setTextColor(isSelected.apply(item) ? 0xFF00D4FF : 0xFFE0F4FF);
+            row.setTextSize(13);
+            row.setPadding(dp(14), dp(11), dp(14), dp(11));
+            if (isSelected.apply(item)) row.setBackgroundResource(R.drawable.bg_drawer_item_selected);
+            row.setOnClickListener(v -> onPick.accept(item));
+            drawerCatDropdown.addView(row);
+        }
     }
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
@@ -1050,7 +1079,7 @@ public class PlayerActivity extends AppCompatActivity {
         } catch (Exception e) { toast("Error al cambiar de canal"); }
     }
 
-    // ── LIVE: chips de categoria (requieren red, se piden al abrir el panel) ──
+    // ── LIVE: categorias del desplegable (requieren red, se piden al abrir el panel) ──
     private void loadLiveCategoryChips() {
         if (!drawerLiveCats.isEmpty()) { renderLiveCategoryChips(); return; }
         drawerLoading.setVisibility(View.VISIBLE);
@@ -1077,56 +1106,19 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void renderLiveCategoryChips() {
-        drawerChipRow.removeAllViews();
-        for (JSONObject cat : drawerLiveCats) {
-            String catId = cat.optString("category_id", "");
-            String catName = cat.optString("category_name", "?");
-            boolean selected = catId.equals(drawerActiveCatId);
-            addDrawerChip(catName, selected, () -> loadLiveCategoryStreams(catId));
-        }
+        buildDropdownItems(drawerLiveCats,
+            cat -> cat.optString("category_name", "?"),
+            cat -> cat.optString("category_id", "").equals(drawerActiveCatId),
+            cat -> {
+                String catId = cat.optString("category_id", "");
+                String catName = cat.optString("category_name", "?");
+                drawerCatLabel.setText(catName);
+                closeCatDropdown();
+                loadLiveCategoryStreams(catId);
+            });
     }
 
-    // Cambiar de categoria SIN salir del reproductor — reemplaza la lista de canales del panel
-    private void loadLiveCategoryStreams(String catId) {
-        drawerActiveCatId = catId;
-        drawerLoading.setVisibility(View.VISIBLE);
-        new Thread(() -> {
-            try {
-                String[] p = url.split("/");
-                String user = p[4], pass = p[5];
-                String host = p[0] + "//" + p[2];
-                String api = host + "/player_api.php?username=" + user + "&password=" + pass + "&action=get_live_streams&category_id=" + catId;
-                HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
-                c.setConnectTimeout(8000); c.setReadTimeout(8000);
-                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
-                StringBuilder sb = new StringBuilder(); String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                JSONArray arr = new JSONArray(sb.toString());
-                java.util.List<JSONObject> newChannels = new java.util.ArrayList<>();
-                for (int i = 0; i < arr.length(); i++) {
-                    JSONObject s = arr.getJSONObject(i);
-                    JSONObject ch = new JSONObject();
-                    String sid = s.optString("stream_id", "");
-                    ch.put("id", sid);
-                    ch.put("name", s.optString("name", "?"));
-                    ch.put("url", host + "/live/" + user + "/" + pass + "/" + sid + ".m3u8");
-                    newChannels.add(ch);
-                }
-                runOnUiThread(() -> {
-                    drawerLoading.setVisibility(View.GONE);
-                    channels.clear();
-                    channels.addAll(newChannels);
-                    channelIndex = -1; // ninguno de esta categoria es el actual todavia
-                    renderDrawerListLive();
-                });
-            } catch (Exception e) {
-                runOnUiThread(() -> { drawerLoading.setVisibility(View.GONE); toast("No se pudo cargar la categoria"); });
-            }
-        }).start();
-    }
-
-    // ── SERIES: lista de episodios filtrada por temporada (ya en memoria, sin red) ──
+    // ── SERIES: lista de episodios filtrada por temporada    // ── SERIES: lista de episodios filtrada por temporada (ya en memoria, sin red) ──
     private void renderDrawerListSeries() {
         drawerList.removeAllViews();
         for (int i = 0; i < channels.size(); i++) {
