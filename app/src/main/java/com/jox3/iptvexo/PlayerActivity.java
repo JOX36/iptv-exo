@@ -711,6 +711,36 @@ public class PlayerActivity extends AppCompatActivity {
                     toast("\u23EE Reiniciando desde el inicio...");
                     handler.postDelayed(PlayerActivity.this::initPlayer, 600);
                 }
+                // ========== FIX: series que no avanzaban al siguiente episodio ==========
+                // Muchos servidores IPTV cortan la conexión cerca del final del archivo
+                // en vez de terminar limpio (STATE_ENDED nunca llega). Antes esto solo
+                // mostraba un diálogo de error y la serie se quedaba trabada ahí.
+                // Si es una serie y no se manejó ya el fin de episodio: si estamos cerca
+                // del final conocido, o la duración es desconocida (típico en streams
+                // remuxed), asumimos que es fin de episodio disfrazado de error y
+                // avanzamos automáticamente. Si el error ocurrió a mitad del episodio,
+                // se ofrece igual un atajo manual para no quedar atascado.
+                else if (isSeriesType() && !episodeEndHandled) {
+                    long pos = player != null ? player.getCurrentPosition() : 0;
+                    long dur = player != null ? player.getDuration() : 0;
+                    boolean nearEnd = dur > 0 && pos > 0 && (dur - pos) < 15000; // últimos 15s
+                    boolean unknownDur = dur <= 0;
+                    if (nearEnd || unknownDur) {
+                        episodeEndHandled = true;
+                        stopEndCheck();
+                        onEpisodeEnded();
+                    } else {
+                        showLoading(false);
+                        String detalle = e.getErrorCodeName() + " (" + e.errorCode + ")";
+                        new android.app.AlertDialog.Builder(PlayerActivity.this)
+                            .setTitle("Error de reproducci\u00f3n")
+                            .setMessage(detalle + "\n\n\u00bfContinuar con el siguiente episodio?")
+                            .setPositiveButton("\u25B6 Siguiente episodio", (d, w) -> playNextEpisode())
+                            .setNegativeButton("\uD83D\uDCF1 Abrir externo", (d, w) -> launchExternal())
+                            .setNeutralButton("Cerrar", null)
+                            .show();
+                    }
+                }
                 else {
                     showLoading(false);
                     // Diagnóstico: mostrar código de error exacto antes de ofrecer externo
