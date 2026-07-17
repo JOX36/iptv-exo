@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Tema de dialogos con la paleta de JOX3 TV (fondo oscuro, acento cyan) -->
+    <style name="AppDialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="colorAccent">#00D4FF</item>
+        <item name="android:windowBackground">@drawable/bg_dialog</item>
+        <item name="android:textColorPrimary">#E0F4FF</item>
+        <item name="android:textColorSecondary">#7AB8CC</item>
+        <item name="android:textColorAlertDialogListItem">#E0F4FF</item>
+        <item name="buttonBarPositiveButtonStyle">@style/AppDialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/AppDialogButton</item>
+        <item name="buttonBarNeutralButtonStyle">@style/AppDialogButton</item>
+    </style>
+
+    <style name="AppDialogButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">#00D4FF</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+</resources>
