@@ -1154,15 +1154,23 @@
 
             </LinearLayout>
 
-            <!-- Lista desplegable de categorias/temporadas — oculta hasta tocar el boton -->
-            <LinearLayout
-                android:id="@+id/drawer_cat_dropdown"
+            <!-- Lista desplegable de categorias/temporadas — oculta hasta tocar el boton.
+                 Envuelta en ScrollView con altura maxima para poder ver TODAS las categorias,
+                 no solo las que entran en pantalla. -->
+            <ScrollView
+                android:id="@+id/drawer_cat_dropdown_scroll"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
+                android:layout_height="260dp"
                 android:background="@drawable/bg_drawer_cat_btn"
                 android:layout_marginTop="4dp"
-                android:visibility="gone" />
+                android:scrollbars="vertical"
+                android:visibility="gone">
+                <LinearLayout
+                    android:id="@+id/drawer_cat_dropdown"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+            </ScrollView>
 
         </LinearLayout>
 
