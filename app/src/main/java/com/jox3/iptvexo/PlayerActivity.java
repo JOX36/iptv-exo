@@ -21,6 +21,7 @@ import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -1116,6 +1117,46 @@ public class PlayerActivity extends AppCompatActivity {
                 closeCatDropdown();
                 loadLiveCategoryStreams(catId);
             });
+    }
+
+    // Cambiar de categoria SIN salir del reproductor — reemplaza la lista de canales del panel
+    private void loadLiveCategoryStreams(String catId) {
+        drawerActiveCatId = catId;
+        drawerLoading.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            try {
+                String[] p = url.split("/");
+                String user = p[4], pass = p[5];
+                String host = p[0] + "//" + p[2];
+                String api = host + "/player_api.php?username=" + user + "&password=" + pass + "&action=get_live_streams&category_id=" + catId;
+                HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
+                c.setConnectTimeout(8000); c.setReadTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONArray arr = new JSONArray(sb.toString());
+                java.util.List<JSONObject> newChannels = new java.util.ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject s = arr.getJSONObject(i);
+                    JSONObject ch = new JSONObject();
+                    String sid = s.optString("stream_id", "");
+                    ch.put("id", sid);
+                    ch.put("name", s.optString("name", "?"));
+                    ch.put("url", host + "/live/" + user + "/" + pass + "/" + sid + ".m3u8");
+                    newChannels.add(ch);
+                }
+                runOnUiThread(() -> {
+                    drawerLoading.setVisibility(View.GONE);
+                    channels.clear();
+                    channels.addAll(newChannels);
+                    channelIndex = -1; // ninguno de esta categoria es el actual todavia
+                    renderDrawerListLive();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> { drawerLoading.setVisibility(View.GONE); toast("No se pudo cargar la categoria"); });
+            }
+        }).start();
     }
 
     // ── SERIES: lista de episodios filtrada por temporada    // ── SERIES: lista de episodios filtrada por temporada (ya en memoria, sin red) ──
