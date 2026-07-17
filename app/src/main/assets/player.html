@@ -1526,7 +1526,7 @@ function resetVideoElement(){
   return newVid;
 }
 
-function play(item){
+async function play(item){
   if(item.type==='series'){openSeries(item);return}
   // MEJORA: Resetear video si es necesario (evita estado zombie)
   let vid = document.getElementById('vid');
@@ -1634,6 +1634,36 @@ function play(item){
             if(idx >= 0){ flatEps=list; flatIdx=idx; break; }
           }
         }catch(e){}
+        // RESPALDO FINAL: ni seriesData ni EPLIST tenían esta serie — pedirla de nuevo
+        // al servidor usando el _seriesId que viaja con cada episodio.
+        if((!flatEps || !flatEps.length) && item._seriesId){
+          try{
+            const data = await xApi('get_series_info', `&series_id=${item._seriesId}`);
+            const seasons = data.episodes || {};
+            const seriesName = (data.info && data.info.name) || item.name.split(' · ')[0] || item.name;
+            const seasonKeys = Object.keys(seasons).sort((a,b)=>parseInt(a)-parseInt(b));
+            const allEps = [];
+            seasonKeys.forEach(sk=>{
+              (seasons[sk]||[]).forEach(ep=>{
+                const epNum = ep.episode_num||ep.id||'?';
+                const title = ep.title||`Episodio ${epNum}`;
+                const ext = ep.container_extension||'mkv';
+                const url = `${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
+                allEps.push({id:String(ep.id),name:`${seriesName} · T${sk}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:item.group||'',type:'vod',url,thumb:ep.info?.movie_image||'',_isSeries:true,_seriesId:String(item._seriesId)});
+              });
+            });
+            if(allEps.length){
+              flatEps = allEps;
+              flatIdx = allEps.findIndex(e=>String(e.id)===String(item.id));
+              // Cachear para la próxima vez (misma via que usa el modal)
+              try{
+                const epLists2 = lsGet(K.EPLIST) || {};
+                epLists2[String(item._seriesId)] = {eps: allEps, ts: Date.now()};
+                lsSet(K.EPLIST, epLists2);
+              }catch(e2){}
+            }
+          }catch(e3){}
+        }
       }
       if(flatEps && flatEps.length > 0){
         try{
@@ -1643,7 +1673,15 @@ function play(item){
         }catch(e){episodesJson='[]';}
       }
     }
-    const _openNative = () => AndroidPlayer.openPlayer(
+    // DIAGNOSTICO TEMPORAL: se pasa como dato al nativo para mostrarlo en el texto fijo
+    // que ya confirmamos que SI se ve (no depende de que el WebView alcance a pintar nada).
+    let debugInfo = '';
+    if(item._isSeries){
+      const seasonCount = seriesData ? Object.keys(seriesData.seasons||{}).length : -1;
+      const flatCount = episodesJson.length>2 ? JSON.parse(episodesJson).length : 0;
+      debugInfo = 'HTML: seriesData=' + (!!seriesData) + ' seasons=' + seasonCount + ' flatEps=' + flatCount + ' idx=' + episodeIndex + ' seriesId=' + (item._seriesId||'?');
+    }
+    AndroidPlayer.openPlayer(
       item.url||'',
       item.name||'',
       item.group||'',
@@ -1652,17 +1690,9 @@ function play(item){
       String(item.id||''),
       item._isSeries ? episodesJson : channelsJson,
       item._isSeries ? episodeIndex : channelIndex,
-      item._isSeries ? true : false
+      item._isSeries ? true : false,
+      debugInfo
     );
-    if(item._isSeries){
-      // DIAGNOSTICO TEMPORAL: dar tiempo a que el toast se PINTE antes de saltar al player nativo
-      const seasonCount = seriesData ? Object.keys(seriesData.seasons||{}).length : -1;
-      const flatCount = episodesJson.length>2 ? JSON.parse(episodesJson).length : 0;
-      toast('DEBUG seriesData=' + (!!seriesData) + ' seasons=' + seasonCount + ' flatEps=' + flatCount + ' idx=' + episodeIndex, 3000);
-      setTimeout(_openNative, 1800);
-    } else {
-      _openNative();
-    }
     clearInterval(EPG.timer);
     document.getElementById('epgBar').classList.remove('visible');
     const ov=document.getElementById('vidEpgOverlay');if(ov)ov.classList.remove('show');
@@ -2284,7 +2314,7 @@ function renderSeriesModal(seasonKeys){
   seriesData.currentEps=eps.map(ep=>{
     const epNum=ep.episode_num||ep.id||'?';const title=ep.title||`Episodio ${epNum}`;const ext=ep.container_extension||'mkv';
     const url=`${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
-    return{id:String(ep.id),name:`${seriesData.item.name} · T${activeSeason}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,epNum,title,dur:ep.info?.duration_secs?fmtDur(ep.info.duration_secs):'',rating:ep.info?.rating||'',thumb:ep.info?.movie_image||'',plot:ep.info?.plot||ep.info?.overview||'',_isSeries:true};
+    return{id:String(ep.id),name:`${seriesData.item.name} · T${activeSeason}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,epNum,title,dur:ep.info?.duration_secs?fmtDur(ep.info.duration_secs):'',rating:ep.info?.rating||'',thumb:ep.info?.movie_image||'',plot:ep.info?.plot||ep.info?.overview||'',_isSeries:true,_seriesId:String(seriesData.item.id)};
   });
 
   // Sinopsis de la serie
@@ -2386,7 +2416,7 @@ function _buildFlatEpList(currentIdx){
         id:String(ep.id), name:`${seriesData.item.name} · T${sk}E${epNum} - ${title}`,
         logo:ep.info?.movie_image||'', group:seriesData.item.group||'',
         type:'vod', url, epNum, season:sk, title,
-        thumb:ep.info?.movie_image||'', _isSeries:true
+        thumb:ep.info?.movie_image||'', _isSeries:true, _seriesId:String(seriesData.item.id)
       });
     });
   });
