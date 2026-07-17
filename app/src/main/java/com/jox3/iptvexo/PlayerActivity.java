@@ -88,8 +88,18 @@ public class PlayerActivity extends AppCompatActivity {
     private ImageButton vodFsBtnPause, vodFsBtnStop;
     // Nuevos controles VOD fullscreen
     private ImageButton vodFsBtnRew, vodFsBtnFfw, vodFsBtnDl, vodFsBtnResize;
+    private ImageButton vodFsBtnFav;
     private ImageButton vodFsBtnEpPrev, vodFsBtnEpNext;
     private ImageButton liveBtnRefresh, btnLock;
+    private ImageButton liveBtnGrid, vodFsBtnGrid, drawerClose;
+    private LinearLayout channelDrawer, drawerChipRow, drawerList;
+    private View drawerScrim;
+    private TextView drawerTitle;
+    private android.widget.ProgressBar drawerLoading;
+    private boolean drawerOpen = false;
+    private String drawerActiveCatId = null; // categoria live actualmente mostrada en el panel
+    private String drawerActiveSeason = null; // temporada actualmente filtrada (series)
+    private final java.util.List<org.json.JSONObject> drawerLiveCats = new java.util.ArrayList<>();
     private boolean screenLocked = false;
     private Button vodFsBtnSpeed;
     private DefaultTimeBar vodFsSeek;
@@ -293,6 +303,18 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnFfw   = findViewById(R.id.vod_fs_btn_ffw);
         vodFsBtnDl    = findViewById(R.id.vod_fs_btn_dl);
         vodFsBtnResize= findViewById(R.id.vod_fs_btn_resize);
+        vodFsBtnFav   = findViewById(R.id.vod_fs_btn_fav);
+        liveBtnGrid   = findViewById(R.id.live_btn_grid);
+        vodFsBtnGrid  = findViewById(R.id.vod_fs_btn_grid);
+        channelDrawer = findViewById(R.id.channel_drawer);
+        drawerScrim   = findViewById(R.id.drawer_scrim);
+        drawerTitle   = findViewById(R.id.drawer_title);
+        drawerClose   = findViewById(R.id.drawer_close);
+        drawerChipRow = findViewById(R.id.drawer_chip_row);
+        drawerList    = findViewById(R.id.drawer_list);
+        drawerLoading = findViewById(R.id.drawer_loading);
+        drawerClose.setOnClickListener(v -> closeDrawer());
+        drawerScrim.setOnClickListener(v -> closeDrawer());
         vodFsBtnEpPrev= findViewById(R.id.vod_fs_btn_ep_prev);
         vodFsBtnEpNext= findViewById(R.id.vod_fs_btn_ep_next);
         vodFsBtnSpeed = findViewById(R.id.vod_fs_btn_speed);
@@ -429,6 +451,7 @@ public class PlayerActivity extends AppCompatActivity {
             retryCount = 0;
             initPlayer();
         });
+        liveBtnGrid.setOnClickListener(v -> openDrawer());
 
         // Tap para barras — sin swipe de canal
         gestureDetector = new GestureDetector(this, new GestureDetector.SimpleOnGestureListener() {
@@ -475,6 +498,7 @@ public class PlayerActivity extends AppCompatActivity {
 
         vodFsBtnExit.setOnClickListener(v -> exitVodFullscreen());
         vodFsBtnPip.setOnClickListener(v -> enterPip());
+        vodFsBtnFav.setOnClickListener(v -> toggleFav(vodFsBtnFav));
         vodFsBtnExt.setOnClickListener(v -> launchExternal());
         vodFsBtnUrl.setOnClickListener(v -> copyUrl());
         vodFsBtnSubs.setOnClickListener(v -> showSubtitleTracks());
@@ -531,9 +555,11 @@ public class PlayerActivity extends AppCompatActivity {
         // Navegación de episodios (solo visible en series)
         vodFsBtnEpNext.setOnClickListener(v -> { stopEndCheck(); playNextEpisode(); });
         vodFsBtnEpPrev.setOnClickListener(v -> { stopEndCheck(); playPrevEpisode(); });
+        vodFsBtnGrid.setOnClickListener(v -> openDrawer());
         if (isSeriesType() && channels.size() > 1) {
             vodFsBtnEpPrev.setVisibility(View.VISIBLE);
             vodFsBtnEpNext.setVisibility(View.VISIBLE);
+            vodFsBtnGrid.setVisibility(View.VISIBLE);
         }
 
         // Seekbar arrastrable
@@ -720,7 +746,7 @@ public class PlayerActivity extends AppCompatActivity {
                     String detalle = e.getErrorCodeName() + " (" + e.errorCode + ")";
                     Throwable causa = e.getCause();
                     if (causa != null) detalle += "\n\n" + causa.getClass().getSimpleName() + ":\n" + causa.getMessage();
-                    new android.app.AlertDialog.Builder(PlayerActivity.this)
+                    new android.app.AlertDialog.Builder(PlayerActivity.this, R.style.AppDialog)
                         .setTitle("Error de reproducci\u00f3n")
                         .setMessage(detalle)
                         .setPositiveButton("\uD83D\uDCF2 Abrir externo", (d, w) -> launchExternal())
@@ -892,6 +918,248 @@ public class PlayerActivity extends AppCompatActivity {
         handler.postDelayed(this::hideLiveBars, 7000);
     }
 
+    // ══ PANEL DE CANALES / EPISODIOS ══
+    private void openDrawer() {
+        if (drawerOpen) return;
+        drawerOpen = true;
+        channelDrawer.setVisibility(View.VISIBLE);
+        drawerScrim.setVisibility(View.VISIBLE);
+        channelDrawer.setTranslationX(-channelDrawer.getWidth() > 0 ? -channelDrawer.getWidth() : -1000);
+        channelDrawer.animate().translationX(0).setDuration(220).start();
+
+        if (isVodType()) {
+            drawerTitle.setText("Episodios");
+            drawerChipRow.removeAllViews();
+            // Chips de temporada — usa la lista ya cargada, sin red
+            java.util.LinkedHashSet<String> seasons = new java.util.LinkedHashSet<>();
+            for (JSONObject c : channels) {
+                String s = seasonOf(c.optString("name", ""));
+                if (!s.isEmpty()) seasons.add(s);
+            }
+            String curSeason = seasonOf(name);
+            drawerActiveSeason = seasons.contains(curSeason) ? curSeason : (seasons.isEmpty() ? null : seasons.iterator().next());
+            for (String s : seasons) {
+                addDrawerChip("T" + s, s.equals(drawerActiveSeason), () -> {
+                    drawerActiveSeason = s;
+                    renderDrawerListSeries();
+                });
+            }
+            renderDrawerListSeries();
+        } else {
+            drawerTitle.setText("Canales");
+            renderDrawerListLive();
+            loadLiveCategoryChips();
+        }
+    }
+
+    private void closeDrawer() {
+        if (!drawerOpen) return;
+        drawerOpen = false;
+        channelDrawer.animate().translationX(-channelDrawer.getWidth()).setDuration(200)
+            .withEndAction(() -> { channelDrawer.setVisibility(View.GONE); drawerScrim.setVisibility(View.GONE); }).start();
+    }
+
+    private void addDrawerChip(String label, boolean selected, Runnable onClick) {
+        TextView chip = new TextView(this);
+        chip.setText(label);
+        chip.setTextColor(0xFFE0F4FF);
+        chip.setTextSize(12);
+        chip.setPadding(dp(14), dp(6), dp(14), dp(6));
+        chip.setBackgroundResource(R.drawable.bg_chip_selector);
+        chip.setSelected(selected);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        lp.setMarginEnd(dp(8));
+        chip.setLayoutParams(lp);
+        chip.setOnClickListener(v -> {
+            for (int i = 0; i < drawerChipRow.getChildCount(); i++) drawerChipRow.getChildAt(i).setSelected(false);
+            chip.setSelected(true);
+            onClick.run();
+        });
+        drawerChipRow.addView(chip);
+    }
+
+    private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
+
+    // Fila generica del panel (canal o episodio)
+    private View buildDrawerRow(String title, String subtitle, boolean current, Runnable onClick) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(14), dp(10), dp(14), dp(10));
+        if (current) row.setBackgroundResource(R.drawable.bg_drawer_row_selected);
+        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        row.setLayoutParams(rowLp);
+
+        LinearLayout textCol = new LinearLayout(this);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        textCol.setLayoutParams(textLp);
+
+        TextView tTitle = new TextView(this);
+        tTitle.setText(title);
+        tTitle.setTextColor(current ? 0xFF00D4FF : 0xFFE0F4FF);
+        tTitle.setTextSize(13);
+        tTitle.setMaxLines(2);
+        tTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        textCol.addView(tTitle);
+
+        if (subtitle != null && !subtitle.isEmpty()) {
+            TextView tSub = new TextView(this);
+            tSub.setText(subtitle);
+            tSub.setTextColor(0xFF7AB8CC);
+            tSub.setTextSize(10.5f);
+            textCol.addView(tSub);
+        }
+        row.addView(textCol);
+
+        if (current) {
+            TextView dot = new TextView(this);
+            dot.setText("\u25CF");
+            dot.setTextColor(0xFF00D4FF);
+            dot.setTextSize(11);
+            row.addView(dot);
+        }
+
+        row.setOnClickListener(v -> onClick.run());
+        return row;
+    }
+
+    // ── LIVE: lista de canales (ventana ya cargada en memoria) ──
+    private void renderDrawerListLive() {
+        drawerList.removeAllViews();
+        for (int i = 0; i < channels.size(); i++) {
+            JSONObject ch = channels.get(i);
+            final int idx = i;
+            boolean current = (i == channelIndex);
+            drawerList.addView(buildDrawerRow(ch.optString("name", "?"), null, current, () -> jumpToChannelIndex(idx)));
+        }
+    }
+
+    private void jumpToChannelIndex(int idx) {
+        if (idx < 0 || idx >= channels.size()) return;
+        try {
+            JSONObject ch = channels.get(idx);
+            channelIndex = idx;
+            url = ch.optString("url", "");
+            name = ch.optString("name", "");
+            itemId = ch.optString("id", "");
+            liveTxtName.setText(name);
+            retryCount = 0;
+            closeDrawer();
+            initPlayer();
+        } catch (Exception e) { toast("Error al cambiar de canal"); }
+    }
+
+    // ── LIVE: chips de categoria (requieren red, se piden al abrir el panel) ──
+    private void loadLiveCategoryChips() {
+        if (!drawerLiveCats.isEmpty()) { renderLiveCategoryChips(); return; }
+        drawerLoading.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            try {
+                String[] p = url.split("/");
+                if (p.length < 6) return;
+                String user = p[4], pass = p[5];
+                String api = p[0] + "//" + p[2] + "/player_api.php?username=" + user + "&password=" + pass + "&action=get_live_categories";
+                HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
+                c.setConnectTimeout(8000); c.setReadTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONArray arr = new JSONArray(sb.toString());
+                drawerLiveCats.clear();
+                for (int i = 0; i < arr.length(); i++) drawerLiveCats.add(arr.getJSONObject(i));
+                runOnUiThread(() -> { drawerLoading.setVisibility(View.GONE); renderLiveCategoryChips(); });
+            } catch (Exception e) {
+                runOnUiThread(() -> drawerLoading.setVisibility(View.GONE));
+            }
+        }).start();
+    }
+
+    private void renderLiveCategoryChips() {
+        drawerChipRow.removeAllViews();
+        for (JSONObject cat : drawerLiveCats) {
+            String catId = cat.optString("category_id", "");
+            String catName = cat.optString("category_name", "?");
+            boolean selected = catId.equals(drawerActiveCatId);
+            addDrawerChip(catName, selected, () -> loadLiveCategoryStreams(catId));
+        }
+    }
+
+    // Cambiar de categoria SIN salir del reproductor — reemplaza la lista de canales del panel
+    private void loadLiveCategoryStreams(String catId) {
+        drawerActiveCatId = catId;
+        drawerLoading.setVisibility(View.VISIBLE);
+        new Thread(() -> {
+            try {
+                String[] p = url.split("/");
+                String user = p[4], pass = p[5];
+                String host = p[0] + "//" + p[2];
+                String api = host + "/player_api.php?username=" + user + "&password=" + pass + "&action=get_live_streams&category_id=" + catId;
+                HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
+                c.setConnectTimeout(8000); c.setReadTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONArray arr = new JSONArray(sb.toString());
+                java.util.List<JSONObject> newChannels = new java.util.ArrayList<>();
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject s = arr.getJSONObject(i);
+                    JSONObject ch = new JSONObject();
+                    String sid = s.optString("stream_id", "");
+                    ch.put("id", sid);
+                    ch.put("name", s.optString("name", "?"));
+                    ch.put("url", host + "/live/" + user + "/" + pass + "/" + sid + ".m3u8");
+                    newChannels.add(ch);
+                }
+                runOnUiThread(() -> {
+                    drawerLoading.setVisibility(View.GONE);
+                    channels.clear();
+                    channels.addAll(newChannels);
+                    channelIndex = -1; // ninguno de esta categoria es el actual todavia
+                    renderDrawerListLive();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> { drawerLoading.setVisibility(View.GONE); toast("No se pudo cargar la categoria"); });
+            }
+        }).start();
+    }
+
+    // ── SERIES: lista de episodios filtrada por temporada (ya en memoria, sin red) ──
+    private void renderDrawerListSeries() {
+        drawerList.removeAllViews();
+        for (int i = 0; i < channels.size(); i++) {
+            JSONObject ep = channels.get(i);
+            String epName = ep.optString("name", "?");
+            String s = seasonOf(epName);
+            if (drawerActiveSeason != null && !s.equals(drawerActiveSeason)) continue;
+            final int idx = i;
+            boolean current = (i == channelIndex);
+            // Mostrar solo la parte "T#E# - titulo" recortando el nombre de la serie repetido
+            String shortName = epName.contains(" \u00b7 ") ? epName.substring(epName.indexOf(" \u00b7 ") + 3) : epName;
+            drawerList.addView(buildDrawerRow(shortName, null, current, () -> jumpToEpisodeIndex(idx)));
+        }
+    }
+
+    private void jumpToEpisodeIndex(int idx) {
+        if (idx < 0 || idx >= channels.size()) return;
+        try {
+            JSONObject ep = channels.get(idx);
+            channelIndex = idx;
+            url = ep.optString("url", "");
+            name = ep.optString("name", "");
+            itemId = ep.optString("id", "");
+            episodeEndHandled = false;
+            vodTxtTitleBar.setText(name);
+            vodTxtTitle.setText(name);
+            vodFsTxtTitle.setText(name);
+            retryCount = 0;
+            closeDrawer();
+            initPlayer();
+        } catch (Exception e) { toast("Error al cambiar de episodio"); }
+    }
+
     // ══ CANDADO DE PANTALLA ══
     private void toggleScreenLock() {
         screenLocked = !screenLocked;
@@ -929,7 +1197,7 @@ public class PlayerActivity extends AppCompatActivity {
             }
         }
         if (labels.isEmpty()) { toast("Sin pistas de audio"); return; }
-        new AlertDialog.Builder(this).setTitle("Seleccionar audio")
+        new AlertDialog.Builder(this, R.style.AppDialog).setTitle("Seleccionar audio")
             .setItems(labels.toArray(new String[0]), (d, w) ->
                 player.setTrackSelectionParameters(player.getTrackSelectionParameters()
                     .buildUpon().setPreferredAudioLanguage(langs.get(w)).build())).show();
@@ -949,7 +1217,7 @@ public class PlayerActivity extends AppCompatActivity {
             }
         }
         if (labels.size() == 1) { toast("Sin subtitulos disponibles"); return; }
-        new AlertDialog.Builder(this).setTitle("Subtitulos")
+        new AlertDialog.Builder(this, R.style.AppDialog).setTitle("Subtitulos")
             .setItems(labels.toArray(new String[0]), (d, w) -> {
                 if (w == 0) player.setTrackSelectionParameters(player.getTrackSelectionParameters()
                     .buildUpon().setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT).build());
@@ -1065,10 +1333,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void toggleFav(ImageButton btn) {
         isFav = !isFav; favChanged = true; favAdded = isFav;
-        btn.setImageResource(isFav ? R.drawable.ic_star : R.drawable.ic_star_outline);
-        // Sincronizar el otro botón de favorito (live/vod) si ambos existen en pantalla
-        ImageButton other = (btn == liveBtnFav) ? vodBtnFav : liveBtnFav;
-        if (other != null) other.setImageResource(isFav ? R.drawable.ic_star : R.drawable.ic_star_outline);
+        int res = isFav ? R.drawable.ic_star : R.drawable.ic_star_outline;
+        if (liveBtnFav != null) liveBtnFav.setImageResource(res);
+        if (vodBtnFav != null) vodBtnFav.setImageResource(res);
+        if (vodFsBtnFav != null) vodFsBtnFav.setImageResource(res);
         toast(isFav ? "\u2B50 Agregado a favoritos" : "Quitado de favoritos");
     }
 
@@ -1141,7 +1409,7 @@ public class PlayerActivity extends AppCompatActivity {
         long mins = savedPosition / 60000;
         long secs = (savedPosition % 60000) / 1000;
         String timeStr = mins > 0 ? mins + "m " + secs + "s" : secs + "s";
-        new android.app.AlertDialog.Builder(this)
+        new android.app.AlertDialog.Builder(this, R.style.AppDialog)
             .setTitle(name)
             .setMessage("¿Continuar desde " + timeStr + "?")
             .setPositiveButton("▶ Continuar", (d, w) -> {
@@ -1721,7 +1989,7 @@ public class PlayerActivity extends AppCompatActivity {
         result.putExtra("fav_added", favChanged && favAdded);
         result.putExtra("fav_removed", favChanged && !favAdded);
         result.putExtra("item_id", itemId);
-        result.putExtra("item_type", type);
+        result.putExtra("item_type", isSeriesType() ? "vod" : type);
         result.putExtra("vod_position", retPos);
         result.putExtra("vod_duration", retDur);
         setResult(RESULT_OK, result);
@@ -1819,6 +2087,10 @@ public class PlayerActivity extends AppCompatActivity {
     public void onBackPressed() {
         if (screenLocked) {
             toast("\uD83D\uDD12 Desbloquea la pantalla para salir");
+            return;
+        }
+        if (drawerOpen) {
+            closeDrawer();
             return;
         }
         if (isVodFullscreen) {
