@@ -2736,6 +2736,8 @@ async function loadCatItemsDirect(sec, catId, limit=20){
 }
 
 function renderHome(liveItems, vodItems, seriesItems, _unused){
+  vodItems = filterAdult(vodItems);
+  seriesItems = filterAdult(seriesItems);
   const hist = S.history || [];
   window._homeData = {live:liveItems||[], vod:vodItems||[], series:seriesItems||[]};
   let html = '<div class="home-screen">';
@@ -2870,18 +2872,27 @@ function homeVodCard(item){
 }
 
 // ── Fuente de contenido para hero y recomendaciones ──
+// Filtro de contenido para adultos — se excluye SOLO de recomendaciones automaticas
+// (banner, destacadas, "porque viste"), nunca de la navegacion normal por categorias.
+const ADULT_RX = /xxx|adult|hentai|\+18|18\+|porn|erotic|para\s*adultos/i;
+function isAdultItem(item){
+  if(!item) return false;
+  return ADULT_RX.test(item.group||'') || ADULT_RX.test(item.name||'');
+}
+function filterAdult(arr){ return (arr||[]).filter(i=>!isAdultItem(i)); }
+
 function _heroPoolSource(){
   try{
-    if(typeof IDX!=='undefined' && IDX.items && IDX.items.length>50) return IDX.items;
+    if(typeof IDX!=='undefined' && IDX.items && IDX.items.length>50) return filterAdult(IDX.items);
     let flat=[];
     ['live','vod','series'].forEach(sec=>{
       (S.cats[sec]||[]).forEach(c=>{
         if(c.loaded && c.items && c.items.length) flat = flat.concat(c.items); // concat: seguro con catálogos grandes
       });
     });
-    if(flat.length>10) return flat;
+    if(flat.length>10) return filterAdult(flat);
     const d=window._homeData||{};
-    return (d.live||[]).concat(d.vod||[], d.series||[]);
+    return filterAdult((d.live||[]).concat(d.vod||[], d.series||[]));
   }catch(e){ return []; }
 }
 
