@@ -90,6 +90,13 @@ public class PlayerActivity extends AppCompatActivity {
     // Nuevos controles VOD fullscreen
     private ImageButton vodFsBtnRew, vodFsBtnFfw, vodFsBtnDl, vodFsBtnResize;
     private ImageButton vodFsBtnFav, vodFsBtnAudio;
+    private LinearLayout vodEpisodesSection, vodSeasonChips, vodEpisodesRow;
+    private LinearLayout vodSimilarSection, vodSimilarRow;
+    private LinearLayout vodTechToggle, vodTechBody;
+    private ImageView vodTechChevron;
+    private TextView techResolution, techContainer, techDuration, techYear;
+    private String lastKnownResolution = "";
+    private String drawerActiveVodSeason = null;
     private ImageButton vodFsBtnEpPrev, vodFsBtnEpNext;
     private ImageButton liveBtnRefresh, btnLock;
     private ImageButton liveBtnGrid, vodFsBtnGrid, drawerClose;
@@ -304,6 +311,23 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnUrl   = findViewById(R.id.vod_fs_btn_url);
         vodFsBtnSubs  = findViewById(R.id.vod_fs_btn_subs);
         vodFsBtnAudio = findViewById(R.id.vod_fs_btn_audio);
+        vodEpisodesSection = findViewById(R.id.vod_episodes_section);
+        vodSeasonChips     = findViewById(R.id.vod_season_chips);
+        vodEpisodesRow     = findViewById(R.id.vod_episodes_row);
+        vodSimilarSection  = findViewById(R.id.vod_similar_section);
+        vodSimilarRow      = findViewById(R.id.vod_similar_row);
+        vodTechToggle      = findViewById(R.id.vod_tech_toggle);
+        vodTechBody        = findViewById(R.id.vod_tech_body);
+        vodTechChevron     = findViewById(R.id.vod_tech_chevron);
+        techResolution     = findViewById(R.id.tech_resolution);
+        techContainer      = findViewById(R.id.tech_container);
+        techDuration       = findViewById(R.id.tech_duration);
+        techYear           = findViewById(R.id.tech_year);
+        vodTechToggle.setOnClickListener(v -> {
+            boolean open = vodTechBody.getVisibility() == View.VISIBLE;
+            vodTechBody.setVisibility(open ? View.GONE : View.VISIBLE);
+            vodTechChevron.animate().rotation(open ? 0 : 180).setDuration(150).start();
+        });
         vodFsBtnPause = findViewById(R.id.vod_fs_btn_pause);
         vodFsBtnStop  = findViewById(R.id.vod_fs_btn_stop);
         vodFsBtnRew   = findViewById(R.id.vod_fs_btn_rew);
@@ -1377,9 +1401,227 @@ public class PlayerActivity extends AppCompatActivity {
                     if (!year.isEmpty())   { vodTxtYear.setText(year.length()>=4?year.substring(0,4):year); vodTxtYear.setVisibility(View.VISIBLE); }
                     if (!dur.isEmpty())    { vodTxtDuration.setText(dur); vodTxtDuration.setVisibility(View.VISIBLE); }
                     if (!rating.isEmpty() && !rating.equals("0")) { vodTxtRating.setText("\u2B50 "+rating); vodTxtRating.setVisibility(View.VISIBLE); }
+                    // Ficha tecnica
+                    if (techYear != null)     techYear.setText(!year.isEmpty() ? (year.length()>=4?year.substring(0,4):year) : "\u2014");
+                    if (techDuration != null) techDuration.setText(!dur.isEmpty() ? dur : "\u2014");
+                    if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
+                    if (techResolution != null && !lastKnownResolution.isEmpty()) techResolution.setText(lastKnownResolution);
                 });
-            } catch (Exception e) { runOnUiThread(() -> vodTxtPlot.setText("Sin informacion disponible.")); }
+                // Secciones de episodios/similares — no dependen de esta respuesta, se disparan igual
+                runOnUiThread(this::setupExtrasSections);
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    vodTxtPlot.setText("Sin informacion disponible.");
+                    if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
+                    setupExtrasSections();
+                });
+            }
         }).start();
+    }
+
+    private String fileContainerFromUrl() {
+        if (url == null) return "?";
+        int dot = url.lastIndexOf('.');
+        if (dot > 0 && dot > url.lastIndexOf('/')) {
+            String ext = url.substring(dot + 1);
+            if (ext.length() <= 5 && ext.matches("[A-Za-z0-9]+")) return ext;
+        }
+        return "?";
+    }
+
+    // Decide y arma la seccion correspondiente: episodios (series) o similares (peliculas)
+    private void setupExtrasSections() {
+        if (isSeriesType() && channels.size() > 1) {
+            vodEpisodesSection.setVisibility(View.VISIBLE);
+            buildEpisodesUi();
+        } else if (isVodType() && !isSeriesType()) {
+            vodSimilarSection.setVisibility(View.VISIBLE);
+            loadSimilarMoviesNative();
+        }
+    }
+
+    // ══ SECCION EPISODIOS (info screen de series) ══
+    private void buildEpisodesUi() {
+        java.util.LinkedHashSet<String> seasons = new java.util.LinkedHashSet<>();
+        for (JSONObject c : channels) {
+            String s = seasonOf(c.optString("name", ""));
+            if (!s.isEmpty()) seasons.add(s);
+        }
+        String curSeason = seasonOf(name);
+        drawerActiveVodSeason = seasons.contains(curSeason) ? curSeason : (seasons.isEmpty() ? null : seasons.iterator().next());
+
+        vodSeasonChips.removeAllViews();
+        for (String s : seasons) {
+            TextView chip = new TextView(this);
+            chip.setText("T" + s);
+            chip.setTextColor(0xFFE0F4FF);
+            chip.setTextSize(12);
+            chip.setPadding(dp(14), dp(6), dp(14), dp(6));
+            chip.setBackgroundResource(R.drawable.bg_chip_selector);
+            chip.setSelected(s.equals(drawerActiveVodSeason));
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+            lp.setMarginEnd(dp(8));
+            chip.setLayoutParams(lp);
+            chip.setOnClickListener(v -> {
+                for (int i = 0; i < vodSeasonChips.getChildCount(); i++) vodSeasonChips.getChildAt(i).setSelected(false);
+                chip.setSelected(true);
+                drawerActiveVodSeason = s;
+                renderEpisodeCards();
+            });
+            vodSeasonChips.addView(chip);
+        }
+        renderEpisodeCards();
+    }
+
+    private void renderEpisodeCards() {
+        vodEpisodesRow.removeAllViews();
+        for (int i = 0; i < channels.size(); i++) {
+            JSONObject ep = channels.get(i);
+            String epName = ep.optString("name", "?");
+            if (drawerActiveVodSeason != null && !seasonOf(epName).equals(drawerActiveVodSeason)) continue;
+            final int idx = i;
+            String shortName = epName.contains(" \u00b7 ") ? epName.substring(epName.indexOf(" \u00b7 ") + 3) : epName;
+            vodEpisodesRow.addView(buildEpisodeCard(shortName, i == channelIndex, () -> {
+                jumpToEpisodeIndex(idx);
+            }));
+        }
+    }
+
+    private View buildEpisodeCard(String title, boolean current, Runnable onClick) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(dp(140), LinearLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.setMarginEnd(dp(10));
+        card.setLayoutParams(cardLp);
+
+        LinearLayout thumb = new LinearLayout(this);
+        thumb.setGravity(android.view.Gravity.CENTER);
+        thumb.setLayoutParams(new LinearLayout.LayoutParams(dp(140), dp(78)));
+        thumb.setBackgroundResource(current ? R.drawable.bg_drawer_row_selected : R.drawable.bg_btn_circle);
+        TextView icon = new TextView(this);
+        icon.setText(current ? "\u25B6" : "\uD83C\uDFAC");
+        icon.setTextSize(20);
+        icon.setTextColor(current ? 0xFF00D4FF : 0xFFE0F4FF);
+        thumb.addView(icon);
+        card.addView(thumb);
+
+        TextView tTitle = new TextView(this);
+        tTitle.setText(title);
+        tTitle.setTextColor(current ? 0xFF00D4FF : 0xFFE0F4FF);
+        tTitle.setTextSize(11);
+        tTitle.setMaxLines(2);
+        tTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tLp.topMargin = dp(5);
+        tTitle.setLayoutParams(tLp);
+        card.addView(tTitle);
+
+        card.setOnClickListener(v -> onClick.run());
+        return card;
+    }
+
+    // ══ SECCION SIMILARES (info screen de peliculas) ══
+    private void loadSimilarMoviesNative() {
+        if (group == null || group.trim().isEmpty() || url == null) return;
+        new Thread(() -> {
+            try {
+                String[] p = url.split("/");
+                if (p.length < 6) return;
+                String user = p[4], pass = p[5];
+                String host = p[0] + "//" + p[2];
+                // 1) Buscar el category_id que coincide con el nombre de categoria actual
+                String catApi = host + "/player_api.php?username=" + user + "&password=" + pass + "&action=get_vod_categories";
+                String catId = null;
+                HttpURLConnection c1 = (HttpURLConnection) new URL(catApi).openConnection();
+                c1.setConnectTimeout(8000); c1.setReadTimeout(8000);
+                BufferedReader br1 = new BufferedReader(new InputStreamReader(c1.getInputStream()));
+                StringBuilder sb1 = new StringBuilder(); String l1;
+                while ((l1 = br1.readLine()) != null) sb1.append(l1);
+                br1.close();
+                JSONArray cats = new JSONArray(sb1.toString());
+                for (int i = 0; i < cats.length(); i++) {
+                    JSONObject cat = cats.getJSONObject(i);
+                    if (group.equals(cat.optString("category_name", ""))) { catId = cat.optString("category_id", ""); break; }
+                }
+                if (catId == null) return;
+                // 2) Traer las peliculas de esa categoria
+                String streamsApi = host + "/player_api.php?username=" + user + "&password=" + pass + "&action=get_vod_streams&category_id=" + catId;
+                HttpURLConnection c2 = (HttpURLConnection) new URL(streamsApi).openConnection();
+                c2.setConnectTimeout(8000); c2.setReadTimeout(8000);
+                BufferedReader br2 = new BufferedReader(new InputStreamReader(c2.getInputStream()));
+                StringBuilder sb2 = new StringBuilder(); String l2;
+                while ((l2 = br2.readLine()) != null) sb2.append(l2);
+                br2.close();
+                JSONArray streams = new JSONArray(sb2.toString());
+                java.util.List<JSONObject> similar = new java.util.ArrayList<>();
+                for (int i = 0; i < streams.length() && similar.size() < 12; i++) {
+                    JSONObject s = streams.getJSONObject(i);
+                    if (!String.valueOf(s.optInt("stream_id", -1)).equals(itemId)) similar.add(s);
+                }
+                runOnUiThread(() -> renderSimilarCards(similar, host, user, pass));
+            } catch (Exception e) { /* sin similares disponibles — la seccion se queda vacia */ }
+        }).start();
+    }
+
+    private void renderSimilarCards(java.util.List<JSONObject> movies, String host, String user, String pass) {
+        vodSimilarRow.removeAllViews();
+        for (JSONObject m : movies) {
+            String mName = m.optString("name", "?");
+            String rating = m.optString("rating", "");
+            String sid = String.valueOf(m.optInt("stream_id", 0));
+            String ext = m.optString("container_extension", "mp4");
+            String mUrl = host + "/movie/" + user + "/" + pass + "/" + sid + "." + ext;
+            vodSimilarRow.addView(buildSimilarCard(mName, rating, () -> {
+                url = mUrl; name = mName; itemId = sid; group = group;
+                episodeEndHandled = false; retryCount = 0;
+                vodTxtTitleBar.setText(name); vodTxtTitle.setText(name);
+                vodTxtPlot.setText("Cargando informacion..."); vodTxtYear.setVisibility(View.GONE);
+                vodTxtDuration.setVisibility(View.GONE); vodTxtRating.setVisibility(View.GONE);
+                vodSimilarSection.setVisibility(View.GONE);
+                fetchVodInfo();
+                initPlayer();
+            }));
+        }
+    }
+
+    private View buildSimilarCard(String title, String rating, Runnable onClick) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(dp(100), LinearLayout.LayoutParams.WRAP_CONTENT);
+        cardLp.setMarginEnd(dp(10));
+        card.setLayoutParams(cardLp);
+
+        LinearLayout poster = new LinearLayout(this);
+        poster.setGravity(android.view.Gravity.CENTER);
+        poster.setLayoutParams(new LinearLayout.LayoutParams(dp(100), dp(144)));
+        poster.setBackgroundResource(R.drawable.bg_btn_circle);
+        TextView icon = new TextView(this);
+        icon.setText("\uD83C\uDFAC");
+        icon.setTextSize(26);
+        poster.addView(icon);
+        card.addView(poster);
+
+        TextView tTitle = new TextView(this);
+        tTitle.setText(title);
+        tTitle.setTextColor(0xFFE0F4FF);
+        tTitle.setTextSize(11);
+        tTitle.setMaxLines(2);
+        tTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        tLp.topMargin = dp(5);
+        tTitle.setLayoutParams(tLp);
+        card.addView(tTitle);
+
+        if (rating != null && !rating.isEmpty() && !rating.equals("0")) {
+            TextView tRating = new TextView(this);
+            tRating.setText("\u2B50 " + rating);
+            tRating.setTextColor(0xFFFFC107);
+            tRating.setTextSize(10);
+            card.addView(tRating);
+        }
+
+        card.setOnClickListener(v -> onClick.run());
+        return card;
     }
 
     // ══ SEEKBAR UI (VOD fullscreen) ══
@@ -1984,6 +2226,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void updateResolutionLabel(String res) {
+        lastKnownResolution = res;
         runOnUiThread(() -> {
             if (liveResolution != null) {
                 liveResolution.setText(res);
@@ -1997,6 +2240,7 @@ public class PlayerActivity extends AppCompatActivity {
                 vodTxtResolution.setText(res);
                 vodTxtResolution.setVisibility(View.VISIBLE);
             }
+            if (techResolution != null) techResolution.setText(res);
         });
     }
 
