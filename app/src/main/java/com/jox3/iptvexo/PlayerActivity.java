@@ -972,6 +972,7 @@ public class PlayerActivity extends AppCompatActivity {
     private void closeDrawer() {
         if (!drawerOpen) return;
         drawerOpen = false;
+        drawerEpgToken++; // cancelar cualquier carga de EPG en curso
         closeCatDropdown();
         channelDrawer.animate().translationX(-channelDrawer.getWidth()).setDuration(200)
             .withEndAction(() -> { channelDrawer.setVisibility(View.GONE); drawerScrim.setVisibility(View.GONE); }).start();
@@ -1012,8 +1013,10 @@ public class PlayerActivity extends AppCompatActivity {
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density); }
 
-    // Fila generica del panel (canal o episodio)
-    private View buildDrawerRow(String title, String subtitle, boolean current, Runnable onClick) {
+    // Fila generica del panel (canal o episodio). withEpgSlot=true crea siempre el TextView
+    // del subtitulo (aunque empiece vacio) para poder rellenarlo despues con el EPG.
+    private TextView buildDrawerRowRef; // referencia al ultimo subtitulo creado (helper de retorno)
+    private View buildDrawerRow(String title, String subtitle, boolean current, boolean withEpgSlot, Runnable onClick) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -1035,14 +1038,19 @@ public class PlayerActivity extends AppCompatActivity {
         tTitle.setEllipsize(android.text.TextUtils.TruncateAt.END);
         textCol.addView(tTitle);
 
-        if (subtitle != null && !subtitle.isEmpty()) {
-            TextView tSub = new TextView(this);
-            tSub.setText(subtitle);
+        TextView tSub = null;
+        if (withEpgSlot || (subtitle != null && !subtitle.isEmpty())) {
+            tSub = new TextView(this);
+            tSub.setText(subtitle != null ? subtitle : "");
             tSub.setTextColor(0xFF7AB8CC);
             tSub.setTextSize(10.5f);
+            tSub.setMaxLines(1);
+            tSub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            tSub.setVisibility((subtitle != null && !subtitle.isEmpty()) ? View.VISIBLE : View.GONE);
             textCol.addView(tSub);
         }
         row.addView(textCol);
+        buildDrawerRowRef = tSub;
 
         if (current) {
             TextView dot = new TextView(this);
@@ -1056,15 +1064,69 @@ public class PlayerActivity extends AppCompatActivity {
         return row;
     }
 
+    private int drawerEpgToken = 0;
+    private final java.util.List<TextView> drawerEpgSlots = new java.util.ArrayList<>();
+
     // ── LIVE: lista de canales (ventana ya cargada en memoria) ──
     private void renderDrawerListLive() {
         drawerList.removeAllViews();
+        drawerEpgSlots.clear();
         for (int i = 0; i < channels.size(); i++) {
             JSONObject ch = channels.get(i);
             final int idx = i;
             boolean current = (i == channelIndex);
-            drawerList.addView(buildDrawerRow(ch.optString("name", "?"), null, current, () -> jumpToChannelIndex(idx)));
+            View row = buildDrawerRow(ch.optString("name", "?"), null, current, true, () -> jumpToChannelIndex(idx));
+            drawerEpgSlots.add(buildDrawerRowRef);
+            drawerList.addView(row);
         }
+        loadDrawerEpgBatch();
+    }
+
+    // Carga la guia EPG de cada canal del panel, uno por uno, con pausa entre peticiones
+    // para no saturar el servidor. Se cancela solo si se vuelve a abrir/cerrar el panel.
+    private void loadDrawerEpgBatch() {
+        final int token = ++drawerEpgToken;
+        final java.util.List<JSONObject> snapshot = new java.util.ArrayList<>(channels);
+        new Thread(() -> {
+            for (int i = 0; i < snapshot.size(); i++) {
+                if (token != drawerEpgToken) return; // el panel cambio de contenido — abortar
+                JSONObject ch = snapshot.get(i);
+                String chUrl = ch.optString("url", "");
+                String sid = ch.optString("id", "");
+                if (chUrl.isEmpty() || sid.isEmpty()) continue;
+                try {
+                    String[] p = chUrl.split("/");
+                    if (p.length < 6) continue;
+                    String user = p[4], pass = p[5];
+                    String api = p[0] + "//" + p[2] + "/player_api.php?username=" + user + "&password=" + pass
+                               + "&action=get_short_epg&stream_id=" + sid + "&limit=1";
+                    HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
+                    c.setConnectTimeout(5000); c.setReadTimeout(5000);
+                    BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                    StringBuilder sb = new StringBuilder(); String line;
+                    while ((line = br.readLine()) != null) sb.append(line);
+                    br.close();
+                    JSONObject data = new JSONObject(sb.toString());
+                    JSONArray list = data.optJSONArray("epg_listings");
+                    if (list != null && list.length() > 0) {
+                        String title = list.getJSONObject(0).optString("title", "");
+                        if (!title.isEmpty()) {
+                            try { title = new String(android.util.Base64.decode(title, android.util.Base64.DEFAULT)); } catch (Exception ig) {}
+                        }
+                        final String fTitle = title;
+                        final int fi = i;
+                        if (!fTitle.isEmpty()) {
+                            runOnUiThread(() -> {
+                                if (token != drawerEpgToken || fi >= drawerEpgSlots.size()) return;
+                                TextView slot = drawerEpgSlots.get(fi);
+                                if (slot != null) { slot.setText("\u25B8 " + fTitle); slot.setVisibility(View.VISIBLE); }
+                            });
+                        }
+                    }
+                } catch (Exception e) { /* canal sin EPG disponible — seguir con el siguiente */ }
+                try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+            }
+        }).start();
     }
 
     private void jumpToChannelIndex(int idx) {
@@ -1173,7 +1235,7 @@ public class PlayerActivity extends AppCompatActivity {
             boolean current = (i == channelIndex);
             // Mostrar solo la parte "T#E# - titulo" recortando el nombre de la serie repetido
             String shortName = epName.contains(" \u00b7 ") ? epName.substring(epName.indexOf(" \u00b7 ") + 3) : epName;
-            drawerList.addView(buildDrawerRow(shortName, null, current, () -> jumpToEpisodeIndex(idx)));
+            drawerList.addView(buildDrawerRow(shortName, null, current, false, () -> jumpToEpisodeIndex(idx)));
         }
     }
 
