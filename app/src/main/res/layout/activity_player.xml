@@ -535,6 +535,151 @@
 
                 </LinearLayout>
 
+                <!-- ═══ EPISODIOS (series) — chips de temporada + fila deslizable ═══ -->
+                <LinearLayout
+                    android:id="@+id/vod_episodes_section"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="22dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="\uD83D\uDCFA Episodios"
+                        android:textColor="#E0F4FF"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-condensed"
+                        android:layout_marginBottom="10dp" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none"
+                        android:layout_marginBottom="10dp">
+                        <LinearLayout
+                            android:id="@+id/vod_season_chips"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none">
+                        <LinearLayout
+                            android:id="@+id/vod_episodes_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
+
+                </LinearLayout>
+
+                <!-- ═══ TAMBIEN TE PUEDE INTERESAR (peliculas) ═══ -->
+                <LinearLayout
+                    android:id="@+id/vod_similar_section"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginTop="22dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="\uD83C\uDFAC Tambi\u00e9n te puede interesar"
+                        android:textColor="#E0F4FF"
+                        android:textSize="14sp"
+                        android:textStyle="bold"
+                        android:fontFamily="sans-serif-condensed"
+                        android:layout_marginBottom="10dp" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none">
+                        <LinearLayout
+                            android:id="@+id/vod_similar_row"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal" />
+                    </HorizontalScrollView>
+
+                </LinearLayout>
+
+                <!-- ═══ FICHA TECNICA COLAPSABLE ═══ -->
+                <LinearLayout
+                    android:id="@+id/vod_tech_toggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:background="@drawable/bg_drawer_cat_btn"
+                    android:padding="13dp"
+                    android:layout_marginTop="22dp"
+                    android:clickable="true"
+                    android:focusable="true">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="\u2139\uFE0F Ficha t\u00e9cnica"
+                        android:textColor="#E0F4FF"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <ImageView
+                        android:id="@+id/vod_tech_chevron"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:src="@drawable/ic_chevron_down" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/vod_tech_body"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:background="@drawable/bg_drawer_cat_btn"
+                    android:padding="14dp"
+                    android:layout_marginTop="4dp"
+                    android:visibility="gone">
+
+                    <GridLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:columnCount="2"
+                        android:rowCount="2">
+
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_marginBottom="12dp">
+                            <TextView android:text="RESOLUCI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_resolution" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_marginBottom="12dp">
+                            <TextView android:text="CONTENEDOR" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_container" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp">
+                            <TextView android:text="DURACI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_duration" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        </LinearLayout>
+
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp">
+                            <TextView android:text="A\u00d1O" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_year" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        </LinearLayout>
+
+                    </GridLayout>
+                </LinearLayout>
+
             </LinearLayout>
         </ScrollView>
 
