@@ -657,24 +657,24 @@
                         android:columnCount="2"
                         android:rowCount="2">
 
-                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_marginBottom="12dp">
-                            <TextView android:text="RESOLUCI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
-                            <TextView android:id="@+id/tech_resolution" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginBottom="12dp">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RESOLUCI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_resolution" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
                         </LinearLayout>
 
-                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_marginBottom="12dp">
-                            <TextView android:text="CONTENEDOR" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
-                            <TextView android:id="@+id/tech_container" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_marginBottom="12dp">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CONTENEDOR" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
                         </LinearLayout>
 
-                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp">
-                            <TextView android:text="DURACI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
-                            <TextView android:id="@+id/tech_duration" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_height="wrap_content">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DURACI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_duration" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
                         </LinearLayout>
 
-                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp">
-                            <TextView android:text="A\u00d1O" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
-                            <TextView android:id="@+id/tech_year" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                        <LinearLayout android:orientation="vertical" android:layout_columnWeight="1" android:layout_width="0dp" android:layout_height="wrap_content">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A\u00d1O" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            <TextView android:id="@+id/tech_year" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
                         </LinearLayout>
 
                     </GridLayout>
