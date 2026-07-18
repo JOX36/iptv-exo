@@ -22,6 +22,11 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.ImageView;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.LayerDrawable;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
@@ -1380,6 +1385,26 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ══ VOD INFO ══
     private void fetchVodInfo() {
+        // SERIES: get_vod_info es el endpoint de PELICULAS — no aplica a episodios (necesitaria
+        // get_series_info con el ID de la serie, no del episodio). Para series usamos los datos
+        // que el propio episodio ya trae (plot/duracion/rating vienen en el objeto del canal),
+        // sin otra llamada de red — ademas resuelve el "Cargando informacion..." que se quedaba
+        // pegado para siempre porque get_vod_info nunca encontraba nada para un ID de episodio.
+        if (isSeriesType()) {
+            JSONObject ep = (channelIndex >= 0 && channelIndex < channels.size()) ? channels.get(channelIndex) : null;
+            String plot = ep != null ? ep.optString("plot", "") : "";
+            String dur  = ep != null ? ep.optString("dur", "") : "";
+            String rating = ep != null ? ep.optString("rating", "") : "";
+            vodTxtPlot.setText(!plot.isEmpty() ? plot : "Sin sinopsis disponible para este episodio.");
+            if (!dur.isEmpty())    { vodTxtDuration.setText(dur); vodTxtDuration.setVisibility(View.VISIBLE); }
+            if (!rating.isEmpty() && !rating.equals("0")) { vodTxtRating.setText("\u2B50 " + rating); vodTxtRating.setVisibility(View.VISIBLE); }
+            if (techDuration != null) techDuration.setText(!dur.isEmpty() ? dur : "\u2014");
+            if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
+            if (techResolution != null && !lastKnownResolution.isEmpty()) techResolution.setText(lastKnownResolution);
+            setupExtrasSections();
+            loadCoverBackground(ep != null ? ep.optString("logo", ep.optString("thumb", "")) : "");
+            return;
+        }
         new Thread(() -> {
             try {
                 String[] p = url.split("/");
@@ -1392,10 +1417,14 @@ public class PlayerActivity extends AppCompatActivity {
                 StringBuilder sb = new StringBuilder(); String line;
                 while ((line = br.readLine()) != null) sb.append(line);
                 br.close();
-                JSONObject info = new JSONObject(sb.toString()).optJSONObject("info");
-                if (info == null) return;
-                String plot = info.optString("plot",""), year = info.optString("releasedate",info.optString("year",""));
-                String dur  = info.optString("duration",""), rating = info.optString("rating","");
+                JSONObject root = new JSONObject(sb.toString());
+                JSONObject info = root.optJSONObject("info");
+                // Aunque "info" venga vacio, siempre actualizamos la UI (nunca dejar el "Cargando..." pegado)
+                final String plot = info != null ? info.optString("plot","") : "";
+                final String year = info != null ? info.optString("releasedate",info.optString("year","")) : "";
+                final String dur  = info != null ? info.optString("duration","") : "";
+                final String rating = info != null ? info.optString("rating","") : "";
+                final String coverUrl = info != null ? info.optString("movie_image","") : "";
                 runOnUiThread(() -> {
                     vodTxtPlot.setText(!plot.isEmpty() ? plot : "Sin sinopsis disponible.");
                     if (!year.isEmpty())   { vodTxtYear.setText(year.length()>=4?year.substring(0,4):year); vodTxtYear.setVisibility(View.VISIBLE); }
@@ -1406,16 +1435,48 @@ public class PlayerActivity extends AppCompatActivity {
                     if (techDuration != null) techDuration.setText(!dur.isEmpty() ? dur : "\u2014");
                     if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
                     if (techResolution != null && !lastKnownResolution.isEmpty()) techResolution.setText(lastKnownResolution);
+                    setupExtrasSections();
+                    loadCoverBackground(!coverUrl.isEmpty() ? coverUrl : logo);
                 });
-                // Secciones de episodios/similares — no dependen de esta respuesta, se disparan igual
-                runOnUiThread(this::setupExtrasSections);
             } catch (Exception e) {
                 runOnUiThread(() -> {
                     vodTxtPlot.setText("Sin informacion disponible.");
                     if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
                     setupExtrasSections();
+                    loadCoverBackground(logo);
                 });
             }
+        }).start();
+    }
+
+    // ══ FONDO CON CARATULA DIFUMINADA (estilo Disney+) — detras de toda la seccion de info ══
+    private int coverBgToken = 0;
+    private void loadCoverBackground(String coverUrl) {
+        final int token = ++coverBgToken;
+        if (coverUrl == null || coverUrl.trim().isEmpty()) return;
+        new Thread(() -> {
+            try {
+                java.net.URL u = new java.net.URL(coverUrl);
+                java.io.InputStream is = u.openStream();
+                Bitmap original = BitmapFactory.decodeStream(is);
+                is.close();
+                if (original == null) return;
+                // Blur barato: reducir mucho la imagen y volver a escalarla hacia arriba (bilinear)
+                int smallW = Math.max(8, original.getWidth() / 16);
+                int smallH = Math.max(8, original.getHeight() / 16);
+                Bitmap small = Bitmap.createScaledBitmap(original, smallW, smallH, true);
+                Bitmap blurred = Bitmap.createScaledBitmap(small, original.getWidth(), original.getHeight(), true);
+                if (token != coverBgToken) return; // cambiamos de contenido mientras cargaba — descartar
+                runOnUiThread(() -> {
+                    if (token != coverBgToken || vodScroll == null) return;
+                    BitmapDrawable bmpDrawable = new BitmapDrawable(getResources(), blurred);
+                    bmpDrawable.setGravity(android.view.Gravity.TOP);
+                    // Velo oscuro semitransparente encima para mantener el texto legible
+                    ColorDrawable scrim = new ColorDrawable(0xCC0A0E14);
+                    LayerDrawable layered = new LayerDrawable(new android.graphics.drawable.Drawable[]{bmpDrawable, scrim});
+                    vodScroll.setBackground(layered);
+                });
+            } catch (Exception e) { /* sin caratula disponible — se queda el fondo solido normal */ }
         }).start();
     }
 
