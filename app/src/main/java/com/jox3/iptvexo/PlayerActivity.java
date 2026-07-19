@@ -1406,7 +1406,16 @@ public class PlayerActivity extends AppCompatActivity {
             setupExtrasSections();
             // Para series: usar el POSTER de la serie (nitido), no la miniatura del episodio (baja resolucion)
             String seriesCover = ep != null ? ep.optString("_seriesCover", "") : "";
-            loadCoverBackground(!seriesCover.isEmpty() ? seriesCover : logo);
+            if (!seriesCover.isEmpty()) {
+                loadCoverBackground(seriesCover);
+            } else {
+                // El episodio no trae el poster de la serie (dato viejo en cache, u otro camino
+                // de navegacion). Respaldo: pedirlo de nuevo al servidor usando el ID de la serie,
+                // que si siempre viaja con el episodio.
+                String seriesId = ep != null ? ep.optString("_seriesId", "") : "";
+                if (!seriesId.isEmpty()) fetchSeriesCoverFallback(seriesId);
+                else loadCoverBackground(logo); // ultimo recurso: miniatura del episodio
+            }
             return;
         }
         new Thread(() -> {
@@ -1449,6 +1458,33 @@ public class PlayerActivity extends AppCompatActivity {
                     setupExtrasSections();
                     loadCoverBackground(logo);
                 });
+            }
+        }).start();
+    }
+
+    // Respaldo: pide el poster de la serie al servidor cuando el episodio no lo trae consigo
+    private void fetchSeriesCoverFallback(String seriesId) {
+        if (url == null) return;
+        new Thread(() -> {
+            try {
+                String[] p = url.split("/");
+                if (p.length < 6) return;
+                String user = p[4], pass = p[5];
+                String api = p[0] + "//" + p[2] + "/player_api.php?username=" + user + "&password=" + pass
+                           + "&action=get_series_info&series_id=" + seriesId;
+                HttpURLConnection c = (HttpURLConnection) new URL(api).openConnection();
+                c.setConnectTimeout(8000); c.setReadTimeout(8000);
+                BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = br.readLine()) != null) sb.append(line);
+                br.close();
+                JSONObject data = new JSONObject(sb.toString());
+                JSONObject info = data.optJSONObject("info");
+                String cover = info != null ? info.optString("cover", info.optString("cover_big", "")) : "";
+                if (!cover.isEmpty()) runOnUiThread(() -> loadCoverBackground(cover));
+                else runOnUiThread(() -> loadCoverBackground(logo));
+            } catch (Exception e) {
+                runOnUiThread(() -> loadCoverBackground(logo));
             }
         }).start();
     }
