@@ -1699,7 +1699,7 @@ async function play(item){
       }
       if(flatEps && flatEps.length > 0){
         try{
-          const slim=flatEps.map(e=>({url:e.url||'',name:e.name||'',id:String(e.id||''),type:'vod',logo:e.thumb||'',group:e.group||'',_isSeries:true}));
+          const slim=flatEps.map(e=>({url:e.url||'',name:e.name||'',id:String(e.id||''),type:'vod',logo:e.thumb||'',group:e.group||'',_isSeries:true,_seriesId:e._seriesId||'',_seriesCover:e._seriesCover||''}));
           episodesJson=JSON.stringify(slim);
           episodeIndex=flatIdx>=0?flatIdx:slim.findIndex(e=>String(e.id)===String(item.id));
         }catch(e){episodesJson='[]';}
