@@ -1672,6 +1672,7 @@ async function play(item){
             const data = await xApi('get_series_info', `&series_id=${item._seriesId}`);
             const seasons = data.episodes || {};
             const seriesName = (data.info && data.info.name) || item.name.split(' · ')[0] || item.name;
+            const seriesCover = (data.info && (data.info.cover || data.info.cover_big)) || '';
             const seasonKeys = Object.keys(seasons).sort((a,b)=>parseInt(a)-parseInt(b));
             const allEps = [];
             seasonKeys.forEach(sk=>{
@@ -1680,7 +1681,7 @@ async function play(item){
                 const title = ep.title||`Episodio ${epNum}`;
                 const ext = ep.container_extension||'mkv';
                 const url = `${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
-                allEps.push({id:String(ep.id),name:`${seriesName} · T${sk}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:item.group||'',type:'vod',url,thumb:ep.info?.movie_image||'',_isSeries:true,_seriesId:String(item._seriesId)});
+                allEps.push({id:String(ep.id),name:`${seriesName} · T${sk}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:item.group||'',type:'vod',url,thumb:ep.info?.movie_image||'',_isSeries:true,_seriesId:String(item._seriesId),_seriesCover:seriesCover});
               });
             });
             if(allEps.length){
@@ -2337,7 +2338,7 @@ function renderSeriesModal(seasonKeys){
   seriesData.currentEps=eps.map(ep=>{
     const epNum=ep.episode_num||ep.id||'?';const title=ep.title||`Episodio ${epNum}`;const ext=ep.container_extension||'mkv';
     const url=`${S.host}/series/${S.user}/${S.pass}/${ep.id}.${ext}`;
-    return{id:String(ep.id),name:`${seriesData.item.name} · T${activeSeason}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,epNum,title,dur:ep.info?.duration_secs?fmtDur(ep.info.duration_secs):'',rating:ep.info?.rating||'',thumb:ep.info?.movie_image||'',plot:ep.info?.plot||ep.info?.overview||'',_isSeries:true,_seriesId:String(seriesData.item.id)};
+    return{id:String(ep.id),name:`${seriesData.item.name} · T${activeSeason}E${epNum} - ${title}`,logo:ep.info?.movie_image||'',group:seriesData.item.group||'',type:'vod',url,epNum,title,dur:ep.info?.duration_secs?fmtDur(ep.info.duration_secs):'',rating:ep.info?.rating||'',thumb:ep.info?.movie_image||'',plot:ep.info?.plot||ep.info?.overview||'',_isSeries:true,_seriesId:String(seriesData.item.id),_seriesCover:seriesData.item.cover||seriesData.item.logo||''};
   });
 
   // Sinopsis de la serie
@@ -2439,7 +2440,8 @@ function _buildFlatEpList(currentIdx){
         id:String(ep.id), name:`${seriesData.item.name} · T${sk}E${epNum} - ${title}`,
         logo:ep.info?.movie_image||'', group:seriesData.item.group||'',
         type:'vod', url, epNum, season:sk, title,
-        thumb:ep.info?.movie_image||'', _isSeries:true, _seriesId:String(seriesData.item.id)
+        thumb:ep.info?.movie_image||'', _isSeries:true, _seriesId:String(seriesData.item.id),
+        _seriesCover:seriesData.item.cover||seriesData.item.logo||''
       });
     });
   });
