@@ -98,6 +98,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout vodEpisodesSection, vodSeasonChips, vodEpisodesRow;
     private LinearLayout vodSimilarSection, vodSimilarRow;
     private LinearLayout vodTechToggle, vodTechBody;
+    private ImageView vodCoverBg;
     private ImageView vodTechChevron;
     private TextView techResolution, techContainer, techDuration, techYear;
     private String lastKnownResolution = "";
@@ -323,6 +324,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodSimilarRow      = findViewById(R.id.vod_similar_row);
         vodTechToggle      = findViewById(R.id.vod_tech_toggle);
         vodTechBody        = findViewById(R.id.vod_tech_body);
+        vodCoverBg         = findViewById(R.id.vod_cover_bg);
         vodTechChevron     = findViewById(R.id.vod_tech_chevron);
         techResolution     = findViewById(R.id.tech_resolution);
         techContainer      = findViewById(R.id.tech_container);
@@ -1402,7 +1404,9 @@ public class PlayerActivity extends AppCompatActivity {
             if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
             if (techResolution != null && !lastKnownResolution.isEmpty()) techResolution.setText(lastKnownResolution);
             setupExtrasSections();
-            loadCoverBackground(ep != null ? ep.optString("logo", ep.optString("thumb", "")) : "");
+            // Para series: usar el POSTER de la serie (nitido), no la miniatura del episodio (baja resolucion)
+            String seriesCover = ep != null ? ep.optString("_seriesCover", "") : "";
+            loadCoverBackground(!seriesCover.isEmpty() ? seriesCover : logo);
             return;
         }
         new Thread(() -> {
@@ -1449,11 +1453,14 @@ public class PlayerActivity extends AppCompatActivity {
         }).start();
     }
 
-    // ══ FONDO CON CARATULA DIFUMINADA (estilo Disney+) — detras de toda la seccion de info ══
+    // ══ FONDO CON POSTER (estilo Disney+) — ImageView real con centerCrop, nitido ══
     private int coverBgToken = 0;
     private void loadCoverBackground(String coverUrl) {
         final int token = ++coverBgToken;
-        if (coverUrl == null || coverUrl.trim().isEmpty()) return;
+        if (coverUrl == null || coverUrl.trim().isEmpty() || vodCoverBg == null) {
+            if (vodCoverBg != null) runOnUiThread(() -> vodCoverBg.setVisibility(View.GONE));
+            return;
+        }
         new Thread(() -> {
             try {
                 java.net.URL u = new java.net.URL(coverUrl);
@@ -1461,20 +1468,17 @@ public class PlayerActivity extends AppCompatActivity {
                 Bitmap original = BitmapFactory.decodeStream(is);
                 is.close();
                 if (original == null) return;
-                // Blur barato: reducir mucho la imagen y volver a escalarla hacia arriba (bilinear)
-                int smallW = Math.max(8, original.getWidth() / 16);
-                int smallH = Math.max(8, original.getHeight() / 16);
+                // Blur ligero — solo lo justo para que el texto encima se lea, sin perder nitidez.
+                // Antes se reducia a 1/16 (se veia en bloques); ahora 1/4 conserva mucho mas detalle.
+                int smallW = Math.max(40, original.getWidth() / 4);
+                int smallH = Math.max(40, original.getHeight() / 4);
                 Bitmap small = Bitmap.createScaledBitmap(original, smallW, smallH, true);
                 Bitmap blurred = Bitmap.createScaledBitmap(small, original.getWidth(), original.getHeight(), true);
                 if (token != coverBgToken) return; // cambiamos de contenido mientras cargaba — descartar
                 runOnUiThread(() -> {
-                    if (token != coverBgToken || vodScroll == null) return;
-                    BitmapDrawable bmpDrawable = new BitmapDrawable(getResources(), blurred);
-                    bmpDrawable.setGravity(android.view.Gravity.TOP);
-                    // Velo oscuro semitransparente encima para mantener el texto legible
-                    ColorDrawable scrim = new ColorDrawable(0xCC0A0E14);
-                    LayerDrawable layered = new LayerDrawable(new android.graphics.drawable.Drawable[]{bmpDrawable, scrim});
-                    vodScroll.setBackground(layered);
+                    if (token != coverBgToken || vodCoverBg == null) return;
+                    vodCoverBg.setImageBitmap(blurred);
+                    vodCoverBg.setVisibility(View.VISIBLE);
                 });
             } catch (Exception e) { /* sin caratula disponible — se queda el fondo solido normal */ }
         }).start();
@@ -1534,6 +1538,25 @@ public class PlayerActivity extends AppCompatActivity {
         renderEpisodeCards();
     }
 
+    // Carga una miniatura/poster real en cualquier ImageView, sin bloquear la UI.
+    // Si falla o no hay URL, sencillamente se queda el icono generico ya puesto debajo.
+    private void loadThumbInto(ImageView iv, String imgUrl, View iconOverlay) {
+        if (imgUrl == null || imgUrl.trim().isEmpty()) return;
+        new Thread(() -> {
+            try {
+                java.net.URL u = new java.net.URL(imgUrl);
+                java.io.InputStream is = u.openStream();
+                Bitmap bmp = BitmapFactory.decodeStream(is);
+                is.close();
+                if (bmp == null) return;
+                runOnUiThread(() -> {
+                    iv.setImageBitmap(bmp);
+                    if (iconOverlay != null) iconOverlay.setVisibility(View.GONE);
+                });
+            } catch (Exception e) { /* sin miniatura disponible — se queda el icono generico */ }
+        }).start();
+    }
+
     private void renderEpisodeCards() {
         vodEpisodesRow.removeAllViews();
         for (int i = 0; i < channels.size(); i++) {
@@ -1542,29 +1565,40 @@ public class PlayerActivity extends AppCompatActivity {
             if (drawerActiveVodSeason != null && !seasonOf(epName).equals(drawerActiveVodSeason)) continue;
             final int idx = i;
             String shortName = epName.contains(" \u00b7 ") ? epName.substring(epName.indexOf(" \u00b7 ") + 3) : epName;
-            vodEpisodesRow.addView(buildEpisodeCard(shortName, i == channelIndex, () -> {
+            String epThumb = ep.optString("thumb", ep.optString("logo", ""));
+            vodEpisodesRow.addView(buildEpisodeCard(shortName, epThumb, i == channelIndex, () -> {
                 jumpToEpisodeIndex(idx);
             }));
         }
     }
 
-    private View buildEpisodeCard(String title, boolean current, Runnable onClick) {
+    private View buildEpisodeCard(String title, String thumbUrl, boolean current, Runnable onClick) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(dp(140), LinearLayout.LayoutParams.WRAP_CONTENT);
         cardLp.setMarginEnd(dp(10));
         card.setLayoutParams(cardLp);
 
-        LinearLayout thumb = new LinearLayout(this);
-        thumb.setGravity(android.view.Gravity.CENTER);
+        FrameLayout thumb = new FrameLayout(this);
         thumb.setLayoutParams(new LinearLayout.LayoutParams(dp(140), dp(78)));
         thumb.setBackgroundResource(current ? R.drawable.bg_drawer_row_selected : R.drawable.bg_btn_circle);
+
+        ImageView thumbImg = new ImageView(this);
+        thumbImg.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        thumbImg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        thumb.addView(thumbImg);
+
         TextView icon = new TextView(this);
         icon.setText(current ? "\u25B6" : "\uD83C\uDFAC");
         icon.setTextSize(20);
         icon.setTextColor(current ? 0xFF00D4FF : 0xFFE0F4FF);
+        FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+        iconLp.gravity = android.view.Gravity.CENTER;
+        icon.setLayoutParams(iconLp);
         thumb.addView(icon);
         card.addView(thumb);
+
+        loadThumbInto(thumbImg, thumbUrl, current ? null : icon); // el actual conserva el ▶ encima de la imagen
 
         TextView tTitle = new TextView(this);
         tTitle.setText(title);
@@ -1632,7 +1666,8 @@ public class PlayerActivity extends AppCompatActivity {
             String sid = String.valueOf(m.optInt("stream_id", 0));
             String ext = m.optString("container_extension", "mp4");
             String mUrl = host + "/movie/" + user + "/" + pass + "/" + sid + "." + ext;
-            vodSimilarRow.addView(buildSimilarCard(mName, rating, () -> {
+            String mPoster = m.optString("stream_icon", "");
+            vodSimilarRow.addView(buildSimilarCard(mName, rating, mPoster, () -> {
                 url = mUrl; name = mName; itemId = sid; group = group;
                 episodeEndHandled = false; retryCount = 0;
                 vodTxtTitleBar.setText(name); vodTxtTitle.setText(name);
@@ -1645,22 +1680,32 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
-    private View buildSimilarCard(String title, String rating, Runnable onClick) {
+    private View buildSimilarCard(String title, String rating, String posterUrl, Runnable onClick) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(dp(100), LinearLayout.LayoutParams.WRAP_CONTENT);
         cardLp.setMarginEnd(dp(10));
         card.setLayoutParams(cardLp);
 
-        LinearLayout poster = new LinearLayout(this);
-        poster.setGravity(android.view.Gravity.CENTER);
+        FrameLayout poster = new FrameLayout(this);
         poster.setLayoutParams(new LinearLayout.LayoutParams(dp(100), dp(144)));
         poster.setBackgroundResource(R.drawable.bg_btn_circle);
+
+        ImageView posterImg = new ImageView(this);
+        posterImg.setLayoutParams(new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        posterImg.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        poster.addView(posterImg);
+
         TextView icon = new TextView(this);
         icon.setText("\uD83C\uDFAC");
         icon.setTextSize(26);
+        FrameLayout.LayoutParams iconLp = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
+        iconLp.gravity = android.view.Gravity.CENTER;
+        icon.setLayoutParams(iconLp);
         poster.addView(icon);
         card.addView(poster);
+
+        loadThumbInto(posterImg, posterUrl, icon);
 
         TextView tTitle = new TextView(this);
         tTitle.setText(title);
