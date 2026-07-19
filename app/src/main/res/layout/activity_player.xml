@@ -358,12 +358,30 @@
 
         </FrameLayout>
 
-        <!-- Info scrollable -->
+        <!-- Info scrollable — envuelta en FrameLayout para poner el poster de la serie/pelicula
+             como fondo real (ImageView con centerCrop, nitido, sin distorsion) detras del contenido -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="6">
+
+            <ImageView
+                android:id="@+id/vod_cover_bg"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:scaleType="centerCrop"
+                android:visibility="gone"
+                android:contentDescription="Poster de fondo" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_cover_scrim" />
+
         <ScrollView
             android:id="@+id/vod_scroll"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="6"
+            android:layout_height="match_parent"
             android:fillViewport="true">
 
             <LinearLayout
@@ -682,6 +700,8 @@
 
             </LinearLayout>
         </ScrollView>
+
+        </FrameLayout>
 
     </LinearLayout>
 
