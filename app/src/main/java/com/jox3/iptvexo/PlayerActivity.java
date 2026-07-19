@@ -99,6 +99,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout vodSimilarSection, vodSimilarRow;
     private LinearLayout vodTechToggle, vodTechBody;
     private ImageView vodCoverBg;
+    private View vodInfoWrapper;
     private ImageView vodTechChevron;
     private TextView techResolution, techContainer, techDuration, techYear;
     private String lastKnownResolution = "";
@@ -325,6 +326,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodTechToggle      = findViewById(R.id.vod_tech_toggle);
         vodTechBody        = findViewById(R.id.vod_tech_body);
         vodCoverBg         = findViewById(R.id.vod_cover_bg);
+        vodInfoWrapper     = findViewById(R.id.vod_info_wrapper);
         vodTechChevron     = findViewById(R.id.vod_tech_chevron);
         techResolution     = findViewById(R.id.tech_resolution);
         techContainer      = findViewById(R.id.tech_container);
@@ -895,6 +897,7 @@ public class PlayerActivity extends AppCompatActivity {
         isVodFullscreen = true;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         vodScroll.setVisibility(View.GONE);
+        if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(View.GONE); // tambien el poster de fondo detras
         vodTopBar.setVisibility(View.GONE);
         // El FrameLayout padre del vod_player_view tiene layout_weight=4 en el LinearLayout vod_layout
         // Necesitamos cambiar el peso del FrameLayout, no del PlayerView
@@ -912,6 +915,7 @@ public class PlayerActivity extends AppCompatActivity {
         isVodFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         vodScroll.setVisibility(View.VISIBLE);
+        if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(View.VISIBLE);
         vodTopBar.setVisibility(View.VISIBLE);
         View videoFrame = (View) vodPlayerView.getParent();
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoFrame.getLayoutParams();
@@ -2399,6 +2403,7 @@ public class PlayerActivity extends AppCompatActivity {
             if (isVodType()) {
                 vodTopBar.setVisibility(View.GONE);
                 vodScroll.setVisibility(View.GONE);
+                if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(View.GONE);
                 vodPlayerView.setUseController(false);
             } else {
                 playerView.setUseController(false);
@@ -2412,6 +2417,7 @@ public class PlayerActivity extends AppCompatActivity {
             if (isVodType()) {
                 vodTopBar.setVisibility(View.VISIBLE);
                 vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
+                if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
                 vodPlayerView.setUseController(true);
             } else {
                 playerView.setUseController(true);
