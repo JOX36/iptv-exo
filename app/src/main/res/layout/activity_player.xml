@@ -361,6 +361,7 @@
         <!-- Info scrollable — envuelta en FrameLayout para poner el poster de la serie/pelicula
              como fondo real (ImageView con centerCrop, nitido, sin distorsion) detras del contenido -->
         <FrameLayout
+            android:id="@+id/vod_info_wrapper"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="6">
