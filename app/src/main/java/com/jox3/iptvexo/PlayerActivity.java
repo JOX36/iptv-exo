@@ -33,6 +33,19 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.mediarouter.app.MediaRouteButton;
+import com.google.android.gms.cast.MediaInfo;
+import com.google.android.gms.cast.MediaLoadRequestData;
+import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.framework.CastButtonFactory;
+import com.google.android.gms.cast.framework.CastContext;
+import com.google.android.gms.cast.framework.CastSession;
+import com.google.android.gms.cast.framework.CastState;
+import com.google.android.gms.cast.framework.CastStateListener;
+import com.google.android.gms.cast.framework.SessionManagerListener;
+import com.google.android.gms.cast.framework.media.RemoteMediaClient;
+import com.google.android.gms.common.images.WebImage;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
 import androidx.media3.common.Player;
@@ -67,6 +80,15 @@ public class PlayerActivity extends AppCompatActivity {
     // ── Player global: se detiene siempre antes de crear uno nuevo ──
     private ExoPlayer player;
     private static PlayerActivity activeInstance = null;
+
+    // ── Chromecast ──
+    private MediaRouteButton liveBtnCast, vodBtnCast, vodFsBtnCast;
+    private CastContext castContext;
+    private CastStateListener castStateListener;
+    private SessionManagerListener<CastSession> castSessionListener;
+    private CastSession castSession;
+    // true mientras el video se está reproduciendo EN el Chromecast (no en el teléfono)
+    private boolean castingActive = false;
 
     // LIVE
     private PlayerView playerView;
@@ -227,6 +249,7 @@ public class PlayerActivity extends AppCompatActivity {
         String epgTime = getIntent().getStringExtra("epg_time");
 
         bindViews();
+        setupCast();
 
         if (isVodType()) setupVod();
         else setupLive();
@@ -272,6 +295,7 @@ public class PlayerActivity extends AppCompatActivity {
         txtLoading    = findViewById(R.id.txt_loading);
         liveBtnBack   = findViewById(R.id.live_btn_back);
         liveBtnFav    = findViewById(R.id.live_btn_fav);
+        liveBtnCast   = findViewById(R.id.live_btn_cast);
         liveBtnAudio  = findViewById(R.id.live_btn_audio);
         liveBtnPip    = findViewById(R.id.live_btn_pip);
         liveBtnExt    = findViewById(R.id.live_btn_ext);
@@ -293,6 +317,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodTopBar      = findViewById(R.id.vod_top_bar);
         vodBtnBack     = findViewById(R.id.vod_btn_back);
         vodBtnFav      = findViewById(R.id.vod_btn_fav);
+        vodBtnCast     = findViewById(R.id.vod_btn_cast);
         vodTxtTitleBar = findViewById(R.id.vod_txt_title_bar);
         vodTxtTitle    = findViewById(R.id.vod_txt_title);
         vodTxtYear     = findViewById(R.id.vod_txt_year);
@@ -344,6 +369,7 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnDl    = findViewById(R.id.vod_fs_btn_dl);
         vodFsBtnResize= findViewById(R.id.vod_fs_btn_resize);
         vodFsBtnFav   = findViewById(R.id.vod_fs_btn_fav);
+        vodFsBtnCast  = findViewById(R.id.vod_fs_btn_cast);
         liveBtnGrid   = findViewById(R.id.live_btn_grid);
         vodFsBtnGrid  = findViewById(R.id.vod_fs_btn_grid);
         channelDrawer = findViewById(R.id.channel_drawer);
@@ -693,7 +719,16 @@ public class PlayerActivity extends AppCompatActivity {
         }
         player.setMediaItem(mediaItem);
         player.prepare();
-        player.play();
+
+        if (castingActive && castSession != null) {
+            // Ya se estaba transmitiendo a un Chromecast (p.ej. el usuario cambió de
+            // canal o de episodio) — seguimos casteando el nuevo contenido en vez de
+            // reanudar el audio/video en el teléfono.
+            player.setPlayWhenReady(false);
+            loadRemoteMedia(castSession, 0);
+        } else {
+            player.play();
+        }
 
         player.addListener(new Player.Listener() {
             @Override
@@ -1856,6 +1891,125 @@ public class PlayerActivity extends AppCompatActivity {
         toast(isFav ? "\u2B50 Agregado a favoritos" : "Quitado de favoritos");
     }
 
+    // \u2550\u2550 CHROMECAST \u2550\u2550
+    // CastButtonFactory conecta cada MediaRouteButton al framework de Cast: el propio
+    // bot\u00F3n abre el di\u00E1logo de selecci\u00F3n de dispositivo al tocarlo, sin listener manual.
+    private void setupCast() {
+        try {
+            castContext = CastContext.getSharedInstance(this);
+        } catch (Exception e) {
+            // Play Services ausente/desactualizado (raro, pero pasa en algunos TV Box) \u2014
+            // la app sigue funcionando normal, simplemente sin bot\u00F3n de Cast.
+            return;
+        }
+
+        CastButtonFactory.setUpMediaRouteButton(this, liveBtnCast);
+        CastButtonFactory.setUpMediaRouteButton(this, vodBtnCast);
+        CastButtonFactory.setUpMediaRouteButton(this, vodFsBtnCast);
+
+        // Selector de estado propio (blanco = disponible, cian = conectado) para que
+        // combine con el resto de \u00EDconos de la barra en vez del cast azul de Google.
+        liveBtnCast.setRemoteIndicatorDrawable(ContextCompat.getDrawable(this, R.drawable.sel_cast_state));
+        vodBtnCast.setRemoteIndicatorDrawable(ContextCompat.getDrawable(this, R.drawable.sel_cast_state));
+        vodFsBtnCast.setRemoteIndicatorDrawable(ContextCompat.getDrawable(this, R.drawable.sel_cast_state));
+
+        // El \u00EDcono solo se muestra si hay al menos un Chromecast visible en la red \u2014
+        // un bot\u00F3n que no tiene nada que hacer solo confunde.
+        castStateListener = state -> {
+            boolean available = state != CastState.NO_DEVICES_AVAILABLE;
+            int vis = available ? View.VISIBLE : View.GONE;
+            liveBtnCast.setVisibility(vis);
+            vodBtnCast.setVisibility(vis);
+            vodFsBtnCast.setVisibility(vis);
+        };
+        castContext.addCastStateListener(castStateListener);
+        castStateListener.onCastStateChanged(castContext.getCastState());
+
+        castSessionListener = new SessionManagerListener<CastSession>() {
+            @Override public void onSessionStarted(CastSession session, String sessionId) { onCastConnected(session); }
+            @Override public void onSessionResumed(CastSession session, boolean wasSuspended) { onCastConnected(session); }
+            @Override public void onSessionEnded(CastSession session, int error) { onCastDisconnected(); }
+            @Override public void onSessionSuspended(CastSession session, int reason) { onCastDisconnected(); }
+            @Override public void onSessionStarting(CastSession session) {}
+            @Override public void onSessionStartFailed(CastSession session, int error) { toast("No se pudo conectar al Chromecast"); }
+            @Override public void onSessionEnding(CastSession session) {}
+            @Override public void onSessionResuming(CastSession session, String sessionId) {}
+            @Override public void onSessionResumeFailed(CastSession session, int error) {}
+        };
+        castContext.getSessionManager().addSessionManagerListener(castSessionListener, CastSession.class);
+
+        // Si ya hab\u00EDa una sesi\u00F3n activa (venimos de otra pantalla sin cerrar el cast)
+        CastSession existing = castContext.getSessionManager().getCurrentCastSession();
+        if (existing != null && existing.isConnected()) {
+            onCastConnected(existing);
+        }
+    }
+
+    private void onCastConnected(CastSession session) {
+        castSession = session;
+        castingActive = true;
+        long localPosition = (player != null) ? player.getCurrentPosition() : 0;
+        loadRemoteMedia(session, localPosition);
+        // El Chromecast pasa a reproducir el video \u2014 pausamos localmente para que
+        // el audio no suene doble (tel\u00E9fono + TV) mientras dura la transmisi\u00F3n.
+        if (player != null) player.setPlayWhenReady(false);
+        try {
+            toast("Transmitiendo a " + session.getCastDevice().getFriendlyName());
+        } catch (Exception ignored) {}
+    }
+
+    private void onCastDisconnected() {
+        if (!castingActive) return; // ya estaba desconectado \u2014 evita reanudar dos veces
+        castingActive = false;
+        castSession = null;
+        // Retoma en el tel\u00E9fono donde estaba antes de castear
+        if (player != null) player.setPlayWhenReady(true);
+    }
+
+    /**
+     * Manda la URL actual al receptor del Chromecast. Importante: el receptor por
+     * defecto de Google pide la URL directamente desde la red del Chromecast, sin
+     * pasar por nuestro OkHttp ni por el User-Agent/headers que usa el reproductor
+     * local \u2014 si el proveedor exige headers especiales para servir el stream, esto
+     * puede fallar aunque en el tel\u00E9fono s\u00ED funcione. Es una limitaci\u00F3n del receptor
+     * gen\u00E9rico, no de esta app.
+     */
+    private void loadRemoteMedia(CastSession session, long startPositionMs) {
+        RemoteMediaClient remoteMediaClient = session.getRemoteMediaClient();
+        if (remoteMediaClient == null || url == null || url.isEmpty()) return;
+
+        String contentType = "application/x-mpegURL"; // HLS (.m3u8) \u2014 el caso m\u00E1s com\u00FAn en Live
+        if (isVodType()) {
+            if (url.contains(".mkv")) contentType = "video/x-matroska";
+            else if (url.contains(".mp4")) contentType = "video/mp4";
+            else if (url.contains(".ts")) contentType = "video/mp2t";
+            else if (url.contains(".avi")) contentType = "video/avi";
+        }
+
+        MediaMetadata metadata = new MediaMetadata(
+                isVodType() ? MediaMetadata.MEDIA_TYPE_MOVIE : MediaMetadata.MEDIA_TYPE_GENERIC);
+        metadata.putString(MediaMetadata.KEY_TITLE, (name != null && !name.isEmpty()) ? name : "IPTV");
+        if (logo != null && !logo.isEmpty()) {
+            try {
+                metadata.addImage(new WebImage(android.net.Uri.parse(logo)));
+            } catch (Exception ignored) {}
+        }
+
+        MediaInfo mediaInfo = new MediaInfo.Builder(url)
+                .setStreamType(isVodType() ? MediaInfo.STREAM_TYPE_BUFFERED : MediaInfo.STREAM_TYPE_LIVE)
+                .setContentType(contentType)
+                .setMetadata(metadata)
+                .build();
+
+        MediaLoadRequestData loadRequest = new MediaLoadRequestData.Builder()
+                .setMediaInfo(mediaInfo)
+                .setAutoplay(true)
+                .setCurrentTime(startPositionMs)
+                .build();
+
+        remoteMediaClient.load(loadRequest);
+    }
+
     private boolean enteredPiP = false;
 
     private void enterPip() {
@@ -1863,762 +2017,4 @@ public class PlayerActivity extends AppCompatActivity {
             try {
                 enteredPiP = true;
                 enterPictureInPictureMode(new PictureInPictureParams.Builder()
-                    .setAspectRatio(new Rational(16, 9)).build());
-            } catch (Exception e) {
-                // El sistema rechazó PiP (falta soporte o restricción del fabricante)
-                enteredPiP = false;
-                toast("\u26A0\uFE0F PiP no disponible en este dispositivo");
-            }
-        }
-    }
-
-    private void launchExternal() {
-        // Intentar VLC primero
-        try {
-            Intent vlc = new Intent(Intent.ACTION_VIEW);
-            vlc.setDataAndType(android.net.Uri.parse(url), "video/*");
-            vlc.setPackage("org.videolan.vlc");
-            startActivity(vlc);
-            return;
-        } catch (Exception ignored) {}
-        // Si VLC no está — abrir con cualquier reproductor instalado
-        try {
-            Intent any = new Intent(Intent.ACTION_VIEW);
-            any.setDataAndType(android.net.Uri.parse(url), "video/*");
-            startActivity(Intent.createChooser(any, "Abrir con..."));
-        } catch (Exception e) {
-            // Ningún reproductor — copiar URL
-            copyUrl();
-            toast("\uD83D\uDCCB URL copiada \u2014 pega en tu reproductor");
-        }
-    }
-
-    private void copyUrl() {
-        ((ClipboardManager) getSystemService(CLIPBOARD_SERVICE))
-            .setPrimaryClip(ClipData.newPlainText("url", url));
-        toast("URL copiada");
-    }
-
-    @SuppressLint("TrustAllX509TrustManager")
-    private OkHttpClient buildUnsafeClient() {
-        try {
-            X509TrustManager tm = new X509TrustManager() {
-                public void checkClientTrusted(X509Certificate[] c, String a) throws CertificateException {}
-                public void checkServerTrusted(X509Certificate[] c, String a) throws CertificateException {}
-                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-            };
-            SSLContext sc = SSLContext.getInstance("TLS");
-            sc.init(null, new TrustManager[]{tm}, new java.security.SecureRandom());
-            return new OkHttpClient.Builder().sslSocketFactory(sc.getSocketFactory(), tm)
-                .hostnameVerifier((h, s) -> true)
-                .addInterceptor(chain -> chain.proceed(
-                    chain.request().newBuilder()
-                        .header("User-Agent", "VLC/3.0.18 LibVLC/3.0.18")
-                        .build()
-                ))
-                .build();
-        } catch (Exception e) { return new OkHttpClient.Builder().build(); }
-    }
-
-    // ══ PROGRESO VOD ══
-    private void askContinueOrRestart() {
-        long mins = savedPosition / 60000;
-        long secs = (savedPosition % 60000) / 1000;
-        String timeStr = mins > 0 ? mins + "m " + secs + "s" : secs + "s";
-        new android.app.AlertDialog.Builder(this, R.style.AppDialog)
-            .setTitle(name)
-            .setMessage("¿Continuar desde " + timeStr + "?")
-            .setPositiveButton("▶ Continuar", (d, w) -> {
-                initPlayer(); // el seek se hace en STATE_READY via seekOnReady flag
-            })
-            .setNegativeButton("⏮ Empezar de nuevo", (d, w) -> {
-                savedPosition = 0;
-                clearVodProgress(itemId);
-                initPlayer();
-            })
-            .setCancelable(false)
-            .show();
-    }
-
-    private void startProgressSaver() {
-        if (!isVodType() || itemId == null) return;
-        progressSaver = new Runnable() {
-            @Override public void run() {
-                if (player != null) {
-                    long pos = player.getCurrentPosition();
-                    long dur = player.getDuration();
-                    boolean playing = player.isPlaying();
-                    if (pos > 5000 && dur > 0) {
-                        float pct = (float) pos / dur;
-                        if (pct > 0.95f) {
-                            clearVodProgress(itemId);
-                        } else if (playing) {
-                            saveVodProgress(itemId, pos, dur);
-                        }
-                    }
-                }
-                progressHandler.postDelayed(this, 10000);
-            }
-        };
-        progressHandler.postDelayed(progressSaver, 10000);
-    }
-
-    private void stopProgressSaver() {
-        if (progressSaver != null) {
-            progressHandler.removeCallbacks(progressSaver);
-            progressSaver = null;
-        }
-    }
-
-    private void saveVodProgress(String id, long position, long duration) {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
-        prefs.edit()
-            .putLong("pos_" + id, position)
-            .putLong("dur_" + id, duration)
-            .apply();
-    }
-
-    private long getVodProgress(String id) {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
-        return prefs.getLong("pos_" + id, 0);
-    }
-
-    private long getVodDuration(String id) {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
-        return prefs.getLong("dur_" + id, 0);
-    }
-
-    private void clearVodProgress(String id) {
-        android.content.SharedPreferences prefs = getSharedPreferences(PREFS_PROGRESS, MODE_PRIVATE);
-        prefs.edit().remove("pos_" + id).remove("dur_" + id).apply();
-    }
-
-    // ══ FALLBACK: DETECTAR FIN DE EPISODIO ══
-    private void startEndCheck() {
-        stopEndCheck();
-        episodeEndHandled = false;
-        endCheckRunnable = new Runnable() {
-            @Override public void run() {
-                if (player != null && isSeriesType() && !episodeEndHandled) {
-                    long pos = player.getCurrentPosition();
-                    long dur = player.getDuration();
-                    // Si estamos a menos de 3 segundos del final o ya pasamos
-                    if (dur > 0 && pos > 0 && (dur - pos < 3000 || pos >= dur - 500)) {
-                        episodeEndHandled = true;
-                        onEpisodeEnded();
-                        return;
-                    }
-                }
-                endCheckHandler.postDelayed(this, 2000);
-            }
-        };
-        endCheckHandler.postDelayed(endCheckRunnable, 3000);
-    }
-
-    private void stopEndCheck() {
-        if (endCheckRunnable != null) {
-            endCheckHandler.removeCallbacks(endCheckRunnable);
-            endCheckRunnable = null;
-        }
-    }
-
-    // ══ REPRODUCCIÓN CONTINUA SERIES ══
-    private boolean isSeriesType() {
-        // Flag explícito desde el Intent (confiable)
-        if (isSeries) return true;
-        // Fallback: revisar items del JSON
-        if (channels.isEmpty()) return false;
-        try {
-            for (int i = 0; i < Math.min(channels.size(), 3); i++) {
-                if (channels.get(i).optBoolean("_isSeries", false)) return true;
-            }
-        } catch (Exception ignored) {}
-        return false;
-    }
-
-    private void onEpisodeEnded() {
-        // Robustez: si el índice llegó perdido, re-localizar el episodio actual por su ID
-        if (channelIndex < 0 && !channels.isEmpty() && itemId != null) {
-            for (int i = 0; i < channels.size(); i++) {
-                if (itemId.equals(channels.get(i).optString("id", ""))) { channelIndex = i; break; }
-            }
-        }
-        if (channelIndex < 0 || channels.isEmpty()) { finish(); return; }
-        int nextIdx = channelIndex + 1;
-        // Caso 3 — último episodio de la última temporada
-        if (nextIdx >= channels.size()) {
-            showSeriesCompleted();
-            return;
-        }
-        // Caso 1 y 2 — hay siguiente episodio (misma o nueva temporada)
-        try {
-            JSONObject next = channels.get(nextIdx);
-            String nextName = next.optString("name", "Siguiente episodio");
-            showNextEpOverlay(nextName, nextIdx);
-        } catch (Exception e) { finish(); }
-    }
-
-    private String seasonOf(String epName) {
-        if (epName == null) return "";
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("T(\\d+)E").matcher(epName);
-        return m.find() ? m.group(1) : "";
-    }
-
-    private void showNextEpOverlay(String nextName, int nextIdx) {
-        if (nextEpOverlay == null) return;
-        // Resetear estado (por si venimos de "Serie completada")
-        nextEpBtnNow.setVisibility(View.VISIBLE);
-        nextEpBtnCancel.setText("\u2715 Cancelar");
-        nextEpBtnCancel.setOnClickListener(v -> hideNextEpOverlay());
-        // Detectar cambio de temporada comparando T{n} del nombre actual vs siguiente
-        String curSeason = seasonOf(name), nextSeason = seasonOf(nextName);
-        if (!nextSeason.isEmpty() && !nextSeason.equals(curSeason)) {
-            nextEpTitle.setText("\uD83C\uDF89 Nueva temporada \u2014 T" + nextSeason + "\n" + nextName);
-        } else {
-            nextEpTitle.setText(nextName);
-        }
-        nextEpOverlay.setVisibility(View.VISIBLE);
-        countdownSeconds = 5;
-        nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
-
-        countdownRunnable = new Runnable() {
-            @Override public void run() {
-                countdownSeconds--;
-                if (countdownSeconds <= 0) {
-                    playNextEpisode();
-                } else {
-                    nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
-                    countdownHandler.postDelayed(this, 1000);
-                }
-            }
-        };
-        countdownHandler.postDelayed(countdownRunnable, 1000);
-    }
-
-    private void playNextEpisode() {
-        hideNextEpOverlay();
-        if (channelIndex + 1 >= channels.size()) { finish(); return; }
-        channelIndex++;
-        try {
-            JSONObject next = channels.get(channelIndex);
-            url    = next.optString("url", "");
-            name   = next.optString("name", "");
-            itemId = next.optString("id", "");
-            savedPosition = getVodProgress(itemId);
-            episodeEndHandled = false;
-            vodTxtTitleBar.setText(name);
-            vodTxtTitle.setText(name);
-            vodFsTxtTitle.setText(name);
-            vodTxtPlot.setText("");
-            retryCount = 0;
-            initPlayer();
-        } catch (Exception e) { finish(); }
-    }
-
-    private void playPrevEpisode() {
-        hideNextEpOverlay();
-        if (channelIndex - 1 < 0 || channels.isEmpty()) { toast("Ya est\u00e1s en el primer episodio"); return; }
-        channelIndex--;
-        try {
-            JSONObject prev = channels.get(channelIndex);
-            url    = prev.optString("url", "");
-            name   = prev.optString("name", "");
-            itemId = prev.optString("id", "");
-            savedPosition = getVodProgress(itemId);
-            episodeEndHandled = false;
-            vodTxtTitleBar.setText(name);
-            vodTxtTitle.setText(name);
-            vodFsTxtTitle.setText(name);
-            retryCount = 0;
-            initPlayer();
-        } catch (Exception e) { toast("Error al cambiar episodio"); }
-    }
-
-    private void hideNextEpOverlay() {
-        countdownHandler.removeCallbacks(countdownRunnable);
-        if (nextEpOverlay != null) nextEpOverlay.setVisibility(View.GONE);
-    }
-
-    private void showSeriesCompleted() {
-        if (nextEpOverlay == null) { finish(); return; }
-        nextEpTitle.setText("Serie completada \u2705");
-        nextEpCountdown.setText("Has visto todos los episodios");
-        nextEpBtnNow.setVisibility(View.GONE);
-        nextEpBtnCancel.setText("Cerrar");
-        nextEpBtnCancel.setOnClickListener(v -> finish());
-        nextEpOverlay.setVisibility(View.VISIBLE);
-    }
-
-    // ══ GESTOS VOLUMEN / BRILLO ══
-    private float gestureStartY = -1;
-    private float gestureStartX = -1;
-    private boolean gestureIsVolume = false;
-    private boolean gestureIsBrightness = false;
-    private boolean gestureActive = false;
-    private int gestureStartVolume = 0;
-    private float gestureStartBrightness = 0;
-    // Swipe seek
-    private long seekStartPosition = -1;
-    private boolean gestureIsSeek = false;
-    private LinearLayout gestFeedbackLayout, gestFeedbackRight, gestSeekOverlay;
-    private TextView gestIconView, gestValueView, gestIconRight, gestValueRight;
-    private TextView gestSeekIcon, gestSeekValue;
-    private View gestProgressView, gestProgressRight, gestSeekProgress;
-    private static final int GEST_BAR_MAX_DP = 120;
-
-    private void initGestureOverlay() {
-        gestFeedbackLayout = findViewById(R.id.gesture_overlay);
-        gestIconView       = findViewById(R.id.gesture_icon);
-        gestValueView      = findViewById(R.id.gesture_value);
-        gestProgressView   = findViewById(R.id.gesture_progress);
-        gestFeedbackRight  = findViewById(R.id.gesture_overlay_right);
-        gestIconRight      = findViewById(R.id.gesture_icon_right);
-        gestValueRight     = findViewById(R.id.gesture_value_right);
-        gestProgressRight  = findViewById(R.id.gesture_progress_right);
-        gestSeekOverlay    = findViewById(R.id.gesture_seek_overlay);
-        gestSeekIcon       = findViewById(R.id.gesture_seek_icon);
-        gestSeekValue      = findViewById(R.id.gesture_seek_value);
-        gestSeekProgress   = findViewById(R.id.gesture_seek_progress);
-    }
-    @SuppressLint("ClickableViewAccessibility")
-    private void attachGestureListener(View view) {
-        view.setOnTouchListener((v, event) -> {
-            // Pantalla bloqueada: ignorar todo toque sobre el video (el candado sigue tocable aparte)
-            if (screenLocked) return true;
-            // Solo en fullscreen
-            if (!isFullscreenMode()) {
-                gestureDetector.onTouchEvent(event);
-                return true;
-            }
-            switch (event.getAction()) {
-                case MotionEvent.ACTION_DOWN:
-                    gestureStartX = event.getX();
-                    gestureStartY = event.getY();
-                    gestureActive = false;
-                    gestureIsSeek = false;
-                    float third = v.getWidth() / 3f;
-                    gestureIsVolume     = gestureStartX < third;
-                    gestureIsBrightness = gestureStartX > (v.getWidth() - third);
-                    // Zona central — siempre seek en VOD
-                    boolean isCenterZone = !gestureIsVolume && !gestureIsBrightness;
-                    if (gestureIsVolume) {
-                        gestureStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-                    } else if (gestureIsBrightness) {
-                        float winBright = getWindow().getAttributes().screenBrightness;
-                        if (winBright < 0) {
-                            try {
-                                winBright = Settings.System.getInt(
-                                    getContentResolver(), Settings.System.SCREEN_BRIGHTNESS) / 255f;
-                            } catch (Exception e) { winBright = 0.5f; }
-                        }
-                        gestureStartBrightness = winBright;
-                    } else if (isCenterZone && player != null) {
-                        seekStartPosition = player.getCurrentPosition();
-                    }
-                    break;
-                case MotionEvent.ACTION_MOVE:
-                    float dyM = gestureStartY - event.getY();
-                    float dxM = event.getX() - gestureStartX;
-
-                    if (!gestureIsVolume && !gestureIsBrightness && !gestureIsSeek) {
-                        // Detectar dirección dominante del gesto
-                        if (Math.abs(dxM) > 30 && Math.abs(dxM) > Math.abs(dyM) * 1.5f) {
-                            gestureIsSeek = true; // horizontal → seek
-                        }
-                        // vertical en zona vol/brillo se detecta más abajo
-                    }
-
-                    // Para volumen y brillo exigir movimiento predominantemente vertical
-                    boolean isVertical = Math.abs(dyM) > Math.abs(dxM) * 1.2f;
-
-                    if (!gestureActive) {
-                        if (gestureIsSeek && Math.abs(dxM) > 30) gestureActive = true;
-                        else if ((gestureIsVolume || gestureIsBrightness) && isVertical && Math.abs(dyM) > 20) gestureActive = true;
-                    }
-
-                    if (gestureActive) {
-                        if (gestureIsSeek && isVodType() && player != null && seekStartPosition >= 0) {
-                            long dur = player.getDuration();
-                            if (dur > 0) {
-                                long seekDelta = (long)(dxM / v.getWidth() * dur);
-                                long newPos = Math.max(0, Math.min(dur, seekStartPosition + seekDelta));
-                                player.seekTo(newPos);
-                                long newSecs = newPos / 1000;
-                                String timeStr = String.format("%d:%02d:%02d",
-                                    newSecs/3600, (newSecs%3600)/60, newSecs%60);
-                                showSeekTimeFeedback(dxM > 0, timeStr, (int)(newPos * 100 / dur));
-                            }
-                        } else if (gestureIsVolume && isVertical) {
-                            float delta = dyM / v.getHeight();
-                            int newVol = Math.max(0, Math.min(maxVolume,
-                                gestureStartVolume + (int)(delta * maxVolume)));
-                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0);
-                            showGestureFeedback(true, (int)((float)newVol/maxVolume*100));
-                        } else if (gestureIsBrightness && isVertical) {
-                            float delta = dyM / v.getHeight();
-                            float newBright = Math.max(0.01f, Math.min(1f, gestureStartBrightness + delta));
-                            WindowManager.LayoutParams lp = getWindow().getAttributes();
-                            lp.screenBrightness = newBright;
-                            getWindow().setAttributes(lp);
-                            showGestureFeedback(false, (int)(newBright * 100));
-                        }
-                    }
-                    break;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    hideGestureFeedbackDelayed();
-                    gestureActive = false;
-                    break;
-            }
-            // Entregar el evento UNA sola vez al detector (antes iba duplicado
-            // en ACTION_UP y eso hacía que cada tap alternara las barras 2 veces)
-            gestureDetector.onTouchEvent(event);
-            return true;
-        });
-    }
-
-    private boolean isFullscreenMode() {
-        if (isVodType()) return true; // VOD siempre acepta gestos
-        return true; // Live siempre es fullscreen
-    }
-
-    private void setBarHeight(View bar, int pct) {
-        if (bar == null) return;
-        float density = getResources().getDisplayMetrics().density;
-        int maxPx = (int)(GEST_BAR_MAX_DP * density);
-        int newH  = (int)(maxPx * pct / 100f);
-        android.view.ViewGroup.LayoutParams lp = bar.getLayoutParams();
-        lp.height = Math.max(1, newH);
-        bar.setLayoutParams(lp);
-    }
-
-    private void showGestureFeedback(boolean isVolume, int pct) {
-        runOnUiThread(() -> {
-            if (isVolume) {
-                if (gestFeedbackLayout == null) return;
-                gestFeedbackLayout.setVisibility(View.VISIBLE);
-                if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
-                gestIconView.setText(pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A");
-                gestValueView.setText(pct + "%");
-                setBarHeight(gestProgressView, pct);
-            } else {
-                if (gestFeedbackRight == null) return;
-                gestFeedbackRight.setVisibility(View.VISIBLE);
-                if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
-                gestIconRight.setText(pct < 30 ? "\uD83C\uDF11" : pct < 70 ? "\uD83C\uDF13" : "\u2600\uFE0F");
-                gestValueRight.setText(pct + "%");
-                setBarHeight(gestProgressRight, pct);
-            }
-            gestureHideHandler.removeCallbacks(gestureHideRunnable);
-        });
-    }
-
-    private void showSeekFeedback(int seconds) {
-        runOnUiThread(() -> {
-            // Ocultar vol/brillo
-            if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
-            if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
-            // Mostrar overlay central horizontal
-            if (gestSeekOverlay != null) {
-                gestSeekOverlay.setVisibility(View.VISIBLE);
-                if (gestSeekIcon != null) gestSeekIcon.setText(seconds > 0 ? "\u23E9" : "\u23EA");
-                if (gestSeekValue != null) gestSeekValue.setText((seconds > 0 ? "+" : "") + seconds + "s");
-                // Barra al 50% para doble tap
-                if (gestSeekProgress != null) {
-                    gestSeekProgress.post(() -> {
-                        android.view.View parent = (android.view.View) gestSeekProgress.getParent();
-                        android.view.ViewGroup.LayoutParams lp = gestSeekProgress.getLayoutParams();
-                        lp.width = parent.getWidth() / 2;
-                        gestSeekProgress.setLayoutParams(lp);
-                    });
-                }
-            }
-            gestureHideHandler.removeCallbacks(gestureHideRunnable);
-            hideGestureFeedbackDelayed();
-        });
-    }
-
-    private void showSeekTimeFeedback(boolean forward, String timeStr, int pct) {
-        runOnUiThread(() -> {
-            // Ocultar vol/brillo
-            if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
-            if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
-            // Mostrar overlay seek horizontal central
-            if (gestSeekOverlay != null) {
-                gestSeekOverlay.setVisibility(View.VISIBLE);
-                if (gestSeekIcon != null) gestSeekIcon.setText(forward ? "\u23E9" : "\u23EA");
-                if (gestSeekValue != null) gestSeekValue.setText(timeStr);
-                // Barra horizontal — ancho proporcional al progreso
-                if (gestSeekProgress != null) {
-                    android.view.ViewGroup.LayoutParams lp = gestSeekProgress.getLayoutParams();
-                    gestSeekProgress.post(() -> {
-                        android.view.View parent = (android.view.View) gestSeekProgress.getParent();
-                        lp.width = (int)(parent.getWidth() * pct / 100f);
-                        gestSeekProgress.setLayoutParams(lp);
-                    });
-                }
-            }
-            gestureHideHandler.removeCallbacks(gestureHideRunnable);
-        });
-    }
-
-    private void hideGestureFeedbackDelayed() {
-        gestureHideRunnable = () -> {
-            if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
-            if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
-            if (gestSeekOverlay != null) gestSeekOverlay.setVisibility(View.GONE);
-        };
-        gestureHideHandler.postDelayed(gestureHideRunnable, 1200);
-    }
-
-    private void updateResolutionLabel(String res) {
-        lastKnownResolution = res;
-        runOnUiThread(() -> {
-            if (liveResolution != null) {
-                liveResolution.setText(res);
-                liveResolution.setVisibility(View.VISIBLE);
-            }
-            if (vodFsResolution != null) {
-                vodFsResolution.setText(res);
-                vodFsResolution.setVisibility(View.VISIBLE);
-            }
-            if (vodTxtResolution != null) {
-                vodTxtResolution.setText(res);
-                vodTxtResolution.setVisibility(View.VISIBLE);
-            }
-            if (techResolution != null) techResolution.setText(res);
-        });
-    }
-
-    // ══ LIFECYCLE ══
-    @Override
-    public void onPictureInPictureModeChanged(boolean inPiP) {
-        super.onPictureInPictureModeChanged(inPiP);
-        if (inPiP) {
-            // Entrando en PiP — ocultar todo
-            liveTopBar.setVisibility(View.GONE);
-            liveBottomBar.setVisibility(View.GONE);
-            vodFsTop.setVisibility(View.GONE);
-            vodFsBottom.setVisibility(View.GONE);
-            if (isVodType()) {
-                vodTopBar.setVisibility(View.GONE);
-                vodScroll.setVisibility(View.GONE);
-                if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(View.GONE);
-                vodPlayerView.setUseController(false);
-            } else {
-                playerView.setUseController(false);
-            }
-            // Monitorear cierre de PiP en MIUI
-            startPipMonitor();
-        } else {
-            // Saliendo de PiP — restaurar UI
-            enteredPiP = false;
-            stopPipMonitor();
-            if (isVodType()) {
-                vodTopBar.setVisibility(View.VISIBLE);
-                vodScroll.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
-                if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(isVodFullscreen ? View.GONE : View.VISIBLE);
-                vodPlayerView.setUseController(true);
-            } else {
-                playerView.setUseController(true);
-            }
-        }
-    }
-
-    private Runnable pipMonitor = null;
-
-    private void startPipMonitor() {
-        pipMonitor = new Runnable() {
-            @Override
-            public void run() {
-                if (!enteredPiP) return;
-                // Si la ventana no es visible y no estamos en PiP activo = usuario cerró con X
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    if (!isInPictureInPictureMode() && enteredPiP) {
-                        runOnUiThread(() -> {
-                            stopAndRelease();
-                            enteredPiP = false;
-                            finish();
-                        });
-                        return;
-                    }
-                }
-                handler.postDelayed(this, 500);
-            }
-        };
-        handler.postDelayed(pipMonitor, 500);
-    }
-
-    private void stopPipMonitor() {
-        if (pipMonitor != null) {
-            handler.removeCallbacks(pipMonitor);
-            pipMonitor = null;
-        }
-    }
-
-    @Override
-    protected void onPause() {
-        super.onPause();
-        // Solo pausar — no destruir. La destrucción va en botones de salida y onDestroy
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode()) return;
-        if (enteredPiP) return;
-        if (player != null) player.setPlayWhenReady(false);
-    }
-
-    @Override
-    protected void onResume() {
-        super.onResume();
-        if (enteredPiP) {
-            enteredPiP = false;
-            if (player == null && url != null && !url.isEmpty()) initPlayer();
-            return;
-        }
-        if (player != null) player.setPlayWhenReady(true);
-    }
-
-    @Override
-    protected void onStop() {
-        super.onStop();
-        // En MIUI, isInPictureInPictureMode() puede no ser confiable
-        // Si enteredPiP=true y llegamos a onStop, el usuario cerró el PiP
-        if (enteredPiP) {
-            stopAndRelease();
-            enteredPiP = false;
-            finish();
-        }
-    }
-
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        stopProgressSaver();
-        // Guardar posición final antes de salir
-        if (isVodType() && player != null && itemId != null) {
-            long pos = player.getCurrentPosition();
-            long dur = player.getDuration();
-            if (pos > 5000 && dur > 0 && (float)pos/dur < 0.95f) {
-                saveVodProgress(itemId, pos, dur);
-            }
-        }
-        stopAndRelease();
-        if (activeInstance == this) activeInstance = null;
-        // Devolver resultado al MainActivity
-        long retPos = isVodType() && itemId != null ? getVodProgress(itemId) : 0;
-        long retDur = isVodType() && itemId != null ? getVodDuration(itemId) : 0;
-        Intent result = new Intent();
-        result.putExtra("fav_added", favChanged && favAdded);
-        result.putExtra("fav_removed", favChanged && !favAdded);
-        result.putExtra("item_id", itemId);
-        result.putExtra("item_type", isSeriesType() ? "vod" : type);
-        result.putExtra("vod_position", retPos);
-        result.putExtra("vod_duration", retDur);
-        setResult(RESULT_OK, result);
-    }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        // Detener player actual antes de reproducir nuevo contenido
-        stopAndRelease();
-        setIntent(intent);
-        // Releer datos del nuevo intent
-        url          = intent.getStringExtra("url");
-        name         = intent.getStringExtra("name");
-        group        = intent.getStringExtra("group");
-        type         = intent.getStringExtra("type");
-        logo         = intent.getStringExtra("logo");
-        itemId       = intent.getStringExtra("id");
-        channelIndex = intent.getIntExtra("channel_index", -1);
-        isSeries     = intent.getBooleanExtra("is_series", false);
-        channels.clear();
-        parseChannels(intent.getStringExtra("channels_json"));
-        retryCount = 0;
-        enteredPiP = false;
-        triedFromStart = false;
-        savedPosition = 0; // resetear posición guardada al cambiar de contenido
-        // Actualizar UI y reiniciar player
-        if (isVodType()) {
-            // Verificar si hay posición guardada para el nuevo item
-            if (itemId != null && !itemId.isEmpty()) {
-                savedPosition = getVodProgress(itemId);
-            }
-            vodTxtTitleBar.setText(name);
-            vodTxtTitle.setText(name);
-            vodFsTxtTitle.setText(name);
-            vodTxtPlot.setText("Cargando informacion...");
-            vodTxtYear.setVisibility(View.GONE);
-            vodTxtDuration.setVisibility(View.GONE);
-            vodTxtRating.setVisibility(View.GONE);
-            fetchVodInfo();
-            initPlayer();
-        } else {
-            liveTxtName.setText(name);
-            initPlayer();
-        }
-    }
-
-    @Override
-    public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        if (!isTvMode) return super.dispatchKeyEvent(event);
-        if (event.getAction() != android.view.KeyEvent.ACTION_DOWN)
-            return super.dispatchKeyEvent(event);
-
-        switch (event.getKeyCode()) {
-            case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
-            case android.view.KeyEvent.KEYCODE_ENTER:
-            case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                if (player != null) {
-                    if (player.isPlaying()) player.pause();
-                    else player.play();
-                }
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
-            case android.view.KeyEvent.KEYCODE_MEDIA_REWIND:
-                if (isVodType() && player != null)
-                    player.seekTo(Math.max(0, player.getCurrentPosition() - 10000));
-                else navigateChannel(-1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
-            case android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                if (isVodType() && player != null)
-                    player.seekTo(Math.min(player.getDuration(), player.getCurrentPosition() + 10000));
-                else navigateChannel(1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_UP:
-                if (!isVodType()) navigateChannel(-1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
-                if (!isVodType()) navigateChannel(1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_BACK:
-            case android.view.KeyEvent.KEYCODE_ESCAPE:
-                stopAndRelease();
-                finish();
-                return true;
-            case android.view.KeyEvent.KEYCODE_MEDIA_STOP:
-                stopAndRelease();
-                finish();
-                return true;
-        }
-        return super.dispatchKeyEvent(event);
-    }
-
-    @Override
-    public void onBackPressed() {
-        if (screenLocked) {
-            toast("\uD83D\uDD12 Desbloquea la pantalla para salir");
-            return;
-        }
-        if (drawerOpen) {
-            closeDrawer();
-            return;
-        }
-        if (isVodFullscreen) {
-            exitVodFullscreen();
-        } else {
-            stopAndRelease();
-            finish();
-            overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
-        }
-    }
-}
+    
