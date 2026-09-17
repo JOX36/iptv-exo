@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- MediaRouteButton marca state_activated=true solo mientras hay una sesión
+         de Cast conectada — así el ícono cambia de blanco a cian sin que tengamos
+         que escuchar el evento nosotros mismos. -->
+    <item android:state_activated="true" android:drawable="@drawable/ic_cast_connected" />
+    <item android:drawable="@drawable/ic_cast" />
+</selector>
