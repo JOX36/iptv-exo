@@ -38,6 +38,7 @@ import androidx.mediarouter.app.MediaRouteButton;
 import com.google.android.gms.cast.MediaInfo;
 import com.google.android.gms.cast.MediaLoadRequestData;
 import com.google.android.gms.cast.MediaMetadata;
+import com.google.android.gms.cast.MediaSeekOptions;
 import com.google.android.gms.cast.framework.CastButtonFactory;
 import com.google.android.gms.cast.framework.CastContext;
 import com.google.android.gms.cast.framework.CastSession;
@@ -87,8 +88,13 @@ public class PlayerActivity extends AppCompatActivity {
     private CastStateListener castStateListener;
     private SessionManagerListener<CastSession> castSessionListener;
     private CastSession castSession;
+    private RemoteMediaClient remoteMediaClient;
+    private RemoteMediaClient.Callback remoteMediaClientCallback;
     // true mientras el video se está reproduciendo EN el Chromecast (no en el teléfono)
     private boolean castingActive = false;
+    // posición "en preview" durante un swipe de seek con Cast activo — evita mandar
+    // un seek al Chromecast en cada pixel de movimiento, solo al soltar el dedo
+    private long castSeekPreviewPos = -1;
 
     // LIVE
     private PlayerView playerView;
@@ -575,8 +581,13 @@ public class PlayerActivity extends AppCompatActivity {
         vodFsBtnSubs.setOnClickListener(v -> showSubtitleTracks());
         vodFsBtnAudio.setOnClickListener(v -> showAudioTracks());
 
-        // Pausa/Play en fullscreen
+        // Pausa/Play en fullscreen — si hay Cast activo, controla el Chromecast
         vodFsBtnPause.setOnClickListener(v -> {
+            if (castingActive && remoteMediaClient != null) {
+                if (remoteMediaClient.isPlaying()) remoteMediaClient.pause();
+                else remoteMediaClient.play();
+                return; // el ícono se actualiza solo vía el callback de estado remoto
+            }
             if (player == null) return;
             if (player.isPlaying()) {
                 player.pause();
@@ -589,24 +600,25 @@ public class PlayerActivity extends AppCompatActivity {
 
         // Detener — sale de fullscreen y pausa
         vodFsBtnStop.setOnClickListener(v -> {
+            if (castingActive && remoteMediaClient != null) remoteMediaClient.pause();
             if (player != null) player.pause();
             vodFsBtnPause.setImageResource(R.drawable.ic_play);
             if (isVodFullscreen) exitVodFullscreen();
         });
 
-        // −10s / +10s
-        vodFsBtnRew.setOnClickListener(v -> {
-            if (player != null) { player.seekTo(Math.max(0, player.getCurrentPosition() - 10000)); showSeekFeedback(-10); }
-        });
-        vodFsBtnFfw.setOnClickListener(v -> {
-            if (player != null) { player.seekTo(Math.min(player.getDuration(), player.getCurrentPosition() + 10000)); showSeekFeedback(+10); }
-        });
+        // −10s / +10s — seekRelative decide solo si va al Chromecast o al teléfono
+        vodFsBtnRew.setOnClickListener(v -> { seekRelative(-10000); showSeekFeedback(-10); });
+        vodFsBtnFfw.setOnClickListener(v -> { seekRelative(10000); showSeekFeedback(+10); });
 
         // Velocidad 1x → 1.25x → 1.5x → 2x
         vodFsBtnSpeed.setOnClickListener(v -> {
             speedIdx = (speedIdx + 1) % SPEEDS.length;
             float sp = SPEEDS[speedIdx];
-            if (player != null) player.setPlaybackSpeed(sp);
+            if (castingActive && remoteMediaClient != null) {
+                remoteMediaClient.setPlaybackRate(sp);
+            } else if (player != null) {
+                player.setPlaybackSpeed(sp);
+            }
             vodFsBtnSpeed.setText(sp == 1f ? "1x" : (sp + "x").replace(".0", ""));
             vodFsBtnSpeed.setTextColor(sp == 1f ? 0xFFFFFFFF : 0xFF00D4FF);
         });
@@ -642,7 +654,12 @@ public class PlayerActivity extends AppCompatActivity {
             }
             @Override public void onScrubStop(TimeBar timeBar, long position, boolean canceled) {
                 seekScrubbing = false;
-                if (!canceled && player != null) player.seekTo(position);
+                if (canceled) return;
+                if (castingActive && remoteMediaClient != null) {
+                    remoteMediaClient.seek(new MediaSeekOptions.Builder().setPosition(position).build());
+                } else if (player != null) {
+                    player.seekTo(position);
+                }
             }
         });
 
@@ -664,13 +681,11 @@ public class PlayerActivity extends AppCompatActivity {
                 float w = vodPlayerView.getWidth();
                 // 1/3 izquierda → -10s, 1/3 derecha → +10s, centro → nada
                 if (x < w / 3f) {
-                    long newPos = Math.max(0, player.getCurrentPosition() - 10000);
-                    player.seekTo(newPos);
+                    seekRelative(-10000);
                     showSeekFeedback(-10);
                     return true;
                 } else if (x > w * 2f / 3f) {
-                    long newPos = Math.min(player.getDuration(), player.getCurrentPosition() + 10000);
-                    player.seekTo(newPos);
+                    seekRelative(10000);
                     showSeekFeedback(+10);
                     return true;
                 }
@@ -1811,10 +1826,19 @@ public class PlayerActivity extends AppCompatActivity {
         if (!isVodType()) return;
         seekUiRunnable = new Runnable() {
             @Override public void run() {
-                if (player != null && !seekScrubbing) {
-                    long dur = player.getDuration();
-                    long pos = player.getCurrentPosition();
-                    long buf = player.getBufferedPosition();
+                if (!seekScrubbing) {
+                    long dur = 0, pos = 0, buf = 0;
+                    if (castingActive && remoteMediaClient != null) {
+                        // Mientras se castea, el reproductor local está en pausa —
+                        // la posición real vive en el Chromecast, no en `player`.
+                        dur = remoteMediaClient.getStreamDuration();
+                        pos = remoteMediaClient.getApproximateStreamPosition();
+                        buf = pos; // el SDK de Cast no expone posición de buffer aparte
+                    } else if (player != null) {
+                        dur = player.getDuration();
+                        pos = player.getCurrentPosition();
+                        buf = player.getBufferedPosition();
+                    }
                     if (dur > 0 && vodFsSeek != null) {
                         vodFsSeek.setDuration(dur);
                         vodFsSeek.setPosition(pos);
@@ -1953,6 +1977,17 @@ public class PlayerActivity extends AppCompatActivity {
         // El Chromecast pasa a reproducir el video \u2014 pausamos localmente para que
         // el audio no suene doble (tel\u00E9fono + TV) mientras dura la transmisi\u00F3n.
         if (player != null) player.setPlayWhenReady(false);
+
+        // Nos suscribimos al estado del receptor para que el \u00EDcono de play/pausa
+        // refleje lo que de verdad est\u00E1 pasando en el TV, no lo que asumimos aqu\u00ED.
+        remoteMediaClient = session.getRemoteMediaClient();
+        if (remoteMediaClient != null) {
+            remoteMediaClientCallback = new RemoteMediaClient.Callback() {
+                @Override public void onStatusUpdated() { updateRemotePauseIcon(); }
+            };
+            remoteMediaClient.registerCallback(remoteMediaClientCallback);
+        }
+
         try {
             toast("Transmitiendo a " + session.getCastDevice().getFriendlyName());
         } catch (Exception ignored) {}
@@ -1962,8 +1997,41 @@ public class PlayerActivity extends AppCompatActivity {
         if (!castingActive) return; // ya estaba desconectado \u2014 evita reanudar dos veces
         castingActive = false;
         castSession = null;
+        if (remoteMediaClient != null && remoteMediaClientCallback != null) {
+            remoteMediaClient.unregisterCallback(remoteMediaClientCallback);
+        }
+        remoteMediaClient = null;
+        remoteMediaClientCallback = null;
         // Retoma en el tel\u00E9fono donde estaba antes de castear
         if (player != null) player.setPlayWhenReady(true);
+        if (vodFsBtnPause != null && player != null) {
+            vodFsBtnPause.setImageResource(R.drawable.ic_pause);
+        }
+    }
+
+    private void updateRemotePauseIcon() {
+        if (vodFsBtnPause == null || remoteMediaClient == null) return;
+        boolean playing = remoteMediaClient.isPlaying();
+        runOnUiThread(() -> vodFsBtnPause.setImageResource(playing ? R.drawable.ic_pause : R.drawable.ic_play));
+    }
+
+    /**
+     * \u00B1N ms desde la posici\u00F3n actual \u2014 usado por los botones de 10s y el doble-tap.
+     * Decide solo si redirige al Chromecast o al reproductor local.
+     */
+    private void seekRelative(long deltaMs) {
+        if (castingActive && remoteMediaClient != null) {
+            long dur = remoteMediaClient.getStreamDuration();
+            long cur = remoteMediaClient.getApproximateStreamPosition();
+            long newPos = Math.max(0, cur + deltaMs);
+            if (dur > 0) newPos = Math.min(dur, newPos);
+            remoteMediaClient.seek(new MediaSeekOptions.Builder().setPosition(newPos).build());
+        } else if (player != null) {
+            long newPos = Math.max(0, player.getCurrentPosition() + deltaMs);
+            long dur = player.getDuration();
+            if (dur > 0) newPos = Math.min(dur, newPos);
+            player.seekTo(newPos);
+        }
     }
 
     /**
@@ -2366,8 +2434,11 @@ public class PlayerActivity extends AppCompatActivity {
                             } catch (Exception e) { winBright = 0.5f; }
                         }
                         gestureStartBrightness = winBright;
-                    } else if (isCenterZone && player != null) {
-                        seekStartPosition = player.getCurrentPosition();
+                    } else if (isCenterZone && (player != null || (castingActive && remoteMediaClient != null))) {
+                        seekStartPosition = (castingActive && remoteMediaClient != null)
+                                ? remoteMediaClient.getApproximateStreamPosition()
+                                : player.getCurrentPosition();
+                        castSeekPreviewPos = -1;
                     }
                     break;
                 case MotionEvent.ACTION_MOVE:
@@ -2391,12 +2462,19 @@ public class PlayerActivity extends AppCompatActivity {
                     }
 
                     if (gestureActive) {
-                        if (gestureIsSeek && isVodType() && player != null && seekStartPosition >= 0) {
-                            long dur = player.getDuration();
+                        boolean castSeek = castingActive && remoteMediaClient != null;
+                        if (gestureIsSeek && isVodType() && (player != null || castSeek) && seekStartPosition >= 0) {
+                            long dur = castSeek ? remoteMediaClient.getStreamDuration() : player.getDuration();
                             if (dur > 0) {
                                 long seekDelta = (long)(dxM / v.getWidth() * dur);
                                 long newPos = Math.max(0, Math.min(dur, seekStartPosition + seekDelta));
-                                player.seekTo(newPos);
+                                if (castSeek) {
+                                    // Solo actualizamos el preview visual — el seek real al
+                                    // Chromecast se manda una sola vez al soltar el dedo (ACTION_UP)
+                                    castSeekPreviewPos = newPos;
+                                } else {
+                                    player.seekTo(newPos);
+                                }
                                 long newSecs = newPos / 1000;
                                 String timeStr = String.format("%d:%02d:%02d",
                                     newSecs/3600, (newSecs%3600)/60, newSecs%60);
@@ -2419,7 +2497,15 @@ public class PlayerActivity extends AppCompatActivity {
                     }
                     break;
                 case MotionEvent.ACTION_UP:
+                    if (gestureIsSeek && castSeekPreviewPos >= 0 && castingActive && remoteMediaClient != null) {
+                        remoteMediaClient.seek(new MediaSeekOptions.Builder().setPosition(castSeekPreviewPos).build());
+                    }
+                    castSeekPreviewPos = -1;
+                    hideGestureFeedbackDelayed();
+                    gestureActive = false;
+                    break;
                 case MotionEvent.ACTION_CANCEL:
+                    castSeekPreviewPos = -1;
                     hideGestureFeedbackDelayed();
                     gestureActive = false;
                     break;
