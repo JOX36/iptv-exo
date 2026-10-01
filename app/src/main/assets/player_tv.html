@@ -1886,6 +1886,7 @@ let _vodModalItem=null;
 async function openVodInfo(item){
   _vodModalItem=item;
   document.getElementById('vodModal').classList.remove('hidden');
+  if(TV.enabled) tvFocusZone('modal', 0);
   document.getElementById('vodModalTitle').textContent=item.name;
   document.getElementById('vodModalMeta').innerHTML='<span class="vod-modal-badge">⏳ Cargando...</span>';
   document.getElementById('vodModalPlot').textContent='';
@@ -2038,6 +2039,7 @@ let seriesData=null;
 async function openSeries(item){
   seriesData=null;document.getElementById('seriesModal').classList.remove('hidden');
   document.getElementById('modalBody').innerHTML=`<div class="modal-loading"><div class="p-spinner"></div><p>Cargando temporadas...</p></div>`;
+  if(TV.enabled) tvFocusZone('modal', 0);
   const mh=document.getElementById('modalHeader');
   mh.innerHTML=`${item.logo?`<img src="${esc(item.logo)}" onerror="this.outerHTML='<div class=modal-header-ph>🎭</div>'">`:`<div class="modal-header-ph">🎭</div>`}<div class="modal-title"><h3>${esc(item.name)}</h3><p>${esc(item.group||'')}</p></div><button class="modal-close" onclick="closeSeriesModalForce()">✕</button>`;
   try{
@@ -2117,6 +2119,7 @@ function renderSeriesModal(seasonKeys){
   }).join('')+`</div>`;
 
   document.getElementById('modalBody').innerHTML=seriesSynopsis+seasonDrop+epList;
+  if(TV.enabled) tvFocusZone('modal', 0);
 }
 
 function toggleSeasonDrop(){
@@ -2877,6 +2880,20 @@ function tvGetElements(zone){
       });
     case 'topbar':
       return [...document.querySelectorAll('.tb-btn, .acc-btn')];
+    case 'modal': {
+      // Detecta cuál modal está abierto (VOD o Series) y toma todos sus
+      // botones/elementos clicables visibles. Al usar un selector genérico
+      // (button, [onclick]) no hace falta listar cada botón a mano: el
+      // modal de series re-renderiza su contenido (temporadas/episodios)
+      // dinámicamente y esto los recoge igual, sin tocar este código.
+      const vodModal = document.getElementById('vodModal');
+      const seriesModal = document.getElementById('seriesModal');
+      let root = null;
+      if(vodModal && !vodModal.classList.contains('hidden')) root = vodModal;
+      else if(seriesModal && !seriesModal.classList.contains('hidden')) root = seriesModal;
+      if(!root) return [];
+      return [...root.querySelectorAll('button, [onclick]')].filter(el => el.offsetParent !== null);
+    }
     default:
       return [];
   }
@@ -2952,6 +2969,13 @@ function tvZoneNav(dir){
     if(dir === 'left') tvMove(-1);
     else if(dir === 'right') tvMove(1);
     else if(dir === 'down') tvFocusZone('tabs', 0);
+  }
+  else if(zone === 'modal'){
+    // Recorrido lineal simple: el contenido del modal (play/ext, episodios,
+    // similares) no es una grilla uniforme, así que cualquier dirección
+    // simplemente avanza o retrocede un elemento en la lista.
+    if(dir === 'up' || dir === 'left') tvMove(-1);
+    else if(dir === 'down' || dir === 'right') tvMove(1);
   }
 }
 
@@ -3055,8 +3079,16 @@ function tvHandleBack(){
   const vodModal = document.getElementById('vodModal');
   const seriesModal = document.getElementById('seriesModal');
   const accDrop = document.getElementById('accDrop');
-  if(vodModal && !vodModal.classList.contains('hidden')){ closeVodModal(); return; }
-  if(seriesModal && !seriesModal.classList.contains('hidden')){ closeSeriesModalForce(); return; }
+  if(vodModal && !vodModal.classList.contains('hidden')){
+    closeVodModal();
+    if(TV.enabled) tvFocusZone('content', 0);
+    return;
+  }
+  if(seriesModal && !seriesModal.classList.contains('hidden')){
+    closeSeriesModalForce();
+    if(TV.enabled) tvFocusZone('content', 0);
+    return;
+  }
   if(accDrop && accDrop.classList.contains('open')){ closeAccDrop(); return; }
   // Volver a tabs
   tvFocusZone('tabs');
