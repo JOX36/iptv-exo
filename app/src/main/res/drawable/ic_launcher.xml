@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icono de la app (antes no tenía ninguno y Android mostraba el robot genérico) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#0A1420"
+        android:pathData="M24,6L84,6A18,18 0,0 1,102 24L102,84A18,18 0,0 1,84 102L24,102A18,18 0,0 1,6 84L6,24A18,18 0,0 1,24 6Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="5"
+        android:pathData="M26,34L82,34A6,6 0,0 1,88 40L88,76A6,6 0,0 1,82 82L26,82A6,6 0,0 1,20 76L20,40A6,6 0,0 1,26 34Z" />
+    <path
+        android:fillColor="#00D4FF"
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M42,22L54,32L66,22" />
+    <path
+        android:fillColor="#00D4FF"
+        android:pathData="M47,46L67,58L47,70Z" />
+</vector>

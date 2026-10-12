@@ -2,11 +2,19 @@ name: Build APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ '**' ]        # compila cualquier rama, no solo main
+  pull_request:
+  workflow_dispatch:          # botón "Run workflow" manual en la pestaña Actions
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true    # si subes otro commit, cancela la compilación anterior
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -16,20 +24,30 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Download Gradle wrapper jar
-        run: |
-          mkdir -p gradle/wrapper
-          curl -L "https://github.com/gradle/gradle/raw/v8.2.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o gradle/wrapper/gradle-wrapper.jar
-
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      # Gradle oficial con caché de dependencias: las compilaciones siguientes
+      # son bastante más rápidas y no depende de descargar el wrapper a mano.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.2'
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug --stacktrace
+
+      # Firma de producción opcional: solo corre si configuraste los secretos
+      - name: Build Release APK (firmada)
+        if: ${{ github.ref == 'refs/heads/main' && env.HAS_KEYSTORE == 'true' }}
+        env:
+          RELEASE_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RELEASE_KEYSTORE_FILE"
+          gradle assembleRelease --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: iptv-exo
-          path: app/build/outputs/apk/debug/*.apk
+          name: iptv-exo-${{ github.run_number }}
+          path: app/build/outputs/apk/**/*.apk

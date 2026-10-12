@@ -2,9 +2,11 @@ package com.jox3.iptvexo;
 
 import android.annotation.SuppressLint;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.os.Bundle;
+import android.provider.OpenableColumns;
 import android.util.Log;
 import android.webkit.JavascriptInterface;
 import android.webkit.SslErrorHandler;
@@ -15,42 +17,38 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.appcompat.app.AppCompatActivity;
 
+import org.json.JSONObject;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
-import java.util.concurrent.TimeUnit;
+import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ConcurrentHashMap;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-
-import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
 
+    private static final String TAG = "IPTV_EXO";
+    private static final String UI_ORIGIN = "file:///android_asset/";
+
     private WebView webView;
     private static final int REQ_PLAYER   = 1001;
     private static final int REQ_M3U_FILE = 1002;
-    private OkHttpClient httpClient;
-    
-    // User-Agent personalizado que simula un reproductor IPTV moderno
-    private static final String CUSTOM_USER_AGENT = 
-        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36 " +
-        "ExoPlayer/2.18.1 (Linux;Android 10) ExoPlayerLib/2.18.1";
+    /** Límite de lectura de un M3U local (ya no pasa por evaluateJavascript, así que puede ser mayor). */
+    private static final int MAX_M3U_CHARS = 20 * 1024 * 1024;
 
-    @SuppressLint({"SetJavaScriptEnabled","TrustAllX509TrustManager"})
+    // Almacén temporal de resultados grandes — se recogen desde JS con AndroidPlayer.getResult(id)
+    // en lugar de inyectarlos como texto en evaluateJavascript (evita falta de memoria).
+    private final ConcurrentHashMap<String, String> resultStore = new ConcurrentHashMap<>();
+
+    @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        httpClient = buildUnsafeClient();
 
         webView = findViewById(R.id.webview);
         WebSettings ws = webView.getSettings();
@@ -60,35 +58,37 @@ public class MainActivity extends AppCompatActivity {
         ws.setMediaPlaybackRequiresUserGesture(false);
         ws.setAllowUniversalAccessFromFileURLs(true);
         ws.setAllowFileAccessFromFileURLs(true);
-        ws.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        
-        // ========== MEJORA CRÍTICA: User-Agent personalizado ==========
-        ws.setUserAgentString(CUSTOM_USER_AGENT);
-        
-        webView.clearCache(true);
+        // Caché normal: los logos de canales se guardan y la lista abre mucho más rápido.
+        // (Antes se borraba la caché en cada inicio y se forzaba LOAD_NO_CACHE.)
+        // La API no se ve afectada: pasa por el puente Java (fetchUrl), no por el WebView.
+        ws.setCacheMode(WebSettings.LOAD_DEFAULT);
+        ws.setUserAgentString(NetClient.API_USER_AGENT);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                // Logos/imágenes de paneles IPTV con certificados vencidos o autofirmados
                 handler.proceed();
             }
-            
-            // ========== MEJORA: Logging de errores HTTP ==========
+
+            // El puente AndroidPlayer solo debe estar disponible para la interfaz local.
+            // Cualquier navegación fuera de ella se abre en otra app, nunca dentro del WebView.
             @Override
-            public void onReceivedHttpError(WebView view, WebResourceRequest request, 
-                                           WebResourceResponse errorResponse) {
-                Log.e("IPTV_EXO", "Error HTTP " + errorResponse.getStatusCode() + 
-                      " al cargar: " + request.getUrl());
-                super.onReceivedHttpError(view, request, errorResponse);
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return handleNavigation(request.getUrl().toString());
             }
-            
-            // ========== MEJORA: Logging de errores de carga ==========
+
+            @SuppressWarnings("deprecation")
             @Override
-            public void onReceivedError(WebView view, int errorCode, 
-                                       String description, String failingUrl) {
-                Log.e("IPTV_EXO", "Error de carga (" + errorCode + "): " + 
-                      description + " - URL: " + failingUrl);
-                super.onReceivedError(view, errorCode, description, failingUrl);
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return handleNavigation(url);
+            }
+
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                            WebResourceResponse errorResponse) {
+                Log.w(TAG, "HTTP " + errorResponse.getStatusCode() + " al cargar: " + request.getUrl());
+                super.onReceivedHttpError(view, request, errorResponse);
             }
         });
 
@@ -101,7 +101,7 @@ public class MainActivity extends AppCompatActivity {
             android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
 
-        if(isTv || isTvUiMode){
+        if (isTv || isTvUiMode) {
             // TV Box — forzar landscape fullscreen
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
@@ -110,36 +110,40 @@ public class MainActivity extends AppCompatActivity {
                 android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
                 android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             );
-            webView.loadUrl("file:///android_asset/player_tv.html");
+            webView.loadUrl(UI_ORIGIN + "player_tv.html");
         } else {
-            webView.loadUrl("file:///android_asset/player.html");
+            webView.loadUrl(UI_ORIGIN + "player.html");
         }
     }
 
-    @SuppressLint("TrustAllX509TrustManager")
-    private OkHttpClient buildUnsafeClient() {
+    /** true = navegación bloqueada en el WebView (se abre fuera si es posible). */
+    private boolean handleNavigation(String url) {
+        if (url == null) return true;
+        if (url.startsWith(UI_ORIGIN)) return false;
         try {
-            X509TrustManager tm = new X509TrustManager() {
-                public void checkClientTrusted(X509Certificate[] c, String a) {}
-                public void checkServerTrusted(X509Certificate[] c, String a) {}
-                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-            };
-            SSLContext sc = SSLContext.getInstance("TLS");
-            sc.init(null, new TrustManager[]{tm}, new SecureRandom());
-            return new OkHttpClient.Builder()
-                .sslSocketFactory(sc.getSocketFactory(), tm)
-                .hostnameVerifier((h, s) -> true)
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .build();
+            Intent i = url.startsWith("intent:")
+                ? Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
+                : new Intent(Intent.ACTION_VIEW, Uri.parse(url));
+            i.addCategory(Intent.CATEGORY_BROWSABLE);
+            i.setComponent(null);
+            startActivity(i);
         } catch (Exception e) {
-            return new OkHttpClient.Builder().build();
+            Log.w(TAG, "No se pudo abrir: " + url);
         }
+        return true;
     }
 
-    // Almacén temporal de resultados grandes — evita OOM al pasar JSON en evaluateJavascript
-    private final java.util.concurrent.ConcurrentHashMap<String, String> resultStore =
-        new java.util.concurrent.ConcurrentHashMap<>();
+    /** Ejecuta JS en el hilo principal, ignorando llamadas si la Activity ya se cerró. */
+    private void runJs(String js) {
+        webView.post(() -> {
+            if (!isFinishing() && !isDestroyed()) webView.evaluateJavascript(js, null);
+        });
+    }
+
+    /** Literal de string JS seguro (comillas, saltos de línea y barras escapados). */
+    private static String js(String s) {
+        return JSONObject.quote(s == null ? "" : s);
+    }
 
     class Bridge {
 
@@ -153,12 +157,15 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public void downloadFile(String url, String name) {
             try {
-                // Extensión real desde la URL (mkv/mp4/avi/ts)
+                // Extensión real desde el path de la URL (mkv/mp4/avi/ts)
                 String ext = "mp4";
-                int dot = url.lastIndexOf('.');
-                if (dot > 0 && dot > url.lastIndexOf('/')) {
-                    String cand = url.substring(dot + 1);
-                    if (cand.length() <= 5 && cand.matches("[A-Za-z0-9]+")) ext = cand;
+                String path = Uri.parse(url).getPath();
+                if (path != null) {
+                    int dot = path.lastIndexOf('.');
+                    if (dot > 0 && dot > path.lastIndexOf('/')) {
+                        String cand = path.substring(dot + 1);
+                        if (cand.length() <= 5 && cand.matches("[A-Za-z0-9]+")) ext = cand;
+                    }
                 }
                 // Nombre de archivo seguro
                 String safe = (name == null || name.trim().isEmpty() ? "video" : name)
@@ -167,10 +174,11 @@ public class MainActivity extends AppCompatActivity {
                 if (safe.length() > 80) safe = safe.substring(0, 80);
 
                 android.app.DownloadManager.Request req =
-                    new android.app.DownloadManager.Request(android.net.Uri.parse(url));
+                    new android.app.DownloadManager.Request(Uri.parse(url));
                 req.setTitle(safe);
                 req.setDescription("Descargando desde JOX3 TV");
                 req.setMimeType("video/*");
+                req.addRequestHeader("User-Agent", NetClient.PLAYER_USER_AGENT);
                 req.setNotificationVisibility(
                     android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
                 req.setDestinationInExternalPublicDir(
@@ -194,8 +202,7 @@ public class MainActivity extends AppCompatActivity {
             android.content.SharedPreferences prefs =
                 getSharedPreferences("vod_progress", MODE_PRIVATE);
             java.util.Map<String, ?> all = prefs.getAll();
-            StringBuilder sb = new StringBuilder("{");
-            boolean first = true;
+            JSONObject out = new JSONObject();
             for (java.util.Map.Entry<String, ?> entry : all.entrySet()) {
                 String key = entry.getKey();
                 if (!key.startsWith("pos_")) continue;
@@ -203,91 +210,89 @@ public class MainActivity extends AppCompatActivity {
                 long pos = prefs.getLong("pos_" + id, 0);
                 long dur = prefs.getLong("dur_" + id, 0);
                 if (pos > 0 && dur > 0) {
-                    if (!first) sb.append(",");
-                    sb.append("\"").append(id).append("\":{\"pos\":").append(pos)
-                      .append(",\"dur\":").append(dur).append("}");
-                    first = false;
+                    try {
+                        out.put(id, new JSONObject().put("pos", pos).put("dur", dur));
+                    } catch (Exception ignored) {}
                 }
             }
-            sb.append("}");
-            return sb.toString();
+            return out.toString();
         }
 
-        // ── Petición API desde Java — solución definitiva Android 15 ──
+        // ── Petición API desde Java — evita el bloqueo CORS de Android 15 ──
         @JavascriptInterface
         public void fetchUrl(final String url, final String callbackId) {
-            new Thread(() -> {
+            // El id se concatena en JS: solo se aceptan ids alfanuméricos
+            if (callbackId == null || !callbackId.matches("[A-Za-z0-9_]{1,64}")) return;
+            NetClient.IO.execute(() -> {
                 String result = null;
                 String error  = null;
                 try {
-                    // Intentar con la URL original
                     result = doFetch(url);
-                } catch (Exception e1) {
-                    // Si falla, intentar con el protocolo alternativo HTTP/HTTPS
-                    try {
-                        String altUrl;
-                        if (url.startsWith("https://")) {
-                            altUrl = "http://" + url.substring(8);
-                        } else if (url.startsWith("http://")) {
-                            altUrl = "https://" + url.substring(7);
-                        } else {
-                            throw e1;
+                } catch (IOException e1) {
+                    // Solo ante fallo de CONEXIÓN se prueba el otro protocolo (http ↔ https).
+                    // Un error HTTP (403, 404, 500) es una respuesta real del servidor y se informa tal cual.
+                    String altUrl = null;
+                    if (url.startsWith("https://")) altUrl = "http://" + url.substring(8);
+                    else if (url.startsWith("http://")) altUrl = "https://" + url.substring(7);
+                    if (altUrl != null && !(e1 instanceof HttpStatusException)) {
+                        try {
+                            result = doFetch(altUrl);
+                            updateHostProtocol(altUrl);
+                        } catch (Exception e2) {
+                            error = describe(e1);
                         }
-                        result = doFetch(altUrl);
-                        // Notificar al WebView el protocolo correcto
-                        updateHostProtocol(altUrl);
-                    } catch (Exception e2) {
-                        error = e1.getMessage() != null ? e1.getMessage() : "Error de red";
+                    } else {
+                        error = describe(e1);
                     }
+                } catch (Exception e) {
+                    error = describe(e);
                 }
 
-                final String finalResult = result;
-                final String finalError  = error;
-
-                // Guardar resultado en objeto accesible desde JS — evita OOM de evaluateJavascript
-                webView.post(() -> {
-                    String js;
-                    if (finalResult != null) {
-                        // Guardar en objeto puente en lugar de pasar como string literal
-                        resultStore.put(callbackId, finalResult);
-                        js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
-                             "var _d=AndroidPlayer.getResult('" + callbackId + "');" +
-                             "window._jcb['" + callbackId + "'](null,_d);" +
-                             "delete window._jcb['" + callbackId + "'];}";
-                    } else {
-                        js = "if(window._jcb&&window._jcb['" + callbackId + "']){" +
-                             "window._jcb['" + callbackId + "']('" + finalError + "',null);" +
-                             "delete window._jcb['" + callbackId + "'];}";
-                    }
-                    webView.evaluateJavascript(js, null);
-                });
-            }).start();
+                String cb = js(callbackId);
+                if (result != null) {
+                    resultStore.put(callbackId, result);
+                    runJs("if(window._jcb&&window._jcb[" + cb + "]){" +
+                          "var _d=AndroidPlayer.getResult(" + cb + ");" +
+                          "window._jcb[" + cb + "](null,_d);" +
+                          "delete window._jcb[" + cb + "];}");
+                } else {
+                    runJs("if(window._jcb&&window._jcb[" + cb + "]){" +
+                          "window._jcb[" + cb + "](" + js(error) + ",null);" +
+                          "delete window._jcb[" + cb + "];}");
+                }
+            });
         }
 
-        private String doFetch(String url) throws Exception {
+        private String describe(Exception e) {
+            if (e instanceof HttpStatusException) return e.getMessage();
+            if (e instanceof java.net.SocketTimeoutException) return "Tiempo de espera agotado";
+            if (e instanceof java.net.UnknownHostException) return "Servidor no encontrado";
+            return e.getMessage() != null ? e.getMessage() : "Error de red";
+        }
+
+        private String doFetch(String url) throws IOException {
             Request req = new Request.Builder()
                 .url(url)
-                .header("User-Agent", CUSTOM_USER_AGENT)
+                .header("User-Agent", NetClient.API_USER_AGENT)
                 .header("Accept", "application/json, */*")
                 .build();
-            Response resp = httpClient.newCall(req).execute();
-            String body = resp.body() != null ? resp.body().string() : "";
-            resp.close();
-            if (body.isEmpty()) throw new Exception("Empty response");
-            return body;
+            // try-with-resources: la respuesta se cierra siempre, también si hay error
+            try (Response resp = NetClient.api().newCall(req).execute()) {
+                if (!resp.isSuccessful()) throw new HttpStatusException(resp.code());
+                String body = resp.body() != null ? resp.body().string() : "";
+                if (body.isEmpty()) throw new IOException("Respuesta vacía del servidor");
+                return body;
+            }
         }
 
         // Detectar protocolo correcto del host y notificar al WebView
         private void updateHostProtocol(final String workingUrl) {
             try {
                 java.net.URL u = new java.net.URL(workingUrl);
-                final String correctHost = u.getProtocol() + "://" + u.getHost() +
+                String correctHost = u.getProtocol() + "://" + u.getHost() +
                     (u.getPort() > 0 ? ":" + u.getPort() : "");
-                webView.post(() ->
-                    webView.evaluateJavascript(
-                        "if(S&&S.host&&S.host!=='" + correctHost + "'){S.host='" + correctHost + "';}", null
-                    )
-                );
+                String h = js(correctHost);
+                runJs("if(typeof S!=='undefined'&&S.host&&S.host!==" + h + "){S.host=" + h + ";}");
             } catch (Exception ignored) {}
         }
 
@@ -295,6 +300,8 @@ public class MainActivity extends AppCompatActivity {
         public void openPlayer(String url, String name, String group, String type,
                                String logo, String itemId, String channelsJson, int channelIndex,
                                boolean isSeries) {
+            // La lista va por memoria, no por el Intent (límite de ~1 MB de Android)
+            PlayerHandoff.put(channelsJson != null ? channelsJson : "[]");
             Intent i = new Intent(MainActivity.this, PlayerActivity.class);
             i.putExtra("url", url);
             i.putExtra("name", name);
@@ -303,9 +310,9 @@ public class MainActivity extends AppCompatActivity {
             i.putExtra("logo", logo);
             i.putExtra("id", itemId);
             i.putExtra("channel_index", channelIndex);
-            i.putExtra("channels_json", channelsJson != null ? channelsJson : "[]");
+            i.putExtra("channels_in_handoff", true);
             i.putExtra("is_series", isSeries);
-            startActivityForResult(i, REQ_PLAYER);
+            runOnUiThread(() -> startActivityForResult(i, REQ_PLAYER));
         }
 
         @JavascriptInterface
@@ -314,15 +321,22 @@ public class MainActivity extends AppCompatActivity {
             i.addCategory(Intent.CATEGORY_OPENABLE);
             i.setType("*/*");
             i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
-                "text/plain", "audio/x-mpegurl",
-                "application/octet-stream", "application/vnd.apple.mpegurl"
+                "text/plain", "audio/x-mpegurl", "audio/mpegurl",
+                "application/octet-stream", "application/vnd.apple.mpegurl",
+                "application/x-mpegurl"
             });
-            startActivityForResult(Intent.createChooser(i, "Seleccionar lista M3U"), REQ_M3U_FILE);
+            runOnUiThread(() ->
+                startActivityForResult(Intent.createChooser(i, "Seleccionar lista M3U"), REQ_M3U_FILE));
         }
 
         @JavascriptInterface public void playUrl(String url) {}
         @JavascriptInterface public void stop() {}
         @JavascriptInterface public void goFullscreen() {}
+    }
+
+    /** Error HTTP real del servidor (no se reintenta cambiando de protocolo). */
+    static class HttpStatusException extends IOException {
+        HttpStatusException(int code) { super("HTTP " + code); }
     }
 
     @Override
@@ -337,14 +351,12 @@ public class MainActivity extends AppCompatActivity {
             long position = data.getLongExtra("vod_position", 0);
             long duration = data.getLongExtra("vod_duration", 0);
             if (id != null) {
-                String key = type + "_" + id;
-                if (added)   webView.evaluateJavascript("S.favs.add('"    + key + "');saveFavs();", null);
-                if (removed) webView.evaluateJavascript("S.favs.delete('" + key + "');saveFavs();", null);
+                String key = js(type + "_" + id);
+                if (added)   runJs("S.favs.add(" + key + ");saveFavs();");
+                if (removed) runJs("S.favs.delete(" + key + ");saveFavs();");
                 // Guardar progreso VOD en localStorage del WebView
                 if (position > 0 && duration > 0) {
-                    webView.evaluateJavascript(
-                        "saveVodProgress('" + id + "'," + position + "," + duration + ");", null
-                    );
+                    runJs("saveVodProgress(" + js(id) + "," + position + "," + duration + ");");
                 }
             }
         }
@@ -352,36 +364,43 @@ public class MainActivity extends AppCompatActivity {
         if (req == REQ_M3U_FILE && res == RESULT_OK && data != null) {
             Uri uri = data.getData();
             if (uri == null) return;
-            try {
-                InputStream is = getContentResolver().openInputStream(uri);
-                if (is == null) return;
-                BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
-                StringBuilder sb = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append("\n");
-                    if (sb.length() > 5 * 1024 * 1024) break;
+            String fileName = displayName(uri);
+            // Leer fuera del hilo principal: un M3U grande congelaba la app
+            NetClient.IO.execute(() -> {
+                try (InputStream is = getContentResolver().openInputStream(uri)) {
+                    if (is == null) throw new IOException("Archivo no disponible");
+                    BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(is, StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    boolean truncated = false;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line).append('\n');
+                        if (sb.length() > MAX_M3U_CHARS) { truncated = true; break; }
+                    }
+                    String key = "m3u_" + System.currentTimeMillis();
+                    resultStore.put(key, sb.toString());
+                    runJs("loadLocalM3U(AndroidPlayer.getResult(" + js(key) + ")," + js(fileName) + ");"
+                        + (truncated ? "toast('⚠️ Lista muy grande: se cargó solo una parte');" : ""));
+                } catch (Exception e) {
+                    runJs("toast('❌ Error al leer el archivo')");
                 }
-                reader.close();
-                String content = sb.toString()
-                    .replace("\\", "\\\\")
-                    .replace("`", "\\`")
-                    .replace("$", "\\$");
-                String fileName = uri.getLastPathSegment();
-                if (fileName == null) fileName = "Lista local";
-                final String jsContent = content;
-                final String jsName = fileName.replace("'", "\\'");
-                webView.post(() ->
-                    webView.evaluateJavascript(
-                        "loadLocalM3U(`" + jsContent + "`, '" + jsName + "')", null
-                    )
-                );
-            } catch (Exception e) {
-                webView.post(() ->
-                    webView.evaluateJavascript("toast('❌ Error al leer el archivo')", null)
-                );
-            }
+            });
         }
+    }
+
+    /** Nombre real del archivo elegido (antes salía algo como "primary:Download/lista.m3u"). */
+    private String displayName(Uri uri) {
+        String name = null;
+        try (Cursor c = getContentResolver().query(uri,
+                new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) name = c.getString(0);
+        } catch (Exception ignored) {}
+        if (name == null || name.isEmpty()) {
+            name = uri.getLastPathSegment();
+            if (name != null && name.contains("/")) name = name.substring(name.lastIndexOf('/') + 1);
+        }
+        return (name == null || name.isEmpty()) ? "Lista local" : name;
     }
 
     private long backPressedTime = 0;
@@ -407,5 +426,14 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             });
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (webView != null) {
+            webView.removeJavascriptInterface("AndroidPlayer");
+            webView.destroy();
+        }
+        super.onDestroy();
     }
 }

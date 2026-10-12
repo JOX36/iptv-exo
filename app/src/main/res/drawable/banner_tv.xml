@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Banner 16:9 que muestra Android TV en su pantalla de inicio -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#0A1420"
+        android:pathData="M0,0L320,0L320,180L0,180Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="8"
+        android:pathData="M104,52L216,52A10,10 0,0 1,226 62L226,138A10,10 0,0 1,216 148L104,148A10,10 0,0 1,94 138L94,62A10,10 0,0 1,104 52Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#00D4FF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M138,26L160,44L182,26" />
+    <path
+        android:fillColor="#00D4FF"
+        android:pathData="M146,76L184,100L146,124Z" />
+</vector>

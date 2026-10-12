@@ -10,8 +10,11 @@ android {
         applicationId "com.jox3.iptvexo"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        // En GitHub Actions cada compilación sube el número de versión automáticamente,
+        // así Android reconoce cada APK como una actualización de la anterior.
+        def runNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "0").toInteger()
+        versionCode 1 + runNumber
+        versionName "1.1." + runNumber
     }
 
     // Keystore de debug FIJO. Sin esto, cada build de GitHub Actions corre en una
@@ -24,6 +27,17 @@ android {
             keyAlias 'jox3debugkey'
             keyPassword 'jox3debug123'
         }
+        // Firma de producción: solo si existen los secretos (nunca se guardan en el repo).
+        // En GitHub: Settings > Secrets > Actions → RELEASE_KEYSTORE_BASE64,
+        // RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD.
+        if (System.getenv("RELEASE_KEYSTORE_PASSWORD")) {
+            release {
+                storeFile file(System.getenv("RELEASE_KEYSTORE_FILE") ?: "release.keystore")
+                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -31,7 +45,8 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.debug
+            // Con secretos configurados firma con la clave propia; si no, con la de debug
+            signingConfig signingConfigs.findByName('release') ?: signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

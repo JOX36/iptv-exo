@@ -12,6 +12,7 @@ import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.util.Rational;
 import android.view.GestureDetector;
@@ -47,12 +48,15 @@ import com.google.android.gms.cast.framework.CastStateListener;
 import com.google.android.gms.cast.framework.SessionManagerListener;
 import com.google.android.gms.cast.framework.media.RemoteMediaClient;
 import com.google.android.gms.common.images.WebImage;
+import androidx.media3.common.AudioAttributes;
 import androidx.media3.common.C;
 import androidx.media3.common.MediaItem;
+import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.common.util.UnstableApi;
 import androidx.media3.datasource.okhttp.OkHttpDataSource;
+import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.DefaultRenderersFactory;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory;
@@ -64,23 +68,26 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.security.cert.CertificateException;
-import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.List;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
-import okhttp3.OkHttpClient;
 
 @UnstableApi
 public class PlayerActivity extends AppCompatActivity {
 
     // ── Player global: se detiene siempre antes de crear uno nuevo ──
     private ExoPlayer player;
-    private static PlayerActivity activeInstance = null;
+    // Referencia débil: evita retener la Activity (y todas sus vistas) en memoria
+    private static WeakReference<PlayerActivity> activeInstance = new WeakReference<>(null);
+    // Listener del player actual: se quita ANTES de stop() para que el estado IDLE
+    // que dispara stop() no programe un reintento fantasma (audio tras cerrar)
+    private Player.Listener playerListener;
+    // Contenido que está sonando ahora (url/id pueden cambiar antes de liberar el player)
+    private String playingItemId;
+    private String epgFetchedFor;
+    private boolean resultPrepared = false;
 
     // ── Chromecast ──
     private MediaRouteButton liveBtnCast, vodBtnCast, vodFsBtnCast;
@@ -152,7 +159,7 @@ public class PlayerActivity extends AppCompatActivity {
     private Button vodFsBtnSpeed;
     private DefaultTimeBar vodFsSeek;
     private TextView vodFsTimeCur, vodFsTimeTot;
-    private final Handler seekUiHandler = new Handler();
+    private final Handler seekUiHandler = new Handler(Looper.getMainLooper());
     private Runnable seekUiRunnable;
     private boolean seekScrubbing = false;
     private int speedIdx = 0;
@@ -173,23 +180,23 @@ public class PlayerActivity extends AppCompatActivity {
     private boolean liveBarsVisible = false;
     private boolean isTvMode = false;
     private int retryCount = 0;
-    private final Handler handler = new Handler();
+    private final Handler handler = new Handler(Looper.getMainLooper());
     private GestureDetector gestureDetector;
 
     // Gestos volumen/brillo
     private AudioManager audioManager;
     private int maxVolume;
-    private final Handler gestureHideHandler = new Handler();
+    private final Handler gestureHideHandler = new Handler(Looper.getMainLooper());
     private Runnable gestureHideRunnable;
 
     // Progreso VOD
     private static final String PREFS_PROGRESS = "vod_progress";
     private long savedPosition = 0; // posición a restaurar
-    private final Handler progressHandler = new Handler();
+    private final Handler progressHandler = new Handler(Looper.getMainLooper());
     private Runnable progressSaver;
 
     // Fallback: detectar fin de episodio si STATE_ENDED no se dispara
-    private final Handler endCheckHandler = new Handler();
+    private final Handler endCheckHandler = new Handler(Looper.getMainLooper());
     private Runnable endCheckRunnable;
     private boolean episodeEndHandled = false;
 
@@ -197,7 +204,7 @@ public class PlayerActivity extends AppCompatActivity {
     private LinearLayout nextEpOverlay;
     private TextView nextEpTitle, nextEpCountdown;
     private Button nextEpBtnNow, nextEpBtnCancel;
-    private final Handler countdownHandler = new Handler();
+    private final Handler countdownHandler = new Handler(Looper.getMainLooper());
     private Runnable countdownRunnable;
     private int countdownSeconds = 5;
     private boolean isSeries = false; // flag explícito para series
@@ -230,23 +237,21 @@ public class PlayerActivity extends AppCompatActivity {
         }
 
         // Detener instancia anterior si existe — fix audio doble
-        if (activeInstance != null && activeInstance != this) {
-            activeInstance.stopAndRelease();
+        PlayerActivity previous = activeInstance.get();
+        if (previous != null && previous != this) {
+            previous.stopAndRelease();
         }
-        activeInstance = this;
+        activeInstance = new WeakReference<>(this);
 
         setContentView(R.layout.activity_player);
 
         // Datos del intent
-        url          = getIntent().getStringExtra("url");
-        name         = getIntent().getStringExtra("name");
-        group        = getIntent().getStringExtra("group");
-        type         = getIntent().getStringExtra("type");
-        logo         = getIntent().getStringExtra("logo");
-        itemId       = getIntent().getStringExtra("id");
-        channelIndex = getIntent().getIntExtra("channel_index", -1);
-        isSeries     = getIntent().getBooleanExtra("is_series", false);
-        parseChannels(getIntent().getStringExtra("channels_json"));
+        readIntent(getIntent());
+        if (url == null || url.isEmpty()) {
+            toast("No hay nada que reproducir");
+            finish();
+            return;
+        }
 
         // EPG data
         String epgNow  = getIntent().getStringExtra("epg_now");
@@ -276,6 +281,41 @@ public class PlayerActivity extends AppCompatActivity {
         } else {
             initPlayer();
         }
+    }
+
+    /**
+     * Lee los datos del Intent. Soporta dos orígenes:
+     *  - la propia app (extras "url", "name", ...; la lista llega por PlayerHandoff)
+     *  - otra app que abre un enlace de video (ACTION_VIEW): la URL viene en getData().
+     *    Antes se leía solo el extra "url", que en ese caso es null → cierre de la app.
+     */
+    private void readIntent(Intent intent) {
+        url          = intent.getStringExtra("url");
+        name         = intent.getStringExtra("name");
+        group        = intent.getStringExtra("group");
+        type         = intent.getStringExtra("type");
+        logo         = intent.getStringExtra("logo");
+        itemId       = intent.getStringExtra("id");
+        channelIndex = intent.getIntExtra("channel_index", -1);
+        isSeries     = intent.getBooleanExtra("is_series", false);
+        channels.clear();
+        if (intent.getBooleanExtra("channels_in_handoff", false)) {
+            parseChannels(PlayerHandoff.get());
+        } else {
+            parseChannels(intent.getStringExtra("channels_json"));
+        }
+
+        if ((url == null || url.isEmpty()) && intent.getData() != null) {
+            url = intent.getData().toString();
+            String last = intent.getData().getLastPathSegment();
+            if (name == null || name.isEmpty()) name = last != null ? last : "Video";
+            if (type == null) {
+                // Un enlace .m3u8 suele ser en vivo; un archivo de video, VOD
+                String lower = url.toLowerCase(java.util.Locale.ROOT);
+                type = lower.contains(".m3u8") ? "live" : "vod";
+            }
+        }
+        if (type == null) type = "live";
     }
 
     private void parseChannels(String json) {
@@ -433,7 +473,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void fetchEpg() {
         if (itemId == null || itemId.isEmpty() || url == null) return;
-        new Thread(() -> {
+        NetClient.IO.execute(() -> {
             try {
                 String[] p = url.split("/");
                 if (p.length < 6) return;
@@ -445,13 +485,16 @@ public class PlayerActivity extends AppCompatActivity {
                 String pass = p.length > 5 ? p[5] : "";
                 api = p[0] + "//" + p[2] + "/player_api.php?username=" + user
                         + "&password=" + pass + "&action=get_short_epg&stream_id=" + itemId + "&limit=2";
-                java.net.HttpURLConnection c = (java.net.HttpURLConnection) new java.net.URL(api).openConnection();
-                c.setConnectTimeout(6000); c.setReadTimeout(6000);
-                java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream()));
-                StringBuilder sb = new StringBuilder(); String line;
-                while ((line = br.readLine()) != null) sb.append(line);
-                br.close();
-                org.json.JSONObject json = new org.json.JSONObject(sb.toString());
+                // Cliente compartido (acepta los certificados que usan los paneles IPTV)
+                // y respuesta siempre cerrada, aunque falle el parseo
+                String body;
+                try (okhttp3.Response resp = NetClient.api().newCall(
+                        new okhttp3.Request.Builder().url(api)
+                            .header("User-Agent", NetClient.API_USER_AGENT).build()).execute()) {
+                    if (!resp.isSuccessful() || resp.body() == null) return;
+                    body = resp.body().string();
+                }
+                org.json.JSONObject json = new org.json.JSONObject(body);
                 org.json.JSONArray list = json.optJSONArray("epg_listings");
                 if (list == null || list.length() == 0) return;
                 java.util.Date now = new java.util.Date();
@@ -493,7 +536,7 @@ public class PlayerActivity extends AppCompatActivity {
                 final int fProg = epgProgress;
                 runOnUiThread(() -> showEpg(fNow, fTime, fNext, fProg));
             } catch (Exception e) { /* EPG no disponible */ }
-        }).start();
+        });
     }
 
     // ══ SETUP LIVE ══
@@ -704,30 +747,46 @@ public class PlayerActivity extends AppCompatActivity {
         showLoading(true);
 
         PlayerView pv = isVodType() ? vodPlayerView : playerView;
-        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(buildUnsafeClient());
+        // Cliente HTTP compartido: reutiliza conexiones → cambio de canal más rápido
+        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(NetClient.player());
 
         // Renderers con extensión FFmpeg habilitada — si el decodificador de hardware
         // no soporta el codec (HEVC/AC3/DTS típicos en VOD/series), cae automáticamente
         // al decodificador por software antes de fallar.
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON);
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                // Si el decodificador de hardware falla al iniciar, probar el siguiente
+                .setEnableDecoderFallback(true);
+
+        // Buffer ajustado para IPTV: arranca antes (1,5 s) y tras un corte
+        // reanuda con 3 s, sin dejar de acumular hasta 50 s si la red lo permite.
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(20_000, 50_000, 1_500, 3_000)
+                .build();
+
+        // Foco de audio: pausa en llamadas / cuando otra app reproduce sonido,
+        // y pausa al desconectar audífonos (evita que suene por el altavoz)
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build();
 
         player = new ExoPlayer.Builder(this)
                 .setRenderersFactory(renderersFactory)
                 .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
+                .setLoadControl(loadControl)
+                .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
+                .setHandleAudioBecomingNoisy(true)
                 .build();
         pv.setPlayer(player);
+        playingItemId = itemId;
 
         // Para VOD: especificar tipo MIME según extensión — fix servidores con SSL/redirecciones
         MediaItem mediaItem;
         if (isVodType()) {
-            String mimeType = "video/mp4";
-            if (url.contains(".mkv")) mimeType = "video/x-matroska";
-            else if (url.contains(".ts")) mimeType = "video/mp2t";
-            else if (url.contains(".avi")) mimeType = "video/avi";
             mediaItem = new MediaItem.Builder()
                     .setUri(url)
-                    .setMimeType(mimeType)
+                    .setMimeType(guessVodMimeType(url))
                     .build();
         } else {
             mediaItem = MediaItem.fromUri(url);
@@ -745,7 +804,7 @@ public class PlayerActivity extends AppCompatActivity {
             player.play();
         }
 
-        player.addListener(new Player.Listener() {
+        playerListener = new Player.Listener() {
             @Override
             public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
@@ -785,8 +844,14 @@ public class PlayerActivity extends AppCompatActivity {
                         }
                     }, 1500);
                     if (!isVodType()) {
+                        // Solo se reinicia el contador cuando el canal realmente reproduce
+                        retryCount = 0;
                         scheduleLiveHideBars();
-                        fetchEpg();
+                        // STATE_READY se repite tras cada rebuffer: pedir EPG una sola vez por canal
+                        if (itemId != null && !itemId.equals(epgFetchedFor)) {
+                            epgFetchedFor = itemId;
+                            fetchEpg();
+                        }
                     } else {
                         // Buscar posición guardada en el primer STATE_READY
                         if (savedPosition > 0) {
@@ -812,20 +877,30 @@ public class PlayerActivity extends AppCompatActivity {
                     showLoading(true);
                 } else if (state == Player.STATE_ENDED) {
                     if (!isVodType()) {
-                        retry();
+                        // Un canal en vivo no debería "terminar": el servidor cortó el stream
+                        scheduleRetry("Transmisi\u00f3n cortada, reconectando", 2000);
                     } else if (isSeriesType() && !episodeEndHandled) {
                         // Serie terminó — mostrar overlay siguiente episodio
                         episodeEndHandled = true;
                         stopEndCheck();
                         onEpisodeEnded();
                     }
-                } else if (state == Player.STATE_IDLE && !isVodType()) {
-                    retry();
                 }
+                // STATE_IDLE no reintenta aquí: cuando hay error, onPlayerError ya lo maneja.
+                // Antes se reintentaba en ambos sitios (doble reintento) y también al cerrar,
+                // porque stop() pone el player en IDLE.
             }
 
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
+                if (!isVodType() && e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
+                        && player != null) {
+                    // Nos quedamos atrás de la ventana en vivo (pausa larga, red lenta):
+                    // basta con volver al punto en directo, sin recrear el reproductor.
+                    player.seekToDefaultPosition();
+                    player.prepare();
+                    return;
+                }
                 if (!isVodType()) retrySmarter(e);
                 else if (e.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE
                          && !triedFromStart) {
@@ -851,54 +926,63 @@ public class PlayerActivity extends AppCompatActivity {
                         .show();
                 }
             }
-        });
+        };
+        player.addListener(playerListener);
     }
 
+    /** Tipo MIME del VOD según la extensión del path (sin dejarse engañar por el host o la query). */
+    private static String guessVodMimeType(String u) {
+        String path = u;
+        try {
+            String p = android.net.Uri.parse(u).getPath();
+            if (p != null) path = p;
+        } catch (Exception ignored) {}
+        path = path.toLowerCase(java.util.Locale.ROOT);
+        if (path.endsWith(".mkv")) return "video/x-matroska";
+        if (path.endsWith(".ts"))  return "video/mp2t";
+        if (path.endsWith(".avi")) return "video/x-msvideo";
+        if (path.endsWith(".m3u8")) return "application/x-mpegURL";
+        if (path.endsWith(".webm")) return "video/webm";
+        return "video/mp4";
+    }
+
+    private static final int MAX_RETRIES = 5;
+    private final Runnable retryRunnable = this::initPlayer;
+
     private void retrySmarter(androidx.media3.common.PlaybackException e) {
-        if (retryCount >= 5) {
+        // Analizar tipo de error para decidir la espera
+        int cause = e.errorCode;
+        if (cause == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+         || cause == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
+            scheduleRetry("Sin conexi\u00f3n, reintentando", 3000);
+        } else if (cause == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
+            scheduleRetry("Servidor no responde, reintentando", 5000);
+        } else {
+            scheduleRetry("Reconectando", 1500);
+        }
+    }
+
+    /**
+     * Único punto de reintento para canales en vivo.
+     * - Nunca programa dos reintentos a la vez (antes onPlayerError y STATE_IDLE
+     *   programaban uno cada uno, con contadores distintos 3 y 5).
+     * - Espera creciente: base, x2, x3... para no saturar un servidor caído.
+     */
+    private void scheduleRetry(String reason, long baseDelayMs) {
+        if (isFinishing() || isDestroyed()) return;
+        if (retryCount >= MAX_RETRIES) {
             showLoading(false);
-            liveTxtStatus.setText("❌");
-            txtLoading.setText("No se pudo conectar al canal");
+            if (liveTxtStatus != null) liveTxtStatus.setText("\u274C");
+            if (txtLoading != null) txtLoading.setText("No se pudo conectar al canal");
+            toast("No se pudo conectar. Toca \uD83D\uDD04 para intentar de nuevo");
             return;
         }
         retryCount++;
-
-        // Analizar tipo de error para decidir estrategia
-        int cause = e.errorCode;
-        int delayMs;
-        String msg;
-
-        if (cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-         || cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) {
-            // Sin conexión o timeout — esperar más
-            delayMs = 5000;
-            msg = "Sin conexión, reintentando (" + retryCount + "/5)...";
-        } else if (cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) {
-            // Servidor con error — esperar bastante
-            delayMs = 8000;
-            msg = "Servidor no responde, reintentando (" + retryCount + "/5)...";
-        } else if (cause == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED) {
-            // Error genérico — reintento normal
-            delayMs = 3000;
-            msg = "Reconectando (" + retryCount + "/5)...";
-        } else {
-            // Stream cortado u otro — reintento rápido
-            delayMs = 2000;
-            msg = "Reconectando (" + retryCount + "/5)...";
-        }
-
-        txtLoading.setText(msg);
+        long delay = Math.min(baseDelayMs * retryCount, 15_000);
+        txtLoading.setText(reason + " (" + retryCount + "/" + MAX_RETRIES + ")...");
         showLoading(true);
-        handler.postDelayed(this::initPlayer, delayMs);
-    }
-
-    private void retry() {
-        if (retryCount < 3) {
-            retryCount++;
-            txtLoading.setText("Reconectando (" + retryCount + "/3)...");
-            showLoading(true);
-            handler.postDelayed(this::initPlayer, 3000);
-        } else showLoading(false);
+        handler.removeCallbacks(retryRunnable);
+        handler.postDelayed(retryRunnable, delay);
     }
 
     private void stopAndRelease() {
@@ -908,15 +992,34 @@ public class PlayerActivity extends AppCompatActivity {
         stopEndCheck();
         hideNextEpOverlay();
         if (player != null) {
+            // Quitar el listener ANTES de stop(): stop() pasa el player a IDLE/ENDED y,
+            // con el listener activo, eso programaba un reintento que revivía el audio
+            // segundos después de cerrar el reproductor.
+            if (playerListener != null) player.removeListener(playerListener);
+            playerListener = null;
+            saveProgressOfCurrentPlayer();
             // Desconectar PlayerView primero — evita que el audio siga por el surface
-            playerView.setPlayer(null);
-            vodPlayerView.setPlayer(null);
+            if (playerView != null) playerView.setPlayer(null);
+            if (vodPlayerView != null) vodPlayerView.setPlayer(null);
             player.setPlayWhenReady(false);
             player.stop();
             player.clearMediaItems();
             player.release();
             player = null;
         }
+    }
+
+    /**
+     * Guarda la posición del VOD que está sonando, con el id con el que se inició
+     * (al cambiar de episodio, itemId ya apunta al siguiente cuando se libera el player).
+     */
+    private void saveProgressOfCurrentPlayer() {
+        if (player == null || !isVodType() || playingItemId == null || playingItemId.isEmpty()) return;
+        long pos = player.getCurrentPosition();
+        long dur = player.getDuration();
+        if (dur <= 0 || pos <= 5000) return;
+        if ((float) pos / dur >= 0.95f) clearVodProgress(playingItemId);
+        else saveVodProgress(playingItemId, pos, dur);
     }
 
     // ══ CANAL SIGUIENTE/ANTERIOR ══
@@ -2121,27 +2224,6 @@ public class PlayerActivity extends AppCompatActivity {
         toast("URL copiada");
     }
 
-    @SuppressLint("TrustAllX509TrustManager")
-    private OkHttpClient buildUnsafeClient() {
-        try {
-            X509TrustManager tm = new X509TrustManager() {
-                public void checkClientTrusted(X509Certificate[] c, String a) throws CertificateException {}
-                public void checkServerTrusted(X509Certificate[] c, String a) throws CertificateException {}
-                public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-            };
-            SSLContext sc = SSLContext.getInstance("TLS");
-            sc.init(null, new TrustManager[]{tm}, new java.security.SecureRandom());
-            return new OkHttpClient.Builder().sslSocketFactory(sc.getSocketFactory(), tm)
-                .hostnameVerifier((h, s) -> true)
-                .addInterceptor(chain -> chain.proceed(
-                    chain.request().newBuilder()
-                        .header("User-Agent", "VLC/3.0.18 LibVLC/3.0.18")
-                        .build()
-                ))
-                .build();
-        } catch (Exception e) { return new OkHttpClient.Builder().build(); }
-    }
-
     // ══ PROGRESO VOD ══
     private void askContinueOrRestart() {
         long mins = savedPosition / 60000;
@@ -2729,29 +2811,25 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
+    /**
+     * El resultado (favoritos, progreso VOD) debe fijarse ANTES de terminar la Activity.
+     * Antes se hacía en onDestroy(), cuando Android ya había entregado el resultado
+     * a MainActivity: los cambios de favoritos hechos en el reproductor se perdían.
+     */
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        if (castContext != null) {
-            if (castStateListener != null) castContext.removeCastStateListener(castStateListener);
-            if (castSessionListener != null) {
-                castContext.getSessionManager().removeSessionManagerListener(castSessionListener, CastSession.class);
-            }
-        }
-        stopProgressSaver();
-        // Guardar posición final antes de salir
-        if (isVodType() && player != null && itemId != null) {
-            long pos = player.getCurrentPosition();
-            long dur = player.getDuration();
-            if (pos > 5000 && dur > 0 && (float)pos/dur < 0.95f) {
-                saveVodProgress(itemId, pos, dur);
-            }
-        }
-        stopAndRelease();
-        if (activeInstance == this) activeInstance = null;
-        // Devolver resultado al MainActivity
-        long retPos = isVodType() && itemId != null ? getVodProgress(itemId) : 0;
-        long retDur = isVodType() && itemId != null ? getVodDuration(itemId) : 0;
+    public void finish() {
+        prepareResult();
+        super.finish();
+    }
+
+    private void prepareResult() {
+        if (resultPrepared) return;
+        resultPrepared = true;
+        // Guardar posición final antes de salir (si el player sigue vivo)
+        saveProgressOfCurrentPlayer();
+        boolean vod = isVodType() && itemId != null;
+        long retPos = vod ? getVodProgress(itemId) : 0;
+        long retDur = vod ? getVodDuration(itemId) : 0;
         Intent result = new Intent();
         result.putExtra("fav_added", favChanged && favAdded);
         result.putExtra("fav_removed", favChanged && !favAdded);
@@ -2763,23 +2841,37 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onDestroy() {
+        if (castContext != null) {
+            if (castStateListener != null) castContext.removeCastStateListener(castStateListener);
+            if (castSessionListener != null) {
+                castContext.getSessionManager().removeSessionManagerListener(castSessionListener, CastSession.class);
+            }
+        }
+        stopProgressSaver();
+        stopAndRelease(); // también guarda la posición final del VOD
+        // Limpiar todos los temporizadores para que nada se ejecute con la Activity destruida
+        handler.removeCallbacksAndMessages(null);
+        seekUiHandler.removeCallbacksAndMessages(null);
+        gestureHideHandler.removeCallbacksAndMessages(null);
+        progressHandler.removeCallbacksAndMessages(null);
+        endCheckHandler.removeCallbacksAndMessages(null);
+        countdownHandler.removeCallbacksAndMessages(null);
+        if (activeInstance.get() == this) activeInstance.clear();
+        super.onDestroy();
+    }
+
+    @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         // Detener player actual antes de reproducir nuevo contenido
         stopAndRelease();
         setIntent(intent);
         // Releer datos del nuevo intent
-        url          = intent.getStringExtra("url");
-        name         = intent.getStringExtra("name");
-        group        = intent.getStringExtra("group");
-        type         = intent.getStringExtra("type");
-        logo         = intent.getStringExtra("logo");
-        itemId       = intent.getStringExtra("id");
-        channelIndex = intent.getIntExtra("channel_index", -1);
-        isSeries     = intent.getBooleanExtra("is_series", false);
-        channels.clear();
-        parseChannels(intent.getStringExtra("channels_json"));
+        readIntent(intent);
+        if (url == null || url.isEmpty()) return;
         retryCount = 0;
+        epgFetchedFor = null;
         enteredPiP = false;
         triedFromStart = false;
         savedPosition = 0; // resetear posición guardada al cambiar de contenido
