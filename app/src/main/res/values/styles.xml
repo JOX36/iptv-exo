@@ -19,4 +19,12 @@
         <item name="android:textStyle">bold</item>
     </style>
 
+    <!-- Pantalla de inicio (API SplashScreen): fondo oscuro de la marca + icono.
+         Se mantiene mientras la interfaz carga y luego pasa al tema normal. -->
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#0A1420</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.AppCompat.NoActionBar</item>
+    </style>
+
 </resources>

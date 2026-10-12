@@ -2769,346 +2769,422 @@ initSetup();
 initSwipe();
 initVodControls();
 
-// ══════════════════════════════════════════════
-// TV BOX — NAVEGACIÓN D-PAD / CONTROL REMOTO
-// ══════════════════════════════════════════════
-const TV = {
-  enabled: false,       // se activa al detectar TV o primer keydown
-  focusIdx: 0,          // índice del elemento enfocado actual
-  zone: 'tabs',         // zona activa: tabs | sidebar | content | topbar
-  contentIdx: 0,
-  sideIdx: 0,
+// ══════════════════════════════════════════════════════════════════
+// TV — NAVEGACIÓN ESPACIAL CON CONTROL REMOTO
+// ------------------------------------------------------------------
+// Antes el foco se movía por índice dentro de "zonas" fijas y solo se
+// contaban los elementos visibles: al hacer scroll el índice apuntaba a
+// otro elemento (saltos), y había botones inalcanzables (banner de
+// inicio, buscador, menú lateral más allá de la pantalla).
+//
+// Ahora, al pulsar una flecha se busca el elemento más cercano en esa
+// dirección según su posición real en pantalla (como Netflix / YouTube
+// TV). Funciona igual en grillas, filas horizontales, menús y modales
+// sin tener que programar cada pantalla a mano. Además:
+//  · cada grupo (menú, tabs, contenido, filas del inicio) recuerda su
+//    último elemento enfocado y lo restaura al volver;
+//  · al cerrar un modal, el foco vuelve al elemento que lo abrió;
+//  · el botón Atrás del control cierra modales/paneles antes de salir.
+// ══════════════════════════════════════════════════════════════════
+const TV = { enabled: true };
+
+const TVNAV = {
+  current: null,        // elemento con foco visual
+  lastRect: null,       // última posición conocida (para recuperar el foco)
+  opener: null,         // elemento que abrió el modal actual
+  memory: new Map(),    // grupo → último elemento enfocado
 };
 
-// Detectar TV Box — Android TV o primer evento de teclado
-function tvDetect(){
-  const ua = navigator.userAgent.toLowerCase();
-  if(ua.includes('tv') || ua.includes('box') || ua.includes('firetv') ||
-     ua.includes('googletv') || ua.includes('androidtv')){
-    TV.enabled = true;
-    document.body.classList.add('tv-mode');
-    tvInit();
-    // Enfocar primer campo del setup si está visible
-    setTimeout(()=>{
-      const h = document.getElementById('sHost');
-      if(h) h.focus();
-    }, 500);
+// Todo lo que se puede "pisar" con el control remoto
+const TV_FOCUSABLE = [
+  'button', 'input', 'select', 'textarea', 'a[href]', '[onclick]',
+  '[tabindex]:not([tabindex="-1"])', '[data-tv]'
+].join(',');
+
+// Grupos con memoria de foco
+const TV_GROUPS = [
+  ['.sec-tabs', 'tabs'], ['.topbar-row2', 'tools'], ['.acc-selector', 'tools'],
+  ['.side-tabs', 'sidetabs'], ['#sideList', 'side'], ['#contentArea', 'content'],
+  ['#vodModal', 'vodmodal'], ['#seriesModal', 'seriesmodal'], ['#epgModal', 'epgmodal'],
+];
+
+function tvMarkGroups(){
+  TV_GROUPS.forEach(([sel, name]) => document.querySelectorAll(sel).forEach(el => {
+    if(!el.dataset.tvGroup) el.dataset.tvGroup = name;
+  }));
+  // Cada fila del inicio es un grupo propio: al volver a una fila se
+  // recupera la tarjeta donde estabas, no la primera.
+  document.querySelectorAll('.home-row').forEach((row, i) => {
+    if(!row.dataset.tvGroup) row.dataset.tvGroup = 'homerow' + i;
+  });
+}
+
+function tvGroupOf(el){
+  const g = el && el.closest('[data-tv-group]');
+  return g ? g.dataset.tvGroup : '';
+}
+
+// Capa activa: el modal/panel abierto más "arriba", o la pantalla base
+function tvActiveRoot(){
+  const open = id => { const el = document.getElementById(id); return el && !el.classList.contains('hidden') ? el : null; };
+  const acc = document.getElementById('accDrop');
+  const setup = document.getElementById('setupScreen');
+  return open('epgModal') || open('seriesModal') || open('vodModal')
+      || (acc && acc.classList.contains('open') ? acc : null)
+      || (setup && setup.style.display !== 'none' && getComputedStyle(setup).display !== 'none' ? setup : null)
+      || document.getElementById('appScreen') || document.body;
+}
+
+function tvIsNavigable(el, root){
+  if(!el || !el.isConnected) return false;
+  if(root && !root.contains(el)) return false;
+  if(el.disabled) return false;
+  if(el.closest('#playerWrap:not(.active), [aria-hidden="true"], .hidden')) return false;
+  if(el.tagName === 'VIDEO') return false;
+  const r = el.getBoundingClientRect();
+  if(r.width < 2 || r.height < 2) return false;
+  // Ignorar lo que está muy lejos de la pantalla (listas de miles de canales):
+  // el siguiente elemento siempre está cerca, y así cada pulsación es instantánea.
+  const vw = window.innerWidth, vh = window.innerHeight;
+  if(r.bottom < -2*vh || r.top > 3*vh || r.right < -2*vw || r.left > 3*vw) return false;
+  const cs = getComputedStyle(el);
+  if(cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) return false;
+  return true;
+}
+
+function tvCandidates(root){
+  const all = root.querySelectorAll(TV_FOCUSABLE);
+  const out = [];
+  for(const el of all){
+    if(tvIsNavigable(el, root)) out.push(el);
+  }
+  return out;
+}
+
+// Puntuación geométrica: distancia en el eje de la flecha + penalización
+// fuerte por desalineación en el otro eje (se prefiere lo que está
+// "en línea" con el elemento actual).
+function tvScore(c, r, dir){
+  const ccx = c.left + c.width/2, ccy = c.top + c.height/2;
+  const rcx = r.left + r.width/2, rcy = r.top + r.height/2;
+  let primary, overlap, cross;
+  if(dir === 'down' || dir === 'up'){
+    // Debe estar claramente por debajo/encima (se tolera un pequeño solape)
+    const tol = Math.min(c.height, r.height) * 0.3;
+    if(dir === 'down' ? (rcy <= ccy + 1 || r.top < c.bottom - tol) : (rcy >= ccy - 1 || r.bottom > c.top + tol)) return Infinity;
+    primary = dir === 'down' ? Math.max(0, r.top - c.bottom) : Math.max(0, c.top - r.bottom);
+    overlap = Math.min(c.right, r.right) - Math.max(c.left, r.left);
+    cross = overlap > 0 ? 0 : -overlap;
+    return primary + cross * 3 + Math.abs(rcx - ccx) * 0.05;
+  } else {
+    const tol = Math.min(c.width, r.width) * 0.3;
+    if(dir === 'right' ? (rcx <= ccx + 1 || r.left < c.right - tol) : (rcx >= ccx - 1 || r.right > c.left + tol)) return Infinity;
+    primary = dir === 'right' ? Math.max(0, r.left - c.right) : Math.max(0, c.left - r.right);
+    overlap = Math.min(c.bottom, r.bottom) - Math.max(c.top, r.top);
+    cross = overlap > 0 ? 0 : -overlap;
+    return primary + cross * 4 + Math.abs(rcy - ccy) * 0.05;
   }
 }
 
-function tvInit(){
-  // Agregar estilos TV si no existen
+function tvSetFocus(el, opts = {}){
+  if(!el) return;
+  const prev = TVNAV.current;
+  if(prev && prev !== el){
+    prev.classList.remove('tv-focus');
+    // Guardar memoria del grupo que abandonamos
+    const pg = tvGroupOf(prev);
+    if(pg) TVNAV.memory.set(pg, prev);
+    // Salir de un campo de texto: cerrar teclado
+    if(prev === document.activeElement && /INPUT|TEXTAREA|SELECT/.test(prev.tagName)) prev.blur();
+  }
+  document.querySelectorAll('.tv-focus').forEach(e => { if(e !== el) e.classList.remove('tv-focus'); });
+  el.classList.add('tv-focus');
+  TVNAV.current = el;
+  const g = tvGroupOf(el);
+  if(g) TVNAV.memory.set(g, el);
+  tvEnsureVisible(el, opts.instant);
+  TVNAV.lastRect = el.getBoundingClientRect();
+}
+
+// Desplaza solo el contenedor con scroll que contiene al elemento (lista
+// lateral, grilla, fila horizontal), centrándolo si se sale de la vista.
+// No se usa scrollIntoView(): también desplaza contenedores con
+// overflow:hidden y la barra superior se "iba" de la pantalla.
+function tvEnsureVisible(el, instant){
+  const behavior = instant ? 'auto' : 'smooth';
+  let child = el, sc = el.parentElement;
+  while(sc && sc !== document.documentElement){
+    const cs = getComputedStyle(sc);
+    const canY = /(auto|scroll)/.test(cs.overflowY) && sc.scrollHeight > sc.clientHeight + 1;
+    const canX = /(auto|scroll)/.test(cs.overflowX) && sc.scrollWidth > sc.clientWidth + 1;
+    if(canY || canX){
+      const r = el.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+      const pad = 16;
+      let dy = 0, dx = 0;
+      if(canY && (r.top < sr.top + pad || r.bottom > sr.bottom - pad))
+        dy = (r.top + r.height/2) - (sr.top + sr.height/2);
+      if(canX && (r.left < sr.left + pad || r.right > sr.right - pad))
+        dx = (r.left + r.width/2) - (sr.left + sr.width/2);
+      if(dx || dy) sc.scrollBy({ top: dy, left: dx, behavior });
+    }
+    child = sc; sc = sc.parentElement;
+  }
+}
+
+// Elemento preferido al entrar en una capa (modal recién abierto, etc.)
+function tvDefaultIn(root, cands){
+  const host = document.getElementById('sHost');
+  if(host && root.contains(host) && !host.value && cands.includes(host)) return host;
+  const prefer = ['#vodModalPlayBtn', '.home-hero-play', '.setup-btn', '.sec-tab.active', '.cat-item.active', '.modal-close'];
+  for(const sel of prefer){
+    const el = root.querySelector(sel);
+    if(el && cands.includes(el)) return el;
+  }
+  return cands[0] || null;
+}
+
+// Si el foco quedó en un elemento que ya no existe (la lista se redibujó)
+// o fuera de la capa activa (se abrió/cerró un modal), recuperarlo.
+function tvRecover(root){
+  if(tvIsNavigable(TVNAV.current, root)) return TVNAV.current;
+  const cands = tvCandidates(root);
+  if(!cands.length) return null;
+  let target = null;
+  // 1) Volver al elemento que abrió el modal
+  if(tvIsNavigable(TVNAV.opener, root)) { target = TVNAV.opener; TVNAV.opener = null; }
+  // 2) Mismo grupo que antes (memoria)
+  if(!target && TVNAV.current){
+    const g = TVNAV.current.dataset ? tvGroupOf(TVNAV.current) : '';
+    const mem = g && TVNAV.memory.get(g);
+    if(tvIsNavigable(mem, root)) target = mem;
+  }
+  // 3) El más cercano a la última posición conocida
+  if(!target && TVNAV.lastRect && root.id === 'appScreen'){
+    const lr = TVNAV.lastRect, lx = lr.left + lr.width/2, ly = lr.top + lr.height/2;
+    let best = Infinity;
+    for(const el of cands){
+      const r = el.getBoundingClientRect();
+      const d = Math.hypot(r.left + r.width/2 - lx, r.top + r.height/2 - ly);
+      if(d < best){ best = d; target = el; }
+    }
+  }
+  if(!target) target = tvDefaultIn(root, cands);
+  tvSetFocus(target, { instant: true });
+  return target;
+}
+
+function tvMove(dir){
+  tvMarkGroups();
+  const root = tvActiveRoot();
+  const cur = tvRecover(root);
+  if(!cur) return;
+  const c = cur.getBoundingClientRect();
+  const cands = tvCandidates(root);
+  let best = null, bestScore = Infinity;
+  const vertical = dir === 'up' || dir === 'down';
+  const gCur = tvGroupOf(cur);
+  for(const el of cands){
+    if(el === cur || cur.contains(el) || el.contains(cur)) continue;
+    const r = el.getBoundingClientRect();
+    // Arriba/abajo nunca "salta en diagonal" a otro panel: al llegar al final
+    // de la grilla el foco se queda ahí en vez de caer al menú lateral.
+    if(vertical && tvGroupOf(el) !== gCur && !tvGroupOf(el).startsWith('homerow')
+       && Math.min(c.right, r.right) - Math.max(c.left, r.left) <= 0) continue;
+    const s = tvScore(c, r, dir);
+    if(s < bestScore){ bestScore = s; best = el; }
+  }
+  if(!best) return;
+  // Al entrar a otro grupo, restaurar el último elemento usado en él
+  const gFrom = tvGroupOf(cur), gTo = tvGroupOf(best);
+  if(gTo && gTo !== gFrom){
+    const mem = TVNAV.memory.get(gTo);
+    if(mem && mem !== best && tvIsNavigable(mem, root) && tvScore(c, mem.getBoundingClientRect(), dir) < Infinity) best = mem;
+  }
+  tvSetFocus(best);
+}
+
+// Mover el foco a un grupo concreto (compatibilidad con llamadas existentes)
+function tvFocusZone(zone, idx = 0){
+  tvMarkGroups();
+  const root = tvActiveRoot();
+  setTimeout(() => {
+    const cands = tvCandidates(root);
+    if(!cands.length) return;
+    let pool = cands;
+    if(zone === 'tabs') pool = cands.filter(el => tvGroupOf(el) === 'tabs');
+    else if(zone === 'sidebar') pool = cands.filter(el => tvGroupOf(el) === 'side');
+    else if(zone === 'content') pool = cands.filter(el => tvGroupOf(el) === 'content' || tvGroupOf(el).startsWith('homerow'));
+    else if(zone === 'topbar') pool = cands.filter(el => tvGroupOf(el) === 'tools');
+    if(!pool.length) pool = cands;
+    const target = zone === 'modal' ? tvDefaultIn(root, pool)
+                 : (zone === 'tabs' ? (pool.find(el => el.classList.contains('active')) || pool[0]) : pool[Math.min(idx, pool.length - 1)]);
+    tvSetFocus(target, { instant: true });
+  }, 60);
+  return true;
+}
+
+function tvActivate(){
+  const root = tvActiveRoot();
+  const el = tvRecover(root);
+  if(!el) return;
+  if(/INPUT|TEXTAREA|SELECT/.test(el.tagName)){
+    // Abrir el teclado en pantalla solo al pulsar OK sobre el campo
+    el.focus(); el.click();
+    return;
+  }
+  // Si este elemento abre un modal, recordarlo para devolver el foco al cerrar
+  TVNAV.opener = el;
+  el.classList.add('tv-press');
+  setTimeout(() => el.classList.remove('tv-press'), 160);
+  el.click();
+}
+
+function tvVisible(id){ const el = document.getElementById(id); return el && !el.classList.contains('hidden'); }
+
+// Botón ATRÁS del control remoto (MainActivity lo envía aquí).
+// Devuelve 'handled' si cerró/navegó algo; 'exit' para salir de la app.
+function appBack(){
+  try{
+    const ae = document.activeElement;
+    if(ae && /INPUT|TEXTAREA/.test(ae.tagName)){ ae.blur(); return 'handled'; }
+    if(tvVisible('epgModal')){ document.getElementById('epgModal').classList.add('hidden'); tvRecover(tvActiveRoot()); return 'handled'; }
+    if(tvVisible('vodModal')){ closeVodModal(); tvRecover(tvActiveRoot()); return 'handled'; }
+    if(tvVisible('seriesModal')){ closeSeriesModalForce(); tvRecover(tvActiveRoot()); return 'handled'; }
+    const acc = document.getElementById('accDrop');
+    if(acc && acc.classList.contains('open')){ closeAccDrop(); tvRecover(tvActiveRoot()); return 'handled'; }
+    const setup = document.getElementById('setupScreen');
+    if(setup && setup.style.display !== 'none') return 'exit';
+    const q = document.getElementById('searchBox');
+    if(q && q.value.trim()){ q.value = ''; doSearch(''); tvFocusZone('topbar'); return 'handled'; }
+    // Desde el contenido o el menú lateral → subir a las pestañas
+    const g = tvGroupOf(TVNAV.current);
+    if(g && g !== 'tabs'){ tvFocusZone('tabs'); return 'handled'; }
+    // En las pestañas, fuera del inicio → volver al inicio
+    const home = document.getElementById('secHome');
+    if(home && !home.classList.contains('active')){ switchSec('home'); return 'handled'; }
+  }catch(e){}
+  return 'exit';
+}
+function tvHandleBack(){ appBack(); }
+
+document.addEventListener('keydown', e => {
+  const key = e.key;
+  const code = e.keyCode;
+  const ae = document.activeElement;
+  const typing = ae && /INPUT|TEXTAREA/.test(ae.tagName);
+
+  // Escribiendo en un campo: las flechas laterales mueven el cursor del texto
+  // hasta llegar al borde; arriba/abajo y Enter salen del campo.
+  if(typing){
+    if(key === 'ArrowLeft' && ae.selectionStart > 0) return;
+    if(key === 'ArrowRight' && ae.selectionEnd < (ae.value || '').length) return;
+    if(key === 'Enter'){
+      e.preventDefault();
+      if(ae.id === 'sPass'){ ae.blur(); doLogin(); return; }
+      ae.blur(); tvMove('down'); return;
+    }
+    if(!/^Arrow/.test(key) && key !== 'Escape') return; // letras al campo
+  }
+
+  let handled = true;
+  switch(key){
+    case 'ArrowLeft':  tvMove('left');  break;
+    case 'ArrowRight': tvMove('right'); break;
+    case 'ArrowUp':    tvMove('up');    break;
+    case 'ArrowDown':  tvMove('down');  break;
+    case 'Enter': case ' ':
+      if(e.repeat) break; // mantener OK pulsado no repite clics
+      tvActivate(); break;
+    case 'Escape': case 'GoBack': case 'BrowserBack':
+      appBack(); break;
+    case 'MediaPlayPause': if(typeof vcTogglePlay === 'function') vcTogglePlay(); break;
+    case 'MediaStop':      if(typeof stopPlayer === 'function') stopPlayer(); break;
+    case 'MediaFastForward': if(typeof vcSeek === 'function') vcSeek(30); break;
+    case 'MediaRewind':    if(typeof vcSeek === 'function') vcSeek(-30); break;
+    // Números: acceso directo a secciones
+    case '1': switchSec('home');   break;
+    case '2': switchSec('live');   tvFocusZone('content'); break;
+    case '3': switchSec('vod');    tvFocusZone('content'); break;
+    case '4': switchSec('series'); tvFocusZone('content'); break;
+    default:
+      if(code === 23 || code === 66){ if(!e.repeat) tvActivate(); }  // DPAD_CENTER / ENTER nativos
+      else handled = false;
+  }
+  if(handled) e.preventDefault();
+});
+
+// Estilos de foco para TV: visibles a 3 metros, sin mover el layout
+(function tvStyles(){
   if(document.getElementById('tvStyles')) return;
   const style = document.createElement('style');
   style.id = 'tvStyles';
   style.textContent = `
-    /* ── TV FULLSCREEN LAYOUT ── */
     html, body { width: 100vw !important; height: 100vh !important; overflow: hidden !important; font-size: 18px !important; }
     #appScreen { height: 100vh !important; }
-    .topbar-row1 { padding: 8px 20px !important; }
-    .topbar-row2 { padding: 4px 20px 10px !important; }
-    .sidebar { width: 260px !important; flex-shrink: 0 !important; transform: none !important; position: relative !important; }
+    .topbar-row1 { padding: 8px 24px !important; }
+    .topbar-row2 { padding: 4px 24px 10px !important; }
+    .sidebar { width: 280px !important; flex-shrink: 0 !important; transform: none !important; position: relative !important; }
     .sidebar.collapsed { width: 0 !important; }
     .sidebar-overlay { display: none !important; }
-    .content-area { padding: 16px 20px !important; }
-    .ch-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 14px !important; }
-    .vod-grid { grid-template-columns: repeat(5, 1fr) !important; gap: 14px !important; }
-    .ch-img { height: 100px !important; }
-    .ch-ph { height: 100px !important; }
-    .sec-tab { padding: 12px 16px !important; font-size: .88rem !important; }
-    .cat-item { padding: 12px 16px !important; font-size: .88rem !important; }
-    .ch-name { font-size: .8rem !important; }
-    .vod-name { font-size: .82rem !important; }
-    /* Setup screen centrado en TV */
+    .content-area { padding: 18px 28px 48px !important; scroll-padding: 80px; }
+    .side-list { scroll-padding: 60px; }
+    .ch-grid { grid-template-columns: repeat(4, 1fr) !important; gap: 18px !important; }
+    .vod-grid { grid-template-columns: repeat(6, 1fr) !important; gap: 18px !important; }
+    .ch-img, .ch-ph { height: 100px !important; }
+    .sec-tab { padding: 12px 18px !important; font-size: .9rem !important; }
+    .cat-item { padding: 13px 18px !important; font-size: .9rem !important; }
+    .ch-name { font-size: .82rem !important; }
+    .vod-name { font-size: .84rem !important; }
     #setupScreen { height: 100vh !important; }
-    .setup-box { width: 500px !important; padding: 40px 36px !important; }
+    .setup-box { width: 520px !important; padding: 40px 36px !important; }
     .setup-logo h1 { font-size: 2.8rem !important; }
     .sf input { font-size: 1rem !important; padding: 14px !important; }
-    .sf input:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 2px rgba(0,212,255,.3) !important; }
     .setup-btn { font-size: 1.1rem !important; padding: 16px !important; }
-    /* Modales centrados */
     .vod-modal-bg, .modal-bg, .epg-modal-bg { align-items: center !important; }
-    .vod-modal { height: 80vh !important; max-width: 800px !important; border-radius: 16px !important; }
-    .modal { max-width: 800px !important; border-radius: 16px !important; }
-    /* Foco TV */
-    .tv-mode *:focus { outline: none !important; }
-    .tv-focus {
-      outline: 3px solid var(--accent) !important;
-      outline-offset: 2px !important;
-      box-shadow: 0 0 0 3px rgba(0,212,255,.25), 0 0 16px rgba(0,212,255,.3) !important;
-      transform: scale(1.04) !important;
-      transition: all .15s !important;
-      z-index: 10 !important;
-      position: relative !important;
-    }
-    .tv-cursor {
-      position: fixed; bottom: 16px; right: 16px;
-      background: rgba(0,212,255,.15); border: 1px solid var(--accent);
-      border-radius: 8px; padding: 6px 14px;
-      font-size: .75rem; color: var(--accent);
-      z-index: 9999; pointer-events: none;
-      letter-spacing: .5px;
-    }
+    .vod-modal { height: 82vh !important; max-width: 860px !important; border-radius: 18px !important; }
+    .modal { max-width: 860px !important; border-radius: 18px !important; }
+    .home-row-scroll { scroll-padding: 0 60px; padding: 10px 4px 14px !important; }
+
+    /* ── Foco ── */
+    *:focus { outline: none !important; }
+    .tv-focus { outline: 3px solid var(--accent) !important; outline-offset: 3px !important;
+      box-shadow: 0 0 0 6px rgba(0,212,255,.18), 0 10px 30px rgba(0,0,0,.55) !important;
+      border-radius: 10px; z-index: 5; transition: transform .14s ease-out, box-shadow .14s ease-out !important; }
+    /* Tarjetas: crecen un poco (efecto TV moderno) */
+    .ch-card.tv-focus, .vod-card.tv-focus, .home-ch-card.tv-focus, .home-vod-card.tv-focus,
+    .home-cont-card.tv-focus { transform: scale(1.08) !important; }
+    /* Filas de lista: resaltado de fondo, sin escalar (no se salen del panel) */
+    .cat-item.tv-focus, .list-item.tv-focus, .stab.tv-focus, .drop-opt.tv-focus {
+      outline-offset: -3px !important; transform: none !important;
+      background: rgba(0,212,255,.16) !important; color: #fff !important; }
+    .sec-tab.tv-focus { transform: scale(1.06) !important; background: rgba(0,212,255,.14) !important; }
+    input.tv-focus { outline-offset: 0 !important; border-color: var(--accent) !important; }
+    button.tv-focus { transform: scale(1.06) !important; }
+    .tv-press { transform: scale(.96) !important; }
+    @media (prefers-reduced-motion: reduce) { .tv-focus { transition: none !important; } }
   `;
   document.head.appendChild(style);
+})();
 
-  // Indicador modo TV
-  const cursor = document.createElement('div');
-  cursor.className = 'tv-cursor';
-  cursor.id = 'tvCursor';
-  cursor.textContent = '📺 TV Mode';
-  document.body.appendChild(cursor);
-
-  // Enfocar primer tab
-  tvFocusZone('tabs');
-}
-
-// ── Obtener elementos focusables por zona ──
-function tvGetElements(zone){
-  switch(zone){
-    case 'tabs':
-      return [...document.querySelectorAll('.sec-tab')];
-    case 'sidebar':
-      return [...document.querySelectorAll('#sideList .cat-item, #sideList .list-item')].filter(el => {
-        const r = el.getBoundingClientRect();
-        return r.top >= 0 && r.bottom <= window.innerHeight;
-      });
-    case 'content':
-      return [...document.querySelectorAll('#contentArea .ch-card, #contentArea .vod-card, #contentArea .home-ch-card, #contentArea .home-vod-card, #contentArea .home-cont-card')].filter(el => {
-        const r = el.getBoundingClientRect();
-        return r.top >= 0 && r.bottom <= window.innerHeight + 200;
-      });
-    case 'topbar':
-      return [...document.querySelectorAll('.tb-btn, .acc-btn')];
-    case 'modal': {
-      // Detecta cuál modal está abierto (VOD o Series) y toma todos sus
-      // botones/elementos clicables visibles. Al usar un selector genérico
-      // (button, [onclick]) no hace falta listar cada botón a mano: el
-      // modal de series re-renderiza su contenido (temporadas/episodios)
-      // dinámicamente y esto los recoge igual, sin tocar este código.
-      const vodModal = document.getElementById('vodModal');
-      const seriesModal = document.getElementById('seriesModal');
-      let root = null;
-      if(vodModal && !vodModal.classList.contains('hidden')) root = vodModal;
-      else if(seriesModal && !seriesModal.classList.contains('hidden')) root = seriesModal;
-      if(!root) return [];
-      return [...root.querySelectorAll('button, [onclick]')].filter(el => el.offsetParent !== null);
-    }
-    default:
-      return [];
-  }
-}
-
-// ── Aplicar foco a elemento ──
-function tvSetFocus(el){
-  document.querySelectorAll('.tv-focus').forEach(e => e.classList.remove('tv-focus'));
-  if(el){
-    el.classList.add('tv-focus');
-    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }
-}
-
-// ── Enfocar zona ──
-function tvFocusZone(zone, idx=0){
-  TV.zone = zone;
-  const els = tvGetElements(zone);
-  if(!els.length) return false;
-  TV.focusIdx = Math.max(0, Math.min(idx, els.length-1));
-  tvSetFocus(els[TV.focusIdx]);
-  return true;
-}
-
-// ── Mover foco dentro de la zona ──
-function tvMove(dir){
-  const els = tvGetElements(TV.zone);
-  if(!els.length) return;
-  const newIdx = TV.focusIdx + dir;
-  if(newIdx < 0 || newIdx >= els.length) return;
-  TV.focusIdx = newIdx;
-  tvSetFocus(els[TV.focusIdx]);
-}
-
-// ── Navegar entre zonas ──
-function tvZoneNav(dir){
-  // dir: 'left'|'right'|'up'|'down'
-  const zone = TV.zone;
-
-  if(zone === 'tabs'){
-    if(dir === 'left') tvMove(-1);
-    else if(dir === 'right') tvMove(1);
-    else if(dir === 'down'){
-      // Bajar a sidebar si está abierta, sino al content
-      if(!tvFocusZone('sidebar', 0)) tvFocusZone('content', 0);
-    }
-    else if(dir === 'up') tvFocusZone('topbar', 0);
-  }
-  else if(zone === 'sidebar'){
-    if(dir === 'up') tvMove(-1);
-    else if(dir === 'down') tvMove(1);
-    else if(dir === 'right') tvFocusZone('content', 0);
-    else if(dir === 'left'){/* ya en sidebar */}
-  }
-  else if(zone === 'content'){
-    // Calcular columnas según grid
-    const els = tvGetElements('content');
-    const cols = tvGetCols(els);
-    if(dir === 'up'){
-      if(TV.focusIdx - cols >= 0){ TV.focusIdx -= cols; tvSetFocus(els[TV.focusIdx]); }
-      else tvFocusZone('tabs', 0);
-    }
-    else if(dir === 'down'){
-      if(TV.focusIdx + cols < els.length){ TV.focusIdx += cols; tvSetFocus(els[TV.focusIdx]); }
-    }
-    else if(dir === 'left'){
-      if(TV.focusIdx % cols === 0) tvFocusZone('sidebar', 0);
-      else tvMove(-1);
-    }
-    else if(dir === 'right') tvMove(1);
-  }
-  else if(zone === 'topbar'){
-    if(dir === 'left') tvMove(-1);
-    else if(dir === 'right') tvMove(1);
-    else if(dir === 'down') tvFocusZone('tabs', 0);
-  }
-  else if(zone === 'modal'){
-    // Recorrido lineal simple: el contenido del modal (play/ext, episodios,
-    // similares) no es una grilla uniforme, así que cualquier dirección
-    // simplemente avanza o retrocede un elemento en la lista.
-    if(dir === 'up' || dir === 'left') tvMove(-1);
-    else if(dir === 'down' || dir === 'right') tvMove(1);
-  }
-}
-
-// Detectar número de columnas en el grid actual
-function tvGetCols(els){
-  if(els.length < 2) return 1;
-  const firstTop = els[0].getBoundingClientRect().top;
-  let cols = 0;
-  for(const el of els){
-    if(Math.abs(el.getBoundingClientRect().top - firstTop) < 5) cols++;
-    else break;
-  }
-  return cols || 1;
-}
-
-// ── Activar elemento enfocado ──
-function tvActivate(){
-  const focused = document.querySelector('.tv-focus');
-  if(focused) focused.click();
-}
-
-// ── Teclas del control remoto ──
-document.addEventListener('keydown', e => {
-  // Activar TV mode al primer keydown
-  if(!TV.enabled){
-    TV.enabled = true;
-    document.body.classList.add('tv-mode');
-    tvInit();
-    // Si estamos en setup, enfocar primer campo
-    const h = document.getElementById('sHost');
-    if(h && document.getElementById('setupScreen').style.display !== 'none'){
-      h.focus(); return;
-    }
-    tvFocusZone('tabs');
-  }
-
-  const key = e.key || e.keyCode;
-
-  // ── Setup screen: navegación entre campos con flechas ──
-  const setupVisible = document.getElementById('setupScreen') &&
-    document.getElementById('setupScreen').style.display !== 'none';
-  if(setupVisible){
-    const fields = ['sHost','sUser','sPass'];
-    const btnLogin = document.querySelector('.setup-btn[tabindex="4"]');
-    const active = document.activeElement;
-    const idx = fields.indexOf(active?.id);
-
-    if(key === 'ArrowDown' || key === 40){
-      e.preventDefault();
-      if(idx >= 0 && idx < fields.length-1) document.getElementById(fields[idx+1]).focus();
-      else if(idx === fields.length-1 && btnLogin) btnLogin.focus();
-    } else if(key === 'ArrowUp' || key === 38){
-      e.preventDefault();
-      if(idx > 0) document.getElementById(fields[idx-1]).focus();
-    } else if((key === 'Enter' || key === 13) && active === btnLogin){
-      e.preventDefault(); doLogin();
-    }
-    // Dejar que las letras lleguen al input normalmente
-    return;
-  }
-
-  let handled = true;
-
-  switch(key){
-    // D-Pad / Flechas
-    case 'ArrowLeft':  case 37: tvZoneNav('left');  break;
-    case 'ArrowRight': case 39: tvZoneNav('right'); break;
-    case 'ArrowUp':    case 38: tvZoneNav('up');    break;
-    case 'ArrowDown':  case 40: tvZoneNav('down');  break;
-
-    // OK / Enter / Centro D-Pad
-    case 'Enter':      case 13:
-    case ' ':          case 32:
-      tvActivate(); break;
-
-    // Back / Escape
-    case 'Escape': case 8: case 'Backspace': case 461:
-    case 'GoBack':
-      tvHandleBack(); break;
-
-    // Botones de medios
-    case 'MediaPlayPause': case 179: vcTogglePlay(); break;
-    case 'MediaStop':      case 178: stopPlayer();   break;
-    case 'MediaFastForward': case 228: vcSeek(30);   break;
-    case 'MediaRewind':    case 227: vcSeek(-30);    break;
-
-    // Números — cambio rápido de sección
-    case '1': switchSec('home');   tvFocusZone('content'); break;
-    case '2': switchSec('live');   tvFocusZone('content'); break;
-    case '3': switchSec('vod');    tvFocusZone('content'); break;
-    case '4': switchSec('series'); tvFocusZone('content'); break;
-
-    default: handled = false;
-  }
-
-  if(handled) e.preventDefault();
-});
-
-function tvHandleBack(){
-  // Cerrar modales abiertos primero
-  const vodModal = document.getElementById('vodModal');
-  const seriesModal = document.getElementById('seriesModal');
-  const accDrop = document.getElementById('accDrop');
-  if(vodModal && !vodModal.classList.contains('hidden')){
-    closeVodModal();
-    if(TV.enabled) tvFocusZone('content', 0);
-    return;
-  }
-  if(seriesModal && !seriesModal.classList.contains('hidden')){
-    closeSeriesModalForce();
-    if(TV.enabled) tvFocusZone('content', 0);
-    return;
-  }
-  if(accDrop && accDrop.classList.contains('open')){ closeAccDrop(); return; }
-  // Volver a tabs
-  tvFocusZone('tabs');
-}
-
-// Re-enfocar al cambiar sección o categoría
+// Enfocar algo útil en cuanto aparece cada pantalla
 const _origSwitchSec = switchSec;
 switchSec = function(sec){
   _origSwitchSec(sec);
-  if(TV.enabled) setTimeout(()=>tvFocusZone('tabs'), 100);
+  setTimeout(() => { tvMarkGroups(); if(!tvIsNavigable(TVNAV.current, tvActiveRoot())) tvFocusZone('tabs'); }, 150);
 };
 
 const _origSelectCat = selectCat;
 selectCat = async function(catId){
   await _origSelectCat(catId);
-  if(TV.enabled) setTimeout(()=>tvFocusZone('content', 0), 300);
+  tvFocusZone('content', 0);
 };
 
-// Iniciar detección
-tvDetect();
+// Foco inicial (setup o app) cuando la interfaz termina de cargar
+window.addEventListener('load', () => setTimeout(() => {
+  tvMarkGroups();
+  const root = tvActiveRoot();
+  tvRecover(root);
+}, 400));
 
 </script>
 </body>

@@ -16,10 +16,10 @@ jobs:
     env:
       HAS_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
@@ -32,7 +32,17 @@ jobs:
           gradle-version: '8.2'
 
       - name: Build Debug APK
-        run: gradle assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug 2>&1 | tee build.log
+
+      # Si falla, los errores aparecen como anotaciones en la pestaña del PR / Actions
+      - name: Resumen de errores
+        if: failure()
+        run: |
+          grep -E "error:|e: |What went wrong|Could not (find|resolve)|> " build.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line}"
+          done
 
       # Firma de producción opcional: solo corre si configuraste los secretos
       - name: Build Release APK (firmada)
