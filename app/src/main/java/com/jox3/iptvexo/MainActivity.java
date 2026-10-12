@@ -15,7 +15,14 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.splashscreen.SplashScreen;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.json.JSONObject;
 
@@ -35,8 +42,15 @@ public class MainActivity extends AppCompatActivity {
     private static final String UI_ORIGIN = "file:///android_asset/";
 
     private WebView webView;
-    private static final int REQ_PLAYER   = 1001;
-    private static final int REQ_M3U_FILE = 1002;
+    /** La pantalla de inicio se mantiene hasta que la interfaz termina de cargar. */
+    private volatile boolean uiReady = false;
+
+    // Activity Result API (reemplaza a startActivityForResult/onActivityResult, obsoletos)
+    private final ActivityResultLauncher<Intent> playerLauncher =
+        registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+            result -> onPlayerResult(result.getData()));
+    private final ActivityResultLauncher<String[]> m3uPicker =
+        registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::onM3uPicked);
     /** Límite de lectura de un M3U local (ya no pasa por evaluateJavascript, así que puede ser mayor). */
     private static final int MAX_M3U_CHARS = 20 * 1024 * 1024;
 
@@ -47,7 +61,12 @@ public class MainActivity extends AppCompatActivity {
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Pantalla de inicio oficial de Android 12+ (compatible con versiones anteriores)
+        SplashScreen splash = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
+        splash.setKeepOnScreenCondition(() -> !uiReady);
+        // Seguridad: nunca más de 4 s de splash aunque la página tarde
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> uiReady = true, 4000);
         setContentView(R.layout.activity_main);
 
         webView = findViewById(R.id.webview);
@@ -85,6 +104,13 @@ public class MainActivity extends AppCompatActivity {
             }
 
             @Override
+            public void onPageFinished(WebView view, String url) {
+                uiReady = true;
+                // En TV las teclas del control solo llegan a la interfaz si el WebView tiene el foco
+                view.requestFocus();
+            }
+
+            @Override
             public void onReceivedHttpError(WebView view, WebResourceRequest request,
                                             WebResourceResponse errorResponse) {
                 Log.w(TAG, "HTTP " + errorResponse.getStatusCode() + " al cargar: " + request.getUrl());
@@ -104,16 +130,19 @@ public class MainActivity extends AppCompatActivity {
         if (isTv || isTvUiMode) {
             // TV Box — forzar landscape fullscreen
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN);
-            getWindow().getDecorView().setSystemUiVisibility(
-                android.view.View.SYSTEM_UI_FLAG_FULLSCREEN |
-                android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            );
+            WindowInsetsControllerCompat c =
+                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+            c.hide(WindowInsetsCompat.Type.systemBars());
+            c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
             webView.loadUrl(UI_ORIGIN + "player_tv.html");
         } else {
             webView.loadUrl(UI_ORIGIN + "player.html");
         }
+
+        // Atrás con la API moderna (OnBackPressedDispatcher)
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { handleBack(); }
+        });
     }
 
     /** true = navegación bloqueada en el WebView (se abre fuera si es posible). */
@@ -312,21 +341,23 @@ public class MainActivity extends AppCompatActivity {
             i.putExtra("channel_index", channelIndex);
             i.putExtra("channels_in_handoff", true);
             i.putExtra("is_series", isSeries);
-            runOnUiThread(() -> startActivityForResult(i, REQ_PLAYER));
+            runOnUiThread(() -> playerLauncher.launch(i));
         }
 
         @JavascriptInterface
         public void openFilePicker() {
-            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            i.addCategory(Intent.CATEGORY_OPENABLE);
-            i.setType("*/*");
-            i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{
-                "text/plain", "audio/x-mpegurl", "audio/mpegurl",
-                "application/octet-stream", "application/vnd.apple.mpegurl",
-                "application/x-mpegurl"
+            runOnUiThread(() -> {
+                try {
+                    m3uPicker.launch(new String[]{
+                        "text/plain", "audio/x-mpegurl", "audio/mpegurl",
+                        "application/octet-stream", "application/vnd.apple.mpegurl",
+                        "application/x-mpegurl"
+                    });
+                } catch (android.content.ActivityNotFoundException e) {
+                    // Muchos TV Box no traen selector de archivos
+                    runJs("toast('\u274C Este dispositivo no tiene selector de archivos')");
+                }
             });
-            runOnUiThread(() ->
-                startActivityForResult(Intent.createChooser(i, "Seleccionar lista M3U"), REQ_M3U_FILE));
         }
 
         @JavascriptInterface public void playUrl(String url) {}
@@ -339,54 +370,50 @@ public class MainActivity extends AppCompatActivity {
         HttpStatusException(int code) { super("HTTP " + code); }
     }
 
-    @Override
-    protected void onActivityResult(int req, int res, Intent data) {
-        super.onActivityResult(req, res, data);
+    /** Resultado del reproductor: favoritos y progreso VOD. */
+    private void onPlayerResult(Intent data) {
+        if (data == null) return;
+        boolean added   = data.getBooleanExtra("fav_added", false);
+        boolean removed = data.getBooleanExtra("fav_removed", false);
+        String id   = data.getStringExtra("item_id");
+        String type = data.getStringExtra("item_type");
+        long position = data.getLongExtra("vod_position", 0);
+        long duration = data.getLongExtra("vod_duration", 0);
+        if (id == null) return;
+        String key = js(type + "_" + id);
+        if (added)   runJs("S.favs.add(" + key + ");saveFavs();");
+        if (removed) runJs("S.favs.delete(" + key + ");saveFavs();");
+        // Guardar progreso VOD en localStorage del WebView
+        if (position > 0 && duration > 0) {
+            runJs("saveVodProgress(" + js(id) + "," + position + "," + duration + ");");
+        }
+    }
 
-        if (req == REQ_PLAYER && data != null) {
-            boolean added   = data.getBooleanExtra("fav_added", false);
-            boolean removed = data.getBooleanExtra("fav_removed", false);
-            String id   = data.getStringExtra("item_id");
-            String type = data.getStringExtra("item_type");
-            long position = data.getLongExtra("vod_position", 0);
-            long duration = data.getLongExtra("vod_duration", 0);
-            if (id != null) {
-                String key = js(type + "_" + id);
-                if (added)   runJs("S.favs.add(" + key + ");saveFavs();");
-                if (removed) runJs("S.favs.delete(" + key + ");saveFavs();");
-                // Guardar progreso VOD en localStorage del WebView
-                if (position > 0 && duration > 0) {
-                    runJs("saveVodProgress(" + js(id) + "," + position + "," + duration + ");");
+    /** Lista M3U elegida en el selector de archivos. */
+    private void onM3uPicked(Uri uri) {
+        if (uri == null) return;
+        String fileName = displayName(uri);
+        // Leer fuera del hilo principal: un M3U grande congelaba la app
+        NetClient.IO.execute(() -> {
+            try (InputStream is = getContentResolver().openInputStream(uri)) {
+                if (is == null) throw new IOException("Archivo no disponible");
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(is, StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                boolean truncated = false;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append('\n');
+                    if (sb.length() > MAX_M3U_CHARS) { truncated = true; break; }
                 }
+                String key = "m3u_" + System.currentTimeMillis();
+                resultStore.put(key, sb.toString());
+                runJs("loadLocalM3U(AndroidPlayer.getResult(" + js(key) + ")," + js(fileName) + ");"
+                    + (truncated ? "toast('\u26A0\uFE0F Lista muy grande: se carg\u00f3 solo una parte');" : ""));
+            } catch (Exception e) {
+                runJs("toast('\u274C Error al leer el archivo')");
             }
-        }
-
-        if (req == REQ_M3U_FILE && res == RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            if (uri == null) return;
-            String fileName = displayName(uri);
-            // Leer fuera del hilo principal: un M3U grande congelaba la app
-            NetClient.IO.execute(() -> {
-                try (InputStream is = getContentResolver().openInputStream(uri)) {
-                    if (is == null) throw new IOException("Archivo no disponible");
-                    BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(is, StandardCharsets.UTF_8));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    boolean truncated = false;
-                    while ((line = reader.readLine()) != null) {
-                        sb.append(line).append('\n');
-                        if (sb.length() > MAX_M3U_CHARS) { truncated = true; break; }
-                    }
-                    String key = "m3u_" + System.currentTimeMillis();
-                    resultStore.put(key, sb.toString());
-                    runJs("loadLocalM3U(AndroidPlayer.getResult(" + js(key) + ")," + js(fileName) + ");"
-                        + (truncated ? "toast('⚠️ Lista muy grande: se cargó solo una parte');" : ""));
-                } catch (Exception e) {
-                    runJs("toast('❌ Error al leer el archivo')");
-                }
-            });
-        }
+        });
     }
 
     /** Nombre real del archivo elegido (antes salía algo como "primary:Download/lista.m3u"). */
@@ -405,8 +432,7 @@ public class MainActivity extends AppCompatActivity {
 
     private long backPressedTime = 0;
 
-    @Override
-    public void onBackPressed() {
+    private void handleBack() {
         // Preguntar primero al HTML: cierra modales, sale de categorías, vuelve al home...
         webView.evaluateJavascript(
             "(function(){try{return (typeof appBack==='function')?appBack():'exit'}catch(e){return 'exit'}})()",

@@ -84,6 +84,7 @@ public class PlayerActivity extends AppCompatActivity {
     // Listener del player actual: se quita ANTES de stop() para que el estado IDLE
     // que dispara stop() no programe un reintento fantasma (audio tras cerrar)
     private Player.Listener playerListener;
+    private androidx.media3.session.MediaSession mediaSession;
     // Contenido que está sonando ahora (url/id pueden cambiar antes de liberar el player)
     private String playingItemId;
     private String epgFetchedFor;
@@ -152,6 +153,7 @@ public class PlayerActivity extends AppCompatActivity {
     private TextView drawerTitle;
     private android.widget.ProgressBar drawerLoading;
     private boolean drawerOpen = false;
+    private View drawerCurrentRow;
     private String drawerActiveCatId = null; // categoria live actualmente mostrada en el panel
     private String drawerActiveSeason = null; // temporada actualmente filtrada (series)
     private final java.util.List<org.json.JSONObject> drawerLiveCats = new java.util.ArrayList<>();
@@ -224,12 +226,8 @@ public class PlayerActivity extends AppCompatActivity {
             android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
             android.content.res.Configuration.UI_MODE_TYPE_TELEVISION);
 
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-                | WindowManager.LayoutParams.FLAG_FULLSCREEN);
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        hideSystemBars();
         // Borde a borde — eliminar barras negras laterales en notch/cutout
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             getWindow().getAttributes().layoutInDisplayCutoutMode =
@@ -261,6 +259,10 @@ public class PlayerActivity extends AppCompatActivity {
 
         bindViews();
         setupCast();
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            @Override public void handleOnBackPressed() { handleBack(); }
+        });
+        if (isTvMode) setupTvFocus();
 
         if (isVodType()) setupVod();
         else setupLive();
@@ -548,11 +550,7 @@ public class PlayerActivity extends AppCompatActivity {
             getWindow().getAttributes().layoutInDisplayCutoutMode =
                 android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
         }
-        getWindow().getDecorView().setSystemUiVisibility(
-            View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION |
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-        );
+        hideSystemBars();
         vodLayout.setVisibility(View.GONE);
         liveTxtName.setText(name);
         liveTxtStatus.setText("\u25CF EN VIVO");
@@ -587,7 +585,8 @@ public class PlayerActivity extends AppCompatActivity {
 
     // ══ SETUP VOD ══
     private void setupVod() {
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        setRequestedOrientation(isTvMode ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                         : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         vodLayout.setVisibility(View.VISIBLE);
         playerView.setVisibility(View.GONE);
         liveTopBar.setVisibility(View.GONE);
@@ -738,60 +737,54 @@ public class PlayerActivity extends AppCompatActivity {
         attachGestureListener(vodPlayerView);
 
         fetchVodInfo();
+        // En TV la vista vertical con ficha no tiene sentido: video a pantalla completa
+        if (isTvMode) vodLayout.post(this::enterVodFullscreen);
     }
 
     // ══ PLAYER ══
+    /**
+     * Prepara el contenido actual (url/name/itemId) en el reproductor.
+     * El ExoPlayer se crea UNA sola vez y se reutiliza: cambiar de canal o de
+     * episodio ya no destruye y reconstruye decodificadores, buffers y
+     * conexiones, así que el zapping es mucho más rápido.
+     */
     private void initPlayer() {
-        // Detener siempre antes de crear nuevo — fix audio doble
-        stopAndRelease();
+        // Cancelar lo pendiente del contenido anterior (sin destruir el reproductor)
+        handler.removeCallbacks(retryRunnable);
+        stopProgressSaver();
+        stopSeekUi();
+        stopEndCheck();
+        hideNextEpOverlay();
+        saveProgressOfCurrentPlayer();
         showLoading(true);
 
+        if (player == null) {
+            createPlayer();
+        } else {
+            player.stop();
+            player.clearMediaItems();
+        }
+
         PlayerView pv = isVodType() ? vodPlayerView : playerView;
-        // Cliente HTTP compartido: reutiliza conexiones → cambio de canal más rápido
-        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(NetClient.player());
-
-        // Renderers con extensión FFmpeg habilitada — si el decodificador de hardware
-        // no soporta el codec (HEVC/AC3/DTS típicos en VOD/series), cae automáticamente
-        // al decodificador por software antes de fallar.
-        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-                // Si el decodificador de hardware falla al iniciar, probar el siguiente
-                .setEnableDecoderFallback(true);
-
-        // Buffer ajustado para IPTV: arranca antes (1,5 s) y tras un corte
-        // reanuda con 3 s, sin dejar de acumular hasta 50 s si la red lo permite.
-        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
-                .setBufferDurationsMs(20_000, 50_000, 1_500, 3_000)
-                .build();
-
-        // Foco de audio: pausa en llamadas / cuando otra app reproduce sonido,
-        // y pausa al desconectar audífonos (evita que suene por el altavoz)
-        AudioAttributes audioAttributes = new AudioAttributes.Builder()
-                .setUsage(C.USAGE_MEDIA)
-                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                .build();
-
-        player = new ExoPlayer.Builder(this)
-                .setRenderersFactory(renderersFactory)
-                .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
-                .setLoadControl(loadControl)
-                .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
-                .setHandleAudioBecomingNoisy(true)
-                .build();
+        PlayerView other = isVodType() ? playerView : vodPlayerView;
+        if (other != null) other.setPlayer(null);
         pv.setPlayer(player);
         playingItemId = itemId;
 
-        // Para VOD: especificar tipo MIME según extensión — fix servidores con SSL/redirecciones
-        MediaItem mediaItem;
-        if (isVodType()) {
-            mediaItem = new MediaItem.Builder()
-                    .setUri(url)
-                    .setMimeType(guessVodMimeType(url))
-                    .build();
-        } else {
-            mediaItem = MediaItem.fromUri(url);
+        // Metadatos: título y logo para la sesión multimedia (Google TV, Bluetooth, asistente)
+        androidx.media3.common.MediaMetadata.Builder meta = new androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(name)
+                .setArtist(group);
+        if (logo != null && !logo.isEmpty()) {
+            try { meta.setArtworkUri(android.net.Uri.parse(logo)); } catch (Exception ignored) {}
         }
-        player.setMediaItem(mediaItem);
+        MediaItem.Builder item = new MediaItem.Builder()
+                .setUri(url)
+                .setMediaId(itemId != null ? itemId : url)
+                .setMediaMetadata(meta.build());
+        // Para VOD: especificar tipo MIME según extensión — fix servidores con SSL/redirecciones
+        if (isVodType()) item.setMimeType(guessVodMimeType(url));
+        player.setMediaItem(item.build());
         player.prepare();
 
         if (castingActive && castSession != null) {
@@ -804,7 +797,58 @@ public class PlayerActivity extends AppCompatActivity {
             player.play();
         }
 
-        playerListener = new Player.Listener() {
+    }
+
+    /** Crea el reproductor, su listener y la sesión multimedia (una vez por Activity). */
+    private void createPlayer() {
+        // Cliente HTTP compartido: reutiliza conexiones → cambio de canal más rápido
+        OkHttpDataSource.Factory dsf = new OkHttpDataSource.Factory(NetClient.player());
+
+        // Renderers con extensión FFmpeg habilitada — si el decodificador de hardware
+        // no soporta el codec (HEVC/AC3/DTS típicos en VOD/series), cae automáticamente
+        // al decodificador por software antes de fallar.
+        DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
+                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                .setEnableDecoderFallback(true);
+
+        // Buffer ajustado para IPTV: arranca antes (1,5 s) y tras un corte
+        // reanuda con 3 s, sin dejar de acumular hasta 50 s si la red lo permite.
+        DefaultLoadControl loadControl = new DefaultLoadControl.Builder()
+                .setBufferDurationsMs(20_000, 50_000, 1_500, 3_000)
+                .build();
+
+        // Foco de audio: pausa en llamadas y al desconectar audífonos
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                .build();
+
+        player = new ExoPlayer.Builder(this)
+                .setRenderersFactory(renderersFactory)
+                .setMediaSourceFactory(new DefaultMediaSourceFactory(dsf))
+                .setLoadControl(loadControl)
+                .setAudioAttributes(audioAttributes, /* handleAudioFocus= */ true)
+                .setHandleAudioBecomingNoisy(true)
+                // Saltos de ±10 s (botones del control y de la sesión multimedia)
+                .setSeekBackIncrementMs(10_000)
+                .setSeekForwardIncrementMs(10_000)
+                .build();
+        playerListener = buildPlayerListener();
+        player.addListener(playerListener);
+
+        // Sesión multimedia: botones del control/auriculares Bluetooth, Google Assistant
+        // ("pausa", "siguiente") y tarjeta "Reproduciendo ahora" en Google TV.
+        try {
+            mediaSession = new androidx.media3.session.MediaSession.Builder(this, player)
+                    .setId("jox3-" + System.identityHashCode(this))
+                    .build();
+        } catch (Exception e) {
+            mediaSession = null; // la reproducción funciona igual sin sesión
+        }
+    }
+
+    private Player.Listener buildPlayerListener() {
+        return new Player.Listener() {
             @Override
             public void onVideoSizeChanged(androidx.media3.common.VideoSize videoSize) {
                 if (videoSize.width > 0 && videoSize.height > 0) {
@@ -927,7 +971,6 @@ public class PlayerActivity extends AppCompatActivity {
                 }
             }
         };
-        player.addListener(playerListener);
     }
 
     /** Tipo MIME del VOD según la extensión del path (sin dejarse engañar por el host o la query). */
@@ -1004,6 +1047,7 @@ public class PlayerActivity extends AppCompatActivity {
             player.setPlayWhenReady(false);
             player.stop();
             player.clearMediaItems();
+            if (mediaSession != null) { mediaSession.release(); mediaSession = null; }
             player.release();
             player = null;
         }
@@ -1048,7 +1092,8 @@ public class PlayerActivity extends AppCompatActivity {
     // ══ VOD FULLSCREEN ══
     private void enterVodFullscreen() {
         isVodFullscreen = true;
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+        setRequestedOrientation(isTvMode ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                                         : ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         vodScroll.setVisibility(View.GONE);
         if (vodInfoWrapper != null) vodInfoWrapper.setVisibility(View.GONE); // tambien el poster de fondo detras
         vodTopBar.setVisibility(View.GONE);
@@ -1065,6 +1110,7 @@ public class PlayerActivity extends AppCompatActivity {
     }
 
     private void exitVodFullscreen() {
+        if (isTvMode) { stopAndRelease(); finish(); return; } // en TV no existe la vista vertical
         isVodFullscreen = false;
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
         vodScroll.setVisibility(View.VISIBLE);
@@ -1086,17 +1132,23 @@ public class PlayerActivity extends AppCompatActivity {
         if (show) scheduleHideVodFs();
     }
 
+    // Temporizadores propios: antes se usaba removeCallbacksAndMessages(null),
+    // que también cancelaba reintentos y otras tareas pendientes del reproductor.
+    private final Runnable hideVodFsRunnable = () -> {
+        if (vodFsTop == null) return;
+        vodFsTop.setVisibility(View.GONE);
+        vodFsBottom.setVisibility(View.GONE);
+    };
+
     private void scheduleHideVodFs() {
-        handler.removeCallbacksAndMessages(null);
-        handler.postDelayed(() -> {
-            vodFsTop.setVisibility(View.GONE);
-            vodFsBottom.setVisibility(View.GONE);
-        }, 7000);
+        handler.removeCallbacks(hideVodFsRunnable);
+        handler.postDelayed(hideVodFsRunnable, isTvMode ? 6000 : 7000);
     }
 
     // ══ LIVE BARS ══
+    // En TV las barras ya no quedan fijas tapando el video: aparecen al cambiar
+    // de canal o al pulsar OK y se ocultan solas tras unos segundos sin usar el control.
     private void toggleLiveBars() {
-        if (isTvMode) return; // TV: barras siempre visibles
         if (liveBarsVisible) hideLiveBars(); else showLiveBars();
     }
 
@@ -1104,20 +1156,20 @@ public class PlayerActivity extends AppCompatActivity {
         liveBarsVisible = true;
         liveTopBar.setVisibility(View.VISIBLE);
         liveBottomBar.setVisibility(View.VISIBLE);
-        if (!isTvMode) scheduleLiveHideBars();
+        scheduleLiveHideBars();
     }
 
     private void hideLiveBars() {
-        if (isTvMode) return; // TV: no ocultar
         liveBarsVisible = false;
         liveTopBar.setVisibility(View.GONE);
         liveBottomBar.setVisibility(View.GONE);
     }
 
+    private final Runnable hideLiveBarsRunnable = this::hideLiveBars;
+
     private void scheduleLiveHideBars() {
-        if (isTvMode) return; // TV: no programar ocultado
-        handler.removeCallbacksAndMessages(null);
-        handler.postDelayed(this::hideLiveBars, 7000);
+        handler.removeCallbacks(hideLiveBarsRunnable);
+        handler.postDelayed(hideLiveBarsRunnable, isTvMode ? 6000 : 7000);
     }
 
     // ══ PANEL DE CANALES / EPISODIOS ══
@@ -1155,6 +1207,28 @@ public class PlayerActivity extends AppCompatActivity {
             renderDrawerListLive();
             loadLiveCategoryChips();
         }
+        if (isTvMode) {
+            if (liveTopBar != null) hideLiveBars();
+            focusDrawerCurrent();
+        }
+    }
+
+    /** Con el control remoto, al abrir el panel el foco va directo al canal/episodio actual. */
+    private void focusDrawerCurrent() {
+        drawerList.post(() -> {
+            View target = drawerCurrentRow != null ? drawerCurrentRow
+                        : (drawerList.getChildCount() > 0 ? drawerList.getChildAt(0) : null);
+            if (target != null) {
+                target.requestFocus();
+                if (target.getParent() instanceof View) {
+                    View scroll = (View) drawerList.getParent();
+                    if (scroll instanceof ScrollView) {
+                        ((ScrollView) scroll).smoothScrollTo(0,
+                            Math.max(0, target.getTop() - scroll.getHeight() / 3));
+                    }
+                }
+            }
+        });
     }
 
     private void closeDrawer() {
@@ -1195,6 +1269,7 @@ public class PlayerActivity extends AppCompatActivity {
             row.setPadding(dp(14), dp(11), dp(14), dp(11));
             if (isSelected.apply(item)) row.setBackgroundResource(R.drawable.bg_drawer_item_selected);
             row.setOnClickListener(v -> onPick.accept(item));
+            applyTvFocus(row, false);
             drawerCatDropdown.addView(row);
         }
     }
@@ -1210,6 +1285,8 @@ public class PlayerActivity extends AppCompatActivity {
         row.setGravity(android.view.Gravity.CENTER_VERTICAL);
         row.setPadding(dp(14), dp(10), dp(14), dp(10));
         if (current) row.setBackgroundResource(R.drawable.bg_drawer_row_selected);
+        if (current) drawerCurrentRow = row;
+        applyTvFocus(row, false);
         LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         row.setLayoutParams(rowLp);
 
@@ -1258,6 +1335,7 @@ public class PlayerActivity extends AppCompatActivity {
     // ── LIVE: lista de canales (ventana ya cargada en memoria) ──
     private void renderDrawerListLive() {
         drawerList.removeAllViews();
+        drawerCurrentRow = null;
         drawerEpgSlots.clear();
         for (int i = 0; i < channels.size(); i++) {
             JSONObject ch = channels.get(i);
@@ -1404,6 +1482,7 @@ public class PlayerActivity extends AppCompatActivity {
                     channels.addAll(newChannels);
                     channelIndex = -1; // ninguno de esta categoria es el actual todavia
                     renderDrawerListLive();
+                    if (isTvMode) focusDrawerCurrent();
                 });
             } catch (Exception e) {
                 runOnUiThread(() -> { drawerLoading.setVisibility(View.GONE); toast("No se pudo cargar la categoria"); });
@@ -1414,6 +1493,7 @@ public class PlayerActivity extends AppCompatActivity {
     // ── SERIES: lista de episodios filtrada por temporada    // ── SERIES: lista de episodios filtrada por temporada (ya en memoria, sin red) ──
     private void renderDrawerListSeries() {
         drawerList.removeAllViews();
+        drawerCurrentRow = null;
         for (int i = 0; i < channels.size(); i++) {
             JSONObject ep = channels.get(i);
             String epName = ep.optString("name", "?");
@@ -2501,8 +2581,9 @@ public class PlayerActivity extends AppCompatActivity {
                     gestureActive = false;
                     gestureIsSeek = false;
                     float third = v.getWidth() / 3f;
-                    gestureIsVolume     = gestureStartX < third;
-                    gestureIsBrightness = gestureStartX > (v.getWidth() - third);
+                    // Brillo a la izquierda, volumen a la derecha
+                    gestureIsBrightness = gestureStartX < third;
+                    gestureIsVolume     = gestureStartX > (v.getWidth() - third);
                     // Zona central — siempre seek en VOD
                     boolean isCenterZone = !gestureIsVolume && !gestureIsBrightness;
                     if (gestureIsVolume) {
@@ -2616,20 +2697,22 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void showGestureFeedback(boolean isVolume, int pct) {
         runOnUiThread(() -> {
+            // El indicador aparece del mismo lado del gesto:
+            // volumen → panel derecho, brillo → panel izquierdo
             if (isVolume) {
-                if (gestFeedbackLayout == null) return;
-                gestFeedbackLayout.setVisibility(View.VISIBLE);
-                if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
-                gestIconView.setText(pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A");
-                gestValueView.setText(pct + "%");
-                setBarHeight(gestProgressView, pct);
-            } else {
                 if (gestFeedbackRight == null) return;
                 gestFeedbackRight.setVisibility(View.VISIBLE);
                 if (gestFeedbackLayout != null) gestFeedbackLayout.setVisibility(View.GONE);
-                gestIconRight.setText(pct < 30 ? "\uD83C\uDF11" : pct < 70 ? "\uD83C\uDF13" : "\u2600\uFE0F");
+                gestIconRight.setText(pct == 0 ? "\uD83D\uDD07" : "\uD83D\uDD0A");
                 gestValueRight.setText(pct + "%");
                 setBarHeight(gestProgressRight, pct);
+            } else {
+                if (gestFeedbackLayout == null) return;
+                gestFeedbackLayout.setVisibility(View.VISIBLE);
+                if (gestFeedbackRight != null) gestFeedbackRight.setVisibility(View.GONE);
+                gestIconView.setText(pct < 30 ? "\uD83C\uDF11" : pct < 70 ? "\uD83C\uDF13" : "\u2600\uFE0F");
+                gestValueView.setText(pct + "%");
+                setBarHeight(gestProgressView, pct);
             }
             gestureHideHandler.removeCallbacks(gestureHideRunnable);
         });
@@ -2896,54 +2979,326 @@ public class PlayerActivity extends AppCompatActivity {
         }
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // CONTROL REMOTO (Android TV)
+    // Antes TODAS las flechas se capturaban siempre (cambiar canal / adelantar),
+    // así que con el control no se podía llegar a ningún botón (favorito,
+    // audio, subtítulos, lista de canales) ni moverse dentro del panel, y
+    // Atrás cerraba el reproductor aunque hubiera un panel abierto.
+    //
+    // Modelo nuevo (como las apps IPTV profesionales):
+    //  En vivo, video limpio:  ▲▼ canal anterior/siguiente · OK controles
+    //                          ◀ lista de canales · ▶ controles · 0-9 número de canal
+    //  VOD, video limpio:      OK pausa/reanuda · ◀▶ retrocede/adelanta (acelera
+    //                          si mantienes pulsado) · ▲▼ controles
+    //  Con controles o panel:  las flechas mueven el foco entre botones
+    //  Atrás:                  cierra panel → oculta controles → sale
+    // ══════════════════════════════════════════════════════════════
+    private final java.util.Set<Integer> tvConsumedDown = new java.util.HashSet<>();
+
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
         if (!isTvMode) return super.dispatchKeyEvent(event);
-        if (event.getAction() != android.view.KeyEvent.ACTION_DOWN)
+        int code = event.getKeyCode();
+        if (event.getAction() == android.view.KeyEvent.ACTION_UP) {
+            // Si consumimos la pulsación, también su liberación (si no, el botón
+            // enfocado recibiría un "clic" fantasma al soltar OK)
+            if (tvConsumedDown.remove(code)) return true;
             return super.dispatchKeyEvent(event);
+        }
+        if (event.getAction() != android.view.KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event);
 
-        switch (event.getKeyCode()) {
-            case android.view.KeyEvent.KEYCODE_DPAD_CENTER:
-            case android.view.KeyEvent.KEYCODE_ENTER:
-            case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
-                if (player != null) {
-                    if (player.isPlaying()) player.pause();
-                    else player.play();
-                }
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_LEFT:
-            case android.view.KeyEvent.KEYCODE_MEDIA_REWIND:
-                if (isVodType() && player != null)
-                    player.seekTo(Math.max(0, player.getCurrentPosition() - 10000));
-                else navigateChannel(-1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_RIGHT:
-            case android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
-                if (isVodType() && player != null)
-                    player.seekTo(Math.min(player.getDuration(), player.getCurrentPosition() + 10000));
-                else navigateChannel(1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_UP:
-                if (!isVodType()) navigateChannel(-1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_DPAD_DOWN:
-                if (!isVodType()) navigateChannel(1);
-                return true;
-            case android.view.KeyEvent.KEYCODE_BACK:
-            case android.view.KeyEvent.KEYCODE_ESCAPE:
-                stopAndRelease();
-                finish();
-                return true;
-            case android.view.KeyEvent.KEYCODE_MEDIA_STOP:
-                stopAndRelease();
-                finish();
-                return true;
+        keepTvOverlayAlive();
+        if (handleTvKeyDown(code, event)) {
+            tvConsumedDown.add(code);
+            return true;
         }
         return super.dispatchKeyEvent(event);
     }
 
-    @Override
-    public void onBackPressed() {
+    private boolean handleTvKeyDown(int code, android.view.KeyEvent event) {
+        boolean live = !isVodType();
+        switch (code) {
+            // ── Teclas multimedia: funcionan siempre ──
+            case android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE:
+            case android.view.KeyEvent.KEYCODE_MEDIA_PLAY:
+            case android.view.KeyEvent.KEYCODE_MEDIA_PAUSE:
+                togglePlayPause(code);
+                return true;
+            case android.view.KeyEvent.KEYCODE_MEDIA_STOP:
+                stopAndRelease(); finish();
+                return true;
+            case android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD:
+                if (live) navigateChannel(1); else tvSeek(1, event.getRepeatCount());
+                return true;
+            case android.view.KeyEvent.KEYCODE_MEDIA_REWIND:
+                if (live) navigateChannel(-1); else tvSeek(-1, event.getRepeatCount());
+                return true;
+            case android.view.KeyEvent.KEYCODE_CHANNEL_UP:
+            case android.view.KeyEvent.KEYCODE_MEDIA_NEXT:
+                if (live) navigateChannel(1);
+                else if (isSeriesType()) { stopEndCheck(); playNextEpisode(); }
+                return true;
+            case android.view.KeyEvent.KEYCODE_CHANNEL_DOWN:
+            case android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS:
+                if (live) navigateChannel(-1);
+                else if (isSeriesType()) { stopEndCheck(); playPrevEpisode(); }
+                return true;
+            case android.view.KeyEvent.KEYCODE_GUIDE:
+            case android.view.KeyEvent.KEYCODE_TV_INPUT:
+                if (live || isSeriesType()) openDrawer();
+                return true;
+            case android.view.KeyEvent.KEYCODE_INFO:
+            case android.view.KeyEvent.KEYCODE_MENU:
+                showTvOverlay(true);
+                return true;
+
+            // ── Atrás: de dentro hacia fuera ──
+            case android.view.KeyEvent.KEYCODE_BACK:
+            case android.view.KeyEvent.KEYCODE_ESCAPE:
+                if (event.getRepeatCount() > 0) return true;
+                if (screenLocked) { toast("\uD83D\uDD12 Desbloquea la pantalla para salir"); return true; }
+                if (drawerOpen) {
+                    if (dropdownOpen) closeCatDropdown(); else closeDrawer();
+                    return true;
+                }
+                if (nextEpOverlay != null && nextEpOverlay.getVisibility() == View.VISIBLE) {
+                    hideNextEpOverlay();
+                    return true;
+                }
+                if (isTvOverlayVisible()) { hideTvOverlay(); return true; }
+                stopAndRelease(); finish();
+                return true;
+        }
+
+        // ── Números: escribir el número de canal (solo en vivo) ──
+        if (live && code >= android.view.KeyEvent.KEYCODE_0 && code <= android.view.KeyEvent.KEYCODE_9) {
+            appendChannelDigit(code - android.view.KeyEvent.KEYCODE_0);
+            return true;
+        }
+
+        boolean isDpad = code == android.view.KeyEvent.KEYCODE_DPAD_UP || code == android.view.KeyEvent.KEYCODE_DPAD_DOWN
+                || code == android.view.KeyEvent.KEYCODE_DPAD_LEFT || code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+                || code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_ENTER
+                || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (!isDpad) return false;
+
+        // Panel de canales/episodios, aviso de siguiente episodio o controles
+        // con foco: navegación normal de Android entre los elementos.
+        if (drawerOpen) {
+            View f = getCurrentFocus();
+            // Foco perdido fuera del panel: devolverlo al canal actual
+            if (!isInside(f, channelDrawer)) { focusDrawerCurrent(); return true; }
+            // ▶ en el borde derecho del panel lo cierra (en vez de saltar a botones ocultos)
+            if (code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) {
+                View next = f.focusSearch(View.FOCUS_RIGHT);
+                if (!isInside(next, channelDrawer)) { closeDrawer(); return true; }
+            }
+            return false;
+        }
+        if (nextEpOverlay != null && nextEpOverlay.getVisibility() == View.VISIBLE) {
+            if (!isInside(getCurrentFocus(), nextEpOverlay)) nextEpBtnNow.requestFocus();
+            return false;
+        }
+        if (isTvOverlayVisible() && tvOverlayHasFocus()) return false;
+
+        boolean center = code == android.view.KeyEvent.KEYCODE_DPAD_CENTER || code == android.view.KeyEvent.KEYCODE_ENTER
+                || code == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER;
+        if (center && event.getRepeatCount() > 0) return true;
+
+        // ── Video sin controles enfocados ──
+        if (live) {
+            switch (code) {
+                case android.view.KeyEvent.KEYCODE_DPAD_UP:    navigateChannel(-1); return true;
+                case android.view.KeyEvent.KEYCODE_DPAD_DOWN:  navigateChannel(1);  return true;
+                case android.view.KeyEvent.KEYCODE_DPAD_LEFT:  openDrawer();        return true;
+                default:                                        showTvOverlay(true); return true; // OK / ▶
+            }
+        } else {
+            switch (code) {
+                case android.view.KeyEvent.KEYCODE_DPAD_LEFT:  tvSeek(-1, event.getRepeatCount()); return true;
+                case android.view.KeyEvent.KEYCODE_DPAD_RIGHT: tvSeek(1, event.getRepeatCount());  return true;
+                case android.view.KeyEvent.KEYCODE_DPAD_UP:
+                case android.view.KeyEvent.KEYCODE_DPAD_DOWN:  showTvOverlay(true); return true;
+                default:
+                    togglePlayPause(android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+                    showTvOverlay(true);
+                    return true;
+            }
+        }
+    }
+
+    private void togglePlayPause(int code) {
+        if (castingActive && remoteMediaClient != null) {
+            if (remoteMediaClient.isPlaying()) remoteMediaClient.pause(); else remoteMediaClient.play();
+            return;
+        }
+        if (player == null) return;
+        boolean play = code == android.view.KeyEvent.KEYCODE_MEDIA_PLAY
+                || (code != android.view.KeyEvent.KEYCODE_MEDIA_PAUSE && !player.isPlaying());
+        if (play) player.play(); else player.pause();
+        if (vodFsBtnPause != null) vodFsBtnPause.setImageResource(play ? R.drawable.ic_pause : R.drawable.ic_play);
+        if (!play) toast("\u23F8 Pausa");
+    }
+
+    /** Adelantar/retroceder con aceleración al mantener pulsado: 10 s → 30 s → 60 s. */
+    private void tvSeek(int dir, int repeat) {
+        int secs = repeat < 6 ? 10 : (repeat < 18 ? 30 : 60);
+        seekRelative(dir * secs * 1000L);
+        showSeekFeedback(dir * secs);
+    }
+
+    private boolean isTvOverlayVisible() {
+        if (isVodType()) return vodFsTop != null && vodFsTop.getVisibility() == View.VISIBLE;
+        return liveBarsVisible;
+    }
+
+    private boolean tvOverlayHasFocus() {
+        View f = getCurrentFocus();
+        if (f == null) return false;
+        if (isVodType()) return isInside(f, vodFsTop) || isInside(f, vodFsBottom);
+        return isInside(f, liveTopBar) || isInside(f, liveBottomBar) || isInside(f, btnLock);
+    }
+
+    private static boolean isInside(View v, View container) {
+        if (v == null || container == null) return false;
+        while (v != null) {
+            if (v == container) return true;
+            if (!(v.getParent() instanceof View)) return false;
+            v = (View) v.getParent();
+        }
+        return false;
+    }
+
+    /** Muestra los controles y, si se pide, pone el foco en el botón principal. */
+    private void showTvOverlay(boolean focus) {
+        if (isVodType()) {
+            if (!isVodFullscreen) enterVodFullscreen();
+            vodFsTop.setVisibility(View.VISIBLE);
+            vodFsBottom.setVisibility(View.VISIBLE);
+            scheduleHideVodFs();
+            if (focus) vodFsBottom.post(() -> {
+                if (vodFsBtnPause != null && vodFsBtnPause.getVisibility() == View.VISIBLE) vodFsBtnPause.requestFocus();
+                else vodFsBottom.requestFocus();
+            });
+        } else {
+            showLiveBars();
+            if (focus) liveBottomBar.post(() -> {
+                if (liveBtnGrid != null && liveBtnGrid.getVisibility() == View.VISIBLE) liveBtnGrid.requestFocus();
+                else liveBottomBar.requestFocus();
+            });
+        }
+    }
+
+    private void hideTvOverlay() {
+        View f = getCurrentFocus();
+        if (f != null) f.clearFocus();
+        if (isVodType()) {
+            handler.removeCallbacks(hideVodFsRunnable);
+            hideVodFsRunnable.run();
+        } else {
+            handler.removeCallbacks(hideLiveBarsRunnable);
+            hideLiveBars();
+        }
+    }
+
+    /** Cualquier pulsación mientras los controles están visibles reinicia su temporizador. */
+    private void keepTvOverlayAlive() {
+        if (!isTvOverlayVisible()) return;
+        if (isVodType()) scheduleHideVodFs(); else scheduleLiveHideBars();
+    }
+
+    // ── Número de canal con el teclado numérico del control ──
+    private final StringBuilder channelDigits = new StringBuilder();
+    private TextView channelDigitsView;
+    private final Runnable commitChannelDigits = this::commitChannelNumber;
+
+    private void appendChannelDigit(int d) {
+        if (channelDigits.length() >= 4) channelDigits.setLength(0);
+        channelDigits.append(d);
+        if (channelDigitsView == null) {
+            channelDigitsView = new TextView(this);
+            channelDigitsView.setTextColor(0xFFFFFFFF);
+            channelDigitsView.setTextSize(42);
+            channelDigitsView.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            channelDigitsView.setPadding(dp(22), dp(10), dp(22), dp(10));
+            channelDigitsView.setBackgroundResource(R.drawable.bg_dialog);
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.view.Gravity.TOP | android.view.Gravity.END);
+            lp.setMargins(0, dp(28), dp(36), 0);
+            addContentView(channelDigitsView, lp);
+        }
+        channelDigitsView.setText(channelDigits.toString());
+        channelDigitsView.setVisibility(View.VISIBLE);
+        channelDigitsView.bringToFront();
+        handler.removeCallbacks(commitChannelDigits);
+        handler.postDelayed(commitChannelDigits, 1600);
+    }
+
+    private void commitChannelNumber() {
+        if (channelDigitsView != null) channelDigitsView.setVisibility(View.GONE);
+        if (channelDigits.length() == 0) return;
+        int n;
+        try { n = Integer.parseInt(channelDigits.toString()); } catch (Exception e) { n = 0; }
+        channelDigits.setLength(0);
+        if (n >= 1 && n <= channels.size()) {
+            jumpToChannelIndex(n - 1);
+            showLiveBars();
+        } else {
+            toast("No existe el canal " + n + " en esta lista");
+        }
+    }
+
+    // ── Foco visible para el control remoto ──
+    /** Marca todos los botones de los controles como enfocables y con anillo de foco. */
+    private void setupTvFocus() {
+        View[] roots = {liveTopBar, liveBottomBar, vodFsTop, vodFsBottom, nextEpOverlay, channelDrawer, btnLock};
+        for (View r : roots) {
+            // Solo los hijos: el contenedor en sí no debe recibir foco
+            if (r instanceof android.view.ViewGroup) {
+                android.view.ViewGroup g = (android.view.ViewGroup) r;
+                for (int i = 0; i < g.getChildCount(); i++) applyTvFocusTree(g.getChildAt(i));
+            } else {
+                applyTvFocusTree(r);
+            }
+        }
+    }
+
+    private void applyTvFocusTree(View v) {
+        if (v == null) return;
+        if (v.isClickable() || v instanceof ImageButton || v instanceof Button || v instanceof DefaultTimeBar) {
+            applyTvFocus(v, v instanceof ImageButton || v instanceof Button);
+        }
+        if (v instanceof android.view.ViewGroup) {
+            android.view.ViewGroup g = (android.view.ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) applyTvFocusTree(g.getChildAt(i));
+        }
+    }
+
+    private void applyTvFocus(View v, boolean grow) {
+        v.setFocusable(true);
+        if (!isTvMode) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            v.setForeground(ContextCompat.getDrawable(this, R.drawable.fg_tv_focus));
+        }
+        if (grow) {
+            v.setOnFocusChangeListener((view, has) ->
+                view.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(120).start());
+        }
+    }
+
+    /** Pantalla completa inmersiva con la API moderna (WindowInsetsController). */
+    private void hideSystemBars() {
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        androidx.core.view.WindowInsetsControllerCompat c =
+            androidx.core.view.WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        c.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars());
+        c.setSystemBarsBehavior(androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+    }
+
+    /** Atrás (gesto o botón): registrado en el OnBackPressedDispatcher moderno. */
+    private void handleBack() {
         if (screenLocked) {
             toast("\uD83D\uDD12 Desbloquea la pantalla para salir");
             return;
