@@ -2102,6 +2102,13 @@ public class PlayerActivity extends AppCompatActivity {
     // CastButtonFactory conecta cada MediaRouteButton al framework de Cast: el propio
     // bot\u00F3n abre el di\u00E1logo de selecci\u00F3n de dispositivo al tocarlo, sin listener manual.
     private void setupCast() {
+        // En un TV no tiene sentido enviar el video a otro Chromecast
+        if (isTvMode) {
+            liveBtnCast.setVisibility(View.GONE);
+            vodBtnCast.setVisibility(View.GONE);
+            vodFsBtnCast.setVisibility(View.GONE);
+            return;
+        }
         try {
             castContext = CastContext.getSharedInstance(this);
         } catch (Exception e) {
@@ -3253,6 +3260,7 @@ public class PlayerActivity extends AppCompatActivity {
     // ── Foco visible para el control remoto ──
     /** Marca todos los botones de los controles como enfocables y con anillo de foco. */
     private void setupTvFocus() {
+        hideTvRedundantButtons();
         View[] roots = {liveTopBar, liveBottomBar, vodFsTop, vodFsBottom, nextEpOverlay, channelDrawer, btnLock};
         for (View r : roots) {
             // Solo los hijos: el contenedor en sí no debe recibir foco
@@ -3286,6 +3294,23 @@ public class PlayerActivity extends AppCompatActivity {
             v.setOnFocusChangeListener((view, has) ->
                 view.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(120).start());
         }
+    }
+
+    /**
+     * En TV sobran los botones que repiten lo que ya hace el control remoto o
+     * que no aplican a un televisor. Menos botones = menos pasos para llegar
+     * a lo que importa (lista, audio, subtítulos, favorito...).
+     */
+    private void hideTvRedundantButtons() {
+        View[] redundant = {
+            // Atrás / Detener / Salir de pantalla completa → botón Atrás del control
+            liveBtnBack, liveBtnStop, vodFsBtnExit, vodFsBtnStop,
+            // Canal anterior/siguiente → ▲▼ ; −10 s / +10 s → ◀▶
+            liveBtnPrev, liveBtnNext, vodFsBtnRew, vodFsBtnFfw,
+            // Imagen en imagen, candado táctil, copiar URL y descargar: propios del celular
+            liveBtnPip, vodFsBtnPip, btnLock, vodFsBtnUrl, vodFsBtnDl,
+        };
+        for (View v : redundant) if (v != null) v.setVisibility(View.GONE);
     }
 
     /** Pantalla completa inmersiva con la API moderna (WindowInsetsController). */
