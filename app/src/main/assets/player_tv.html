@@ -2847,8 +2847,11 @@ function tvIsNavigable(el, root){
   // el siguiente elemento siempre está cerca, y así cada pulsación es instantánea.
   const vw = window.innerWidth, vh = window.innerHeight;
   if(r.bottom < -2*vh || r.top > 3*vh || r.right < -2*vw || r.left > 3*vw) return false;
-  const cs = getComputedStyle(el);
-  if(cs.visibility === 'hidden' || cs.display === 'none' || parseFloat(cs.opacity) === 0) return false;
+  // checkVisibility() es nativo y rápido (WebView moderno); sin él, offsetParent.
+  // No se mira la opacidad: las tarjetas entran con una animación desde opacidad 0.
+  if(typeof el.checkVisibility === 'function'){
+    if(!el.checkVisibility({ checkVisibilityCSS: true })) return false;
+  } else if(el.offsetParent === null && getComputedStyle(el).position !== 'fixed') return false;
   return true;
 }
 
@@ -2902,32 +2905,75 @@ function tvSetFocus(el, opts = {}){
   TVNAV.current = el;
   const g = tvGroupOf(el);
   if(g) TVNAV.memory.set(g, el);
-  tvEnsureVisible(el, opts.instant);
+  tvEnsureVisible(el, opts.instant, opts.fast);
   TVNAV.lastRect = el.getBoundingClientRect();
 }
 
-// Desplaza solo el contenedor con scroll que contiene al elemento (lista
-// lateral, grilla, fila horizontal), centrándolo si se sale de la vista.
-// No se usa scrollIntoView(): también desplaza contenedores con
-// overflow:hidden y la barra superior se "iba" de la pantalla.
-function tvEnsureVisible(el, instant){
-  const behavior = instant ? 'auto' : 'smooth';
-  let child = el, sc = el.parentElement;
+// ── Desplazamiento fluido ──────────────────────────────────────────
+// Como en las apps de TV profesionales, la lista avanza lo justo para que
+// el elemento enfocado quede dentro de una "zona cómoda" (lejos del borde),
+// fila a fila, en lugar de recentrar media pantalla de golpe.
+// La animación es propia (requestAnimationFrame) y se puede redirigir a
+// mitad de camino: si pulsas varias veces seguidas, no se encolan
+// animaciones, simplemente se alarga el recorrido.
+const TVSCROLL = new Map();   // contenedor → animación en curso
+
+function tvScrollState(sc){
+  const st = TVSCROLL.get(sc);
+  return st ? { x: st.toX, y: st.toY } : { x: sc.scrollLeft, y: sc.scrollTop };
+}
+
+function tvAnimateScroll(sc, toX, toY, dur){
+  const maxX = sc.scrollWidth - sc.clientWidth, maxY = sc.scrollHeight - sc.clientHeight;
+  toX = Math.max(0, Math.min(maxX, toX));
+  toY = Math.max(0, Math.min(maxY, toY));
+  const prev = TVSCROLL.get(sc);
+  if(prev) cancelAnimationFrame(prev.raf);
+  const fromX = sc.scrollLeft, fromY = sc.scrollTop;
+  if(dur <= 0 || (Math.abs(toX - fromX) < 1 && Math.abs(toY - fromY) < 1)){
+    sc.scrollLeft = toX; sc.scrollTop = toY; TVSCROLL.delete(sc); return;
+  }
+  const t0 = performance.now();
+  const rec = { toX, toY, raf: 0 };
+  const step = now => {
+    const t = Math.min(1, (now - t0) / dur);
+    const e = 1 - Math.pow(1 - t, 3);            // ease-out cúbico: arranca rápido, frena suave
+    sc.scrollLeft = fromX + (toX - fromX) * e;
+    sc.scrollTop  = fromY + (toY - fromY) * e;
+    if(t < 1) rec.raf = requestAnimationFrame(step);
+    else TVSCROLL.delete(sc);
+  };
+  rec.raf = requestAnimationFrame(step);
+  TVSCROLL.set(sc, rec);
+}
+
+function tvEnsureVisible(el, instant, fast){
+  const dur = instant ? 0 : (fast ? 90 : 200);
+  let sc = el.parentElement;
   while(sc && sc !== document.documentElement){
     const cs = getComputedStyle(sc);
     const canY = /(auto|scroll)/.test(cs.overflowY) && sc.scrollHeight > sc.clientHeight + 1;
     const canX = /(auto|scroll)/.test(cs.overflowX) && sc.scrollWidth > sc.clientWidth + 1;
     if(canY || canX){
+      const pend = tvScrollState(sc);
+      // Posición del elemento cuando termine la animación que ya está en curso
       const r = el.getBoundingClientRect(), sr = sc.getBoundingClientRect();
-      const pad = 16;
-      let dy = 0, dx = 0;
-      if(canY && (r.top < sr.top + pad || r.bottom > sr.bottom - pad))
-        dy = (r.top + r.height/2) - (sr.top + sr.height/2);
-      if(canX && (r.left < sr.left + pad || r.right > sr.right - pad))
-        dx = (r.left + r.width/2) - (sr.left + sr.width/2);
-      if(dx || dy) sc.scrollBy({ top: dy, left: dx, behavior });
+      const top = r.top - (pend.y - sc.scrollTop), bottom = top + r.height;
+      const left = r.left - (pend.x - sc.scrollLeft), right = left + r.width;
+      const my = Math.min(Math.max(70, sr.height * 0.22), sr.height / 2 - r.height / 2);
+      const mx = Math.min(Math.max(80, sr.width * 0.15), sr.width / 2 - r.width / 2);
+      let ny = pend.y, nx = pend.x;
+      if(canY){
+        if(bottom > sr.bottom - my) ny += bottom - (sr.bottom - my);
+        else if(top < sr.top + my) ny -= (sr.top + my) - top;
+      }
+      if(canX){
+        if(right > sr.right - mx) nx += right - (sr.right - mx);
+        else if(left < sr.left + mx) nx -= (sr.left + mx) - left;
+      }
+      if(nx !== pend.x || ny !== pend.y) tvAnimateScroll(sc, nx, ny, dur);
     }
-    child = sc; sc = sc.parentElement;
+    sc = sc.parentElement;
   }
 }
 
@@ -2973,12 +3019,35 @@ function tvRecover(root){
   return target;
 }
 
-function tvMove(dir){
+function tvMove(dir, fast){
   tvMarkGroups();
   const root = tvActiveRoot();
   const cur = tvRecover(root);
   if(!cur) return;
   const c = cur.getBoundingClientRect();
+  const vertical0 = dir === 'up' || dir === 'down';
+
+  // Atajo para listas enormes (miles de canales): primero se buscan los
+  // vecinos del mismo contenedor. Si hay uno alineado en esa dirección se
+  // usa directamente, sin medir los miles de elementos restantes.
+  const par = cur.parentElement;
+  if(par && par.children.length > 60){
+    const kids = par.children;
+    const idx = Array.prototype.indexOf.call(kids, cur);
+    let lb = null, ls = Infinity;
+    for(let i = Math.max(0, idx - 40); i < Math.min(kids.length, idx + 41); i++){
+      const el = kids[i];
+      if(el === cur || !el.matches(TV_FOCUSABLE) || !tvIsNavigable(el, root)) continue;
+      const r = el.getBoundingClientRect();
+      const ov = vertical0 ? Math.min(c.right, r.right) - Math.max(c.left, r.left)
+                           : Math.min(c.bottom, r.bottom) - Math.max(c.top, r.top);
+      if(ov <= 0) continue;
+      const sc = tvScore(c, r, dir);
+      if(sc < ls){ ls = sc; lb = el; }
+    }
+    if(lb){ tvSetFocus(lb, { fast }); return; }
+  }
+
   const cands = tvCandidates(root);
   let best = null, bestScore = Infinity;
   const vertical = dir === 'up' || dir === 'down';
@@ -3000,7 +3069,7 @@ function tvMove(dir){
     const mem = TVNAV.memory.get(gTo);
     if(mem && mem !== best && tvIsNavigable(mem, root) && tvScore(c, mem.getBoundingClientRect(), dir) < Infinity) best = mem;
   }
-  tvSetFocus(best);
+  tvSetFocus(best, { fast });
 }
 
 // Mover el foco a un grupo concreto (compatibilidad con llamadas existentes)
@@ -3086,12 +3155,21 @@ document.addEventListener('keydown', e => {
     if(!/^Arrow/.test(key) && key !== 'Escape') return; // letras al campo
   }
 
+  // Mantener una flecha pulsada: ritmo constante (~14 pasos/s) en vez de la
+  // ráfaga irregular del control, y desplazamiento corto para que acompañe.
+  if(/^Arrow/.test(key) && e.repeat){
+    const now = performance.now();
+    if(now - (TVNAV.lastMove || 0) < 70){ e.preventDefault(); return; }
+    TVNAV.lastMove = now;
+  } else if(/^Arrow/.test(key)) TVNAV.lastMove = performance.now();
+  const fast = e.repeat;
+
   let handled = true;
   switch(key){
-    case 'ArrowLeft':  tvMove('left');  break;
-    case 'ArrowRight': tvMove('right'); break;
-    case 'ArrowUp':    tvMove('up');    break;
-    case 'ArrowDown':  tvMove('down');  break;
+    case 'ArrowLeft':  tvMove('left', fast);  break;
+    case 'ArrowRight': tvMove('right', fast); break;
+    case 'ArrowUp':    tvMove('up', fast);    break;
+    case 'ArrowDown':  tvMove('down', fast);  break;
     case 'Enter': case ' ':
       if(e.repeat) break; // mantener OK pulsado no repite clics
       tvActivate(); break;
@@ -3145,11 +3223,20 @@ document.addEventListener('keydown', e => {
     .modal { max-width: 860px !important; border-radius: 18px !important; }
     .home-row-scroll { scroll-padding: 0 60px; padding: 10px 4px 14px !important; }
 
-    /* ── Foco ── */
+    /* ── Desplazamiento: lo controla el motor de navegación ── */
+    html, body, * { scroll-behavior: auto !important; }
+
+    /* ── Foco ──
+       Solo se animan transform y outline (baratos para la GPU de un TV Box).
+       La transición está también en el estado normal, así el elemento que
+       pierde el foco vuelve a su tamaño con suavidad en vez de "saltar". */
     *:focus { outline: none !important; }
+    .ch-card, .vod-card, .home-ch-card, .home-vod-card, .home-cont-card, .sec-tab, .stab,
+    .cat-item, .list-item, button, .drop-opt {
+      transition: transform .16s cubic-bezier(.2,.8,.2,1), background-color .16s, outline-color .16s !important; }
     .tv-focus { outline: 3px solid var(--accent) !important; outline-offset: 3px !important;
-      box-shadow: 0 0 0 6px rgba(0,212,255,.18), 0 10px 30px rgba(0,0,0,.55) !important;
-      border-radius: 10px; z-index: 5; transition: transform .14s ease-out, box-shadow .14s ease-out !important; }
+      box-shadow: 0 0 0 5px rgba(0,212,255,.16) !important;
+      border-radius: 10px; z-index: 5; }
     /* Tarjetas: crecen un poco (efecto TV moderno) */
     .ch-card.tv-focus, .vod-card.tv-focus, .home-ch-card.tv-focus, .home-vod-card.tv-focus,
     .home-cont-card.tv-focus { transform: scale(1.08) !important; }
