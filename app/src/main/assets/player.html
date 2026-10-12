@@ -986,7 +986,7 @@ function javaFetch(url){
 }
 
 async function xApi(action, extra=''){
-  const url = `${S.host}/player_api.php?username=${S.user}&password=${S.pass}&action=${action}${extra}`;
+  const url = `${S.host}/player_api.php?username=${encodeURIComponent(S.user)}&password=${encodeURIComponent(S.pass)}&action=${action}${extra}`;
   try {
     // Android — usar bridge Java (funciona en todos los dispositivos)
     if(typeof AndroidPlayer !== 'undefined'){
@@ -3156,7 +3156,7 @@ async function indexServer(acc){
 }
 
 async function xApiFor(acc, action, extra=''){
-  const url = `${acc.host}/player_api.php?username=${acc.user}&password=${acc.pass}&action=${action}${extra}`;
+  const url = `${acc.host}/player_api.php?username=${encodeURIComponent(acc.user)}&password=${encodeURIComponent(acc.pass)}&action=${action}${extra}`;
   if(typeof AndroidPlayer !== 'undefined'){
     return new Promise((resolve, reject)=>{
       const id = 'j'+Date.now()+Math.random().toString(36).slice(2);
