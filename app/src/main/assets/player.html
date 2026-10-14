@@ -1037,6 +1037,17 @@ function renderOtherAccountsBlock(){
   </div>`;
 }
 
+// ══ ACTUALIZACIONES ══ (la revisión, descarga e instalación las hace la app nativa)
+function appUpdateBlock(){
+  if(typeof AndroidPlayer==='undefined' || !AndroidPlayer.checkUpdates) return '';
+  let v=''; try{ v=AndroidPlayer.appVersion()||''; }catch(e){}
+  return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:16px">
+    <div style="font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--muted2);margin-bottom:8px">📲 JOX3 TV ${esc(v)}</div>
+    <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">Las versiones nuevas se instalan solas: la app avisa al abrirse.</div>
+    <button class="setup-btn" style="margin:0" onclick="AndroidPlayer.checkUpdates()">🔄 Buscar actualizaciones</button>
+  </div>`;
+}
+
 async function showAccountInfo(){
   ['secLive','secVod','secSeries'].forEach(id=>document.getElementById(id).classList.remove('active'));
   document.getElementById('secInfo').classList.add('active');
@@ -1085,6 +1096,7 @@ async function showAccountInfo(){
           <div style="font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--muted2);margin-bottom:12px">🌐 Servidor</div>
           <div style="font-size:.75rem;color:var(--muted);word-break:break-all">${esc(S.host)}</div>
         </div>
+        ${appUpdateBlock()}
         ${renderOtherAccountsBlock()}
       </div>
     `);

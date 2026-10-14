@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
+    <!-- Actualización automática: abrir el instalador con el APK descargado -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
     <!-- Android TV: la app funciona sin pantalla táctil y no exige el modo Leanback,
          así se puede instalar tanto en celulares como en TV Box / Google TV -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -74,6 +77,17 @@
                 <data android:mimeType="application/vnd.apple.mpegurl" />
             </intent-filter>
         </activity>
+
+        <!-- Comparte el APK descargado con el instalador de Android -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 </manifest>

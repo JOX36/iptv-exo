@@ -44,6 +44,8 @@ public class MainActivity extends AppCompatActivity {
     private WebView webView;
     /** La pantalla de inicio se mantiene hasta que la interfaz termina de cargar. */
     private volatile boolean uiReady = false;
+    /** Actualización automática desde GitHub Releases. */
+    private Updater updater;
 
     // Activity Result API (reemplaza a startActivityForResult/onActivityResult, obsoletos)
     private final ActivityResultLauncher<Intent> playerLauncher =
@@ -139,6 +141,10 @@ public class MainActivity extends AppCompatActivity {
             webView.loadUrl(UI_ORIGIN + "player.html");
         }
 
+        // Buscar versión nueva al abrir (como mucho cada 12 h)
+        updater = new Updater(this);
+        updater.checkOnStartup();
+
         // Atrás con la API moderna (OnBackPressedDispatcher)
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() { handleBack(); }
@@ -175,6 +181,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     class Bridge {
+
+        /** Versión instalada, para mostrarla en la interfaz. */
+        @JavascriptInterface
+        public String appVersion() {
+            return updater != null ? updater.installedVersion() : "";
+        }
+
+        /** Botón "Buscar actualizaciones". */
+        @JavascriptInterface
+        public void checkUpdates() {
+            if (updater != null) updater.checkNow();
+        }
 
         @JavascriptInterface
         public String getResult(String callbackId) {
@@ -452,6 +470,13 @@ public class MainActivity extends AppCompatActivity {
                     }
                 });
             });
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Volviendo de "Permitir instalar apps": continuar con la actualización
+        if (updater != null) updater.onResume();
     }
 
     @Override
