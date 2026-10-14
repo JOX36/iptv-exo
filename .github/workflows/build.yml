@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:          # botón "Run workflow" manual en la pestaña Actions
 
+permissions:
+  contents: write             # para publicar la versión (Release) con el APK
+  pull-requests: read         # para leer las novedades del PR publicado
+
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true    # si subes otro commit, cancela la compilación anterior
@@ -13,8 +17,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      HAS_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -31,10 +33,16 @@ jobs:
         with:
           gradle-version: '8.2'
 
-      - name: Build Debug APK
+      # Ramas de prueba: APK debug. main: APK release (el que se publica).
+      - name: Build APK
         run: |
           set -o pipefail
-          gradle assembleDebug 2>&1 | tee build.log
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            TASK=assembleRelease
+          else
+            TASK=assembleDebug
+          fi
+          gradle $TASK 2>&1 | tee build.log
 
       # Si falla, los errores aparecen como anotaciones en la pestaña del PR / Actions
       - name: Resumen de errores
@@ -44,20 +52,30 @@ jobs:
             echo "::error::${line}"
           done
 
-      # Firma de producción opcional: solo corre si configuraste los secretos
-      - name: Build Release APK (firmada)
-        if: ${{ github.ref == 'refs/heads/main' && env.HAS_KEYSTORE == 'true' }}
-        env:
-          RELEASE_KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
-          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: |
-          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > "$RELEASE_KEYSTORE_FILE"
-          gradle assembleRelease --stacktrace
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: iptv-exo-${{ github.run_number }}
           path: app/build/outputs/apk/**/*.apk
+
+      # Cada cambio que llega a main se publica como versión: la app la detecta
+      # al abrirse y ofrece instalarla sola (también en el TV Box).
+      - name: Publicar versión
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          VERSION="1.1.${{ github.run_number }}"
+          cp app/build/outputs/apk/release/app-release.apk "JOX3-TV-$VERSION.apk"
+          # Novedades del aviso: la sección "## Novedades" del PR (en palabras simples).
+          # Si no hay, el mensaje del cambio.
+          PR_BODY=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" --jq '.[0].body // ""' 2>/dev/null || true)
+          NOTES=$(printf '%s\n' "$PR_BODY" | tr -d '\r' | awk '/^##+ *Novedades/{f=1;next} /^##/{f=0} f' | sed '/^\s*$/d')
+          if [ -z "$NOTES" ]; then
+            NOTES=$(printf '%s\n' "$HEAD_MSG" | grep -viE '^(merge pull request|co-authored-by|claude-session)' | sed '/^\s*$/d')
+          fi
+          gh release create "v$VERSION" "JOX3-TV-$VERSION.apk" \
+            --title "JOX3 TV $VERSION" \
+            --notes "${NOTES:-Mejoras y correcciones.}" \
+            --target "${{ github.sha }}"

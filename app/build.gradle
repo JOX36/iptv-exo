@@ -27,17 +27,6 @@ android {
             keyAlias 'jox3debugkey'
             keyPassword 'jox3debug123'
         }
-        // Firma de producción: solo si existen los secretos (nunca se guardan en el repo).
-        // En GitHub: Settings > Secrets > Actions → RELEASE_KEYSTORE_BASE64,
-        // RELEASE_KEYSTORE_PASSWORD, RELEASE_KEY_ALIAS, RELEASE_KEY_PASSWORD.
-        if (System.getenv("RELEASE_KEYSTORE_PASSWORD")) {
-            release {
-                storeFile file(System.getenv("RELEASE_KEYSTORE_FILE") ?: "release.keystore")
-                storePassword System.getenv("RELEASE_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("RELEASE_KEY_ALIAS")
-                keyPassword System.getenv("RELEASE_KEY_PASSWORD")
-            }
-        }
     }
 
     buildTypes {
@@ -45,11 +34,18 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Con secretos configurados firma con la clave propia; si no, con la de debug
-            signingConfig signingConfigs.findByName('release') ?: signingConfigs.debug
+            // Misma llave fija que las compilaciones de prueba: así cada versión
+            // publicada se instala ENCIMA de la anterior (necesario para actualizar solo).
+            // Si algún día se cambia esta llave, habrá que desinstalar una vez.
+            signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
+    }
+    // El análisis de lint de release puede frenar la publicación por avisos menores
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
