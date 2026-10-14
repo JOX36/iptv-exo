@@ -26,6 +26,8 @@ data class Channel(
     val logo: String,
     val categoryId: String,
     val num: Int,
+    /** Código de guía (tvg-id / epg_channel_id) para emparejar con la guía de internet. */
+    val epgId: String = "",
 )
 
 data class Movie(

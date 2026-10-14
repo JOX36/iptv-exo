@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -40,6 +42,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jox3.iptvexo.tv.player.LiveFullscreen
+import com.jox3.iptvexo.tv.player.LivePlayback
+import com.jox3.iptvexo.tv.player.LocalLive
+import com.jox3.iptvexo.tv.player.VideoLayer
 import androidx.tv.material3.Text
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.data.Account
@@ -112,7 +121,7 @@ fun TvApp(host: TvHost) {
         return
     }
     key(acc.key) {
-        val repo = remember { TvRepo(XtreamApi(acc), LibraryStore(context, acc.key)) }
+        val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
         host.player.repo = repo
         MainShell(repo, host, acc) {
             accounts.logout(); account = null
@@ -129,10 +138,41 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     val section = stack.first()
     val detail = stack.lastOrNull()?.takeIf { stack.size > 1 }
 
+    // ── Reproductor en vivo (uno solo: vista previa y pantalla completa) ──
+    val live = remember { LivePlayback(context.applicationContext, repo) }
+    live.beforeFullscreen = { runCatching { baseFocus.saveFocusedChild() } }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e ->
+            when (e) {
+                Lifecycle.Event.ON_PAUSE -> live.onPause()
+                Lifecycle.Event.ON_RESUME -> live.onResume()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs); live.release() }
+    }
+    // Fuera de En vivo no hay vista previa: el canal se corta (salvo en pantalla completa)
+    LaunchedEffect(section, live.fullscreen) {
+        if (section != Route.Live && !live.fullscreen) live.stop()
+    }
+    // La guía de internet empieza a descargarse en segundo plano desde el inicio
+    LaunchedEffect(repo) { runCatching { repo.categories(com.jox3.iptvexo.tv.data.Section.LIVE) } }
+    var wasFullscreen by remember { mutableStateOf(false) }
+    LaunchedEffect(live.fullscreen) {
+        if (live.fullscreen) { wasFullscreen = true; return@LaunchedEffect }
+        if (wasFullscreen) {
+            wasFullscreen = false
+            runCatching { if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus() }
+        }
+    }
+
     // ── Atrás: cierra el detalle → vuelve a Inicio → doble Atrás para salir ──
     var lastBack by remember { mutableLongStateOf(0L) }
     BackHandler {
         when {
+            live.fullscreen -> live.exitFullscreen()
             detail != null -> nav.back()
             section != Route.Home -> nav.open(Route.Home)
             System.currentTimeMillis() - lastBack < 2000 -> (context as? android.app.Activity)?.finish()
@@ -153,9 +193,10 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
         }
     }
 
+    CompositionLocalProvider(LocalLive provides live) {
     Box(Modifier.fillMaxSize().background(Jx.Bg)) {
-        // Sección (queda debajo mientras hay un detalle abierto, sin recibir foco)
-        val covered = detail != null
+        // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
+        val covered = detail != null || live.fullscreen
         Box(
             Modifier
                 .fillMaxSize()
@@ -185,6 +226,9 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
           }
         }
 
+        // Video en vivo: en la ventanita de vista previa o a pantalla completa
+        VideoLayer(live, Modifier.zIndex(2.5f))
+
         // Detalle a pantalla completa
         if (detail != null) {
             Box(Modifier.fillMaxSize().background(Jx.Bg).zIndex(3f)) {
@@ -197,6 +241,17 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
                 }
             }
         }
+
+        // Controles del reproductor en vivo a pantalla completa
+        if (live.fullscreen) {
+            Box(Modifier.fillMaxSize().zIndex(4f)) {
+                LiveFullscreen(live, repo) {
+                    live.exitFullscreen()
+                    if (section != Route.Live) live.stop()
+                }
+            }
+        }
+    }
     }
 }
 

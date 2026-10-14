@@ -35,6 +35,7 @@ import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.Nav
 import com.jox3.iptvexo.tv.Route
 import com.jox3.iptvexo.tv.TvHost
+import com.jox3.iptvexo.tv.player.LocalLive
 import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.Movie
 import com.jox3.iptvexo.tv.data.Series
@@ -64,6 +65,7 @@ private data class Results(val channels: List<Channel>, val movies: List<Movie>,
  */
 @Composable
 fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
+    val live = LocalLive.current
     var query by rememberSaveable { mutableStateOf("") }
     val index by produceState<TvRepo.Index?>(null) { value = repo.searchIndex() }
     val results by produceState<Results?>(null, query, index) {
@@ -126,7 +128,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
                     if (r.channels.isNotEmpty()) item(key = "ch") {
                         ShelfRow("En vivo · ${r.channels.size}") {
                             itemsIndexed(r.channels, key = { _, c -> "c" + c.id }) { i, c ->
-                                ChannelTile(c.name, c.logo, onClick = { host.player.playChannel(r.channels, i, "Búsqueda") })
+                                ChannelTile(c.name, c.logo, onClick = { live.playFullscreen(r.channels, i, "Búsqueda") })
                             }
                         }
                     }

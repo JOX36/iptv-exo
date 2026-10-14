@@ -27,6 +27,7 @@ import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.Nav
 import com.jox3.iptvexo.tv.Route
 import com.jox3.iptvexo.tv.TvHost
+import com.jox3.iptvexo.tv.player.LocalLive
 import com.jox3.iptvexo.tv.data.Account
 import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.Movie
@@ -47,6 +48,7 @@ import java.util.Locale
 /** Favoritos: canales, películas y series. OK mantenido quita un favorito. */
 @Composable
 fun FavoritesScreen(repo: TvRepo, nav: Nav, host: TvHost) {
+    val player = LocalLive.current
     val lib = repo.library
     val favs = lib.favorites.toList()
     val live = favs.filter { it.kind == "live" }
@@ -69,7 +71,7 @@ fun FavoritesScreen(repo: TvRepo, nav: Nav, host: TvHost) {
             val chans = live.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
             ShelfRow("Canales") {
                 itemsIndexed(chans, key = { _, c -> "c" + c.id }) { i, c ->
-                    ChannelTile(c.name, c.logo, onClick = { host.player.playChannel(chans, i, "Favoritos") },
+                    ChannelTile(c.name, c.logo, onClick = { player.playFullscreen(chans, i, "Favoritos") },
                         onLongClick = { lib.toggleFavorite(live[i]) })
                 }
             }

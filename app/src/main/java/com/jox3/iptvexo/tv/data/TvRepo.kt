@@ -12,7 +12,7 @@ import java.text.Normalizer
  * Datos de la cuenta activa con caché en memoria: cada categoría se pide al
  * servidor una sola vez por sesión, y la guía (EPG) se guarda 5 minutos.
  */
-class TvRepo(val api: XtreamApi, val library: LibraryStore) {
+class TvRepo(private val context: android.content.Context, val api: XtreamApi, val library: LibraryStore) {
 
     private val lock = Mutex()
     private val categories = HashMap<Section, List<Category>>()
@@ -24,7 +24,10 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
     private val epgPermits = Semaphore(3)
 
     suspend fun categories(s: Section): List<Category> =
-        lock.withLock { categories[s] } ?: api.categories(s).also { lock.withLock { categories[s] = it } }
+        lock.withLock { categories[s] } ?: api.categories(s).also { list ->
+            lock.withLock { categories[s] = list }
+            if (s == Section.LIVE) startExternalEpg(list)
+        }
 
     suspend fun channels(catId: String): List<Channel> =
         lock.withLock { channels[catId] } ?: api.channels(catId).also { lock.withLock { channels[catId] = it } }
@@ -35,25 +38,58 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
     suspend fun series(catId: String): List<Series> =
         lock.withLock { series[catId] } ?: api.series(catId).also { lock.withLock { series[catId] = it } }
 
-    fun cachedEpg(streamId: String): List<EpgItem>? {
-        val hit = synchronized(epg) { epg[streamId] } ?: return null
+    // ── Guía (EPG) ──
+    // Primero la del servidor; si no trae nada, la guía de internet por país
+    // (ExternalEpg, la misma de JOX3 Verifier).
+
+    /** Sube cuando termina de descargarse la guía de internet: la interfaz vuelve a pedirla. */
+    val epgVersion = androidx.compose.runtime.mutableIntStateOf(0)
+    private val catCountry = HashMap<String, String>()
+
+    private fun startExternalEpg(liveCats: List<Category>) {
+        synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.name) } }
+        ExternalEpg.ensure(context, EpgCountries.filesFor(liveCats)) {
+            // Los canales que quedaron sin guía se vuelven a consultar
+            synchronized(epg) { epg.entries.removeAll { it.value.second.isEmpty() } }
+            android.os.Handler(android.os.Looper.getMainLooper()).post { epgVersion.intValue++ }
+        }
+    }
+
+    fun cachedEpg(ch: Channel): List<EpgItem>? {
+        val hit = synchronized(epg) { epg[ch.id] } ?: return null
         return if (System.currentTimeMillis() - hit.first < 5 * 60_000) hit.second else null
     }
 
-    suspend fun epg(streamId: String): List<EpgItem> {
-        cachedEpg(streamId)?.let { return it }
-        val list = epgPermits.withPermit {
-            try { api.shortEpg(streamId) } catch (e: Exception) { emptyList() }
+    suspend fun epg(ch: Channel): List<EpgItem> {
+        cachedEpg(ch)?.let { return it }
+        var list = epgPermits.withPermit {
+            try { api.shortEpg(ch.id, 6) } catch (e: Exception) { emptyList() }
         }
-        synchronized(epg) { epg[streamId] = System.currentTimeMillis() to list }
+        if (list.isEmpty() && ExternalEpg.isReady()) {
+            val now = System.currentTimeMillis() / 1000
+            val hint = synchronized(catCountry) { catCountry[ch.categoryId] }
+            // El emparejamiento por nombre recorre muchas claves: fuera del hilo principal
+            list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                try {
+                    ExternalEpg.match(context, ch.name, ch.epgId.ifBlank { null }, hint?.ifBlank { null })
+                        ?.progs?.filter { it.stop > now - 3600 && it.start < now + 12 * 3600 }
+                        ?.map { EpgItem(it.title, it.desc, it.start * 1000, it.stop * 1000) }
+                        .orEmpty()
+                } catch (e: Exception) { emptyList() }
+            }
+        }
+        synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to list }
         return list
     }
 
     /** Programa que se emite ahora (si la guía lo trae). */
     fun nowPlaying(list: List<EpgItem>): EpgItem? {
         val now = System.currentTimeMillis()
-        return list.firstOrNull { now in it.start until it.end } ?: list.firstOrNull()
+        return list.firstOrNull { now in it.start until it.end } ?: list.firstOrNull { it.end > now }
     }
+
+    fun nextAfter(list: List<EpgItem>, cur: EpgItem?): EpgItem? =
+        cur?.let { c -> list.firstOrNull { it.start >= c.end } }
 
     // ── Búsqueda en todo el catálogo ──
     data class Index(val channels: List<Channel>, val movies: List<Movie>, val series: List<Series>)
