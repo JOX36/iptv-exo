@@ -1,7 +1,5 @@
 package com.jox3.iptvexo.tv.screens
 
-import android.view.ViewGroup
-import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +17,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -36,25 +35,15 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.media3.common.MediaItem
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
-import com.jox3.iptvexo.NetClient
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.TvHost
+import com.jox3.iptvexo.tv.player.LocalLive
 import com.jox3.iptvexo.tv.data.Category
 import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.EpgItem
@@ -80,12 +69,17 @@ private fun hhmm(ms: Long) = if (ms > 0) clock.format(Date(ms)) else ""
 
 /**
  * En vivo, estilo guía: categorías | canales con lo que se emite | vista previa.
- * Moverse por los canales cambia la vista previa (con sonido) tras un instante;
- * OK abre el canal a pantalla completa y OK mantenido lo marca como favorito.
+ *
+ * - Moverse por los canales NO cambia lo que se está viendo.
+ * - OK sobre un canal → se reproduce en la ventanita de vista previa.
+ * - OK otra vez sobre el mismo canal → pantalla completa al instante, sin
+ *   recargar (es el mismo video, solo se agranda).
+ * - OK mantenido → favorito.
  */
 @Composable
-fun LiveScreen(repo: TvRepo, host: TvHost) {
+fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     val lib = repo.library
+    val live = LocalLive.current
     var reload by remember { mutableIntStateOf(0) }
     val cats by produceState<Result<List<Category>>?>(null, reload) {
         value = runCatching { repo.categories(Section.LIVE) }
@@ -93,6 +87,8 @@ fun LiveScreen(repo: TvRepo, host: TvHost) {
     var selected by remember { mutableStateOf<Category?>(null) }
     var focusedChannel by remember { mutableStateOf<Channel?>(null) }
     val channelsReq = remember { FocusRequester() }
+    val playingReq = remember { FocusRequester() }
+    val listState = rememberLazyListState()
     var firstFocusDone by remember { mutableStateOf(false) }
 
     val catList = cats?.getOrNull()
@@ -119,6 +115,21 @@ fun LiveScreen(repo: TvRepo, host: TvHost) {
                 RECENT_ID -> lib.recentChannels.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
                 else -> repo.channels(cat.id)
             }
+        }
+    }
+    val list = channels?.getOrNull()
+
+    // Al volver de pantalla completa (quizá en otro canal), el foco va al canal que se está viendo
+    var wasFullscreen by remember { mutableStateOf(false) }
+    LaunchedEffect(live.fullscreen) {
+        if (live.fullscreen) { wasFullscreen = true; return@LaunchedEffect }
+        if (!wasFullscreen) return@LaunchedEffect
+        wasFullscreen = false
+        val idx = list?.indexOfFirst { it.id == live.current?.id } ?: -1
+        if (idx >= 0) {
+            listState.scrollToItem((idx - 3).coerceAtLeast(0))
+            delay(40)
+            runCatching { playingReq.requestFocus() }
         }
     }
 
@@ -159,22 +170,28 @@ fun LiveScreen(repo: TvRepo, host: TvHost) {
         Column(Modifier.width(340.dp).fillMaxHeight().padding(top = 27.dp)) {
             Text(selected?.name.orEmpty(), style = Type.H1, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 10.dp))
-            val list = channels?.getOrNull()
             when {
                 channels == null -> StatusBox("Cargando…")
                 list == null -> StatusBox("No se pudo cargar la categoría", onRetry = { reload++ })
                 list.isEmpty() -> StatusBox(if (selected?.id == FAV_ID) "Mantén OK sobre un canal para agregarlo a favoritos" else "Sin canales")
                 else -> LazyColumn(
                     Modifier.fillMaxSize().focusRequester(channelsReq).focusRestorer(),
+                    state = listState,
                     contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    itemsIndexed(list, key = { _, c -> c.id }) { i, ch ->
+                    itemsIndexed(list, key = { _, c -> c.id }) { _, ch ->
+                        val playing = live.current?.id == ch.id
                         ChannelRow(
                             ch, repo,
                             favorite = lib.isFavorite("live", ch.id),
+                            playing = playing,
+                            modifier = if (playing) Modifier.focusRequester(playingReq) else Modifier,
                             onFocus = { focusedChannel = ch },
-                            onClick = { host.player.playChannel(list, i, selected?.name.orEmpty()) },
+                            onClick = {
+                                if (playing) live.enterFullscreen()
+                                else live.play(ch, list, selected?.name.orEmpty())
+                            },
                             onLongClick = { lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId)) },
                         )
                     }
@@ -191,50 +208,68 @@ fun LiveScreen(repo: TvRepo, host: TvHost) {
         // ── Vista previa + guía ──
         Column(Modifier.weight(1f).fillMaxHeight().padding(top = 27.dp, end = 32.dp, start = 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            val ch = focusedChannel
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(Jx.Surface)) {
-                LivePreview(ch?.let { repo.api.liveUrl(it.id) }, Modifier.fillMaxSize())
-                if (ch != null) {
-                    Text("EN VIVO", style = Type.Eyebrow, color = Jx.Bg,
-                        modifier = Modifier.padding(10.dp).background(Jx.Live, RoundedCornerShape(5.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+            // Hueco de la vista previa: el video lo dibuja la capa de video encima
+            Box(
+                Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(Jx.Surface)
+                    .onGloballyPositioned { live.previewBounds = it.boundsInRoot() },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (live.current == null) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(16.dp)) {
+                        JxIcon(R.drawable.tv_ic_live, 28.dp, Jx.Muted)
+                        Text("Pulsa OK en un canal para verlo aquí", style = Type.Label, color = Jx.TextSoft)
+                        Text("OK otra vez: pantalla completa", style = Type.Small, color = Jx.Faint)
+                    }
                 }
             }
-            if (ch != null) ChannelGuide(ch, repo)
+            val shown = focusedChannel ?: live.current
+            if (shown != null) {
+                val isPlaying = live.current?.id == shown.id
+                Text(if (isPlaying) "OK: ver en pantalla completa" else "OK: ver en la vista previa",
+                    style = Type.Small, color = if (isPlaying) Jx.Accent else Jx.Faint)
+                ChannelGuide(shown, repo)
+            }
         }
     }
+    DisposableEffect(Unit) { onDispose { live.previewBounds = null } }
 }
 
 @Composable
 private fun ChannelRow(
-    ch: Channel, repo: TvRepo, favorite: Boolean,
+    ch: Channel, repo: TvRepo, favorite: Boolean, playing: Boolean, modifier: Modifier,
     onFocus: () -> Unit, onClick: () -> Unit, onLongClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val version by repo.epgVersion
     // Lo que se emite ahora: se pide solo si la fila queda visible un instante
-    val epg by produceState(repo.cachedEpg(ch.id), ch.id) {
-        if (value == null) { delay(300); value = repo.epg(ch.id) }
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) {
+        if (value.isNullOrEmpty()) { delay(300); value = repo.epg(ch) }
     }
     val now = epg?.let { repo.nowPlaying(it) }
     FocusSurface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = Modifier.fillMaxWidth().height(58.dp).onFocusChanged {
+        modifier = modifier.fillMaxWidth().height(58.dp).onFocusChanged {
             focused = it.isFocused
             if (it.isFocused) onFocus()
         },
         focusedScale = 1.03f,
+        container = if (playing) Jx.Surface else androidx.compose.ui.graphics.Color.Transparent,
     ) {
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("${ch.num}", style = Type.Number, color = if (focused) Jx.Accent else Jx.Faint, modifier = Modifier.width(34.dp))
+            Text("${ch.num}", style = Type.Number, color = if (focused || playing) Jx.Accent else Jx.Faint, modifier = Modifier.width(34.dp))
             RemoteImage(ch.logo, ch.name, Modifier.size(38.dp).clip(RoundedCornerShape(8.dp)), scale = ContentScale.Fit)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(ch.name, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(ch.name, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = if (playing) Jx.Accent else androidx.tv.material3.LocalContentColor.current)
                 if (now != null) {
                     Text(now.title, style = Type.Small, color = if (focused) Jx.TextSoft else Jx.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (focused) ThinProgress(now.progress(), Modifier.fillMaxWidth(), height = 2.dp)
                 }
             }
+            if (playing) JxIcon(R.drawable.tv_ic_play, 12.dp, Jx.Accent, "En reproducción")
             if (favorite) JxIcon(R.drawable.tv_ic_star_filled, 14.dp, Jx.Gold, "Favorito")
         }
     }
@@ -242,8 +277,9 @@ private fun ChannelRow(
 
 @Composable
 private fun ChannelGuide(ch: Channel, repo: TvRepo) {
-    val epg by produceState<List<EpgItem>?>(repo.cachedEpg(ch.id), ch.id) {
-        if (value == null) value = repo.epg(ch.id)
+    val version by repo.epgVersion
+    val epg by produceState<List<EpgItem>?>(repo.cachedEpg(ch), ch.id, version) {
+        value = repo.epg(ch)
     }
     val list = epg.orEmpty()
     val now = repo.nowPlaying(list)
@@ -270,55 +306,4 @@ private fun ChannelGuide(ch: Channel, repo: TvRepo) {
             }
         }
     }
-}
-
-/**
- * Vista previa del canal enfocado. Espera un instante antes de conectar (así
- * recorrer la lista rápido no abre decenas de conexiones) y se detiene al abrir
- * el reproductor a pantalla completa.
- */
-@OptIn(UnstableApi::class)
-@Composable
-private fun LivePreview(url: String?, modifier: Modifier) {
-    val context = LocalContext.current
-    val player = remember {
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(NetClient.player())))
-            .build()
-    }
-    var active by remember { mutableStateOf(true) }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    DisposableEffect(lifecycle) {
-        val obs = LifecycleEventObserver { _, e ->
-            when (e) {
-                Lifecycle.Event.ON_PAUSE -> { active = false; player.stop() }
-                Lifecycle.Event.ON_RESUME -> active = true
-                else -> Unit
-            }
-        }
-        lifecycle.addObserver(obs)
-        onDispose { lifecycle.removeObserver(obs); player.release() }
-    }
-    LaunchedEffect(url, active) {
-        player.stop()
-        if (url == null || !active) return@LaunchedEffect
-        delay(700)
-        player.setMediaItem(MediaItem.fromUri(url))
-        player.prepare()
-        player.play()
-    }
-    AndroidView(
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                setShutterBackgroundColor(0xFF111923.toInt())
-                isFocusable = false
-                isFocusableInTouchMode = false
-                descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                this.player = player
-            }
-        },
-        modifier = modifier,
-    )
 }

@@ -81,6 +81,7 @@ class XtreamApi(val account: Account) {
                 logo = o.optString("stream_icon", ""),
                 categoryId = o.optString("category_id", ""),
                 num = o.optInt("num", i + 1),
+                epgId = o.optString("epg_channel_id", "").takeUnless { it == "null" }.orEmpty(),
             )
         }
     }
