@@ -981,6 +981,7 @@ function appUpdateBlock(){
     <div style="font-family:'Rajdhani',sans-serif;font-size:.9rem;font-weight:700;color:var(--muted2);margin-bottom:8px">📲 JOX3 TV ${esc(v)}</div>
     <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">Las versiones nuevas se instalan solas: la app avisa al abrirse.</div>
     <button class="setup-btn" style="margin:0" onclick="AndroidPlayer.checkUpdates()">🔄 Buscar actualizaciones</button>
+    ${AndroidPlayer.useNewTvUi ? `<button class="setup-btn" style="margin:10px 0 0;background:var(--bg3);border:1px solid var(--border);color:var(--text)" onclick="AndroidPlayer.useNewTvUi()">✨ Usar la interfaz nueva</button>` : ''}
   </div>`;
 }
 

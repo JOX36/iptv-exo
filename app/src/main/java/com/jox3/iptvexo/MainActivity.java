@@ -39,6 +39,9 @@ import okhttp3.Response;
 public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "IPTV_EXO";
+    /** Preferencia: usar la interfaz web anterior en TV en lugar de la nativa. */
+    public static final String PREFS_UI = "ui_prefs";
+    public static final String KEY_CLASSIC_TV = "classic_tv";
     private static final String UI_ORIGIN = "file:///android_asset/";
 
     private WebView webView;
@@ -67,6 +70,15 @@ public class MainActivity extends AppCompatActivity {
         SplashScreen splash = SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
         splash.setKeepOnScreenCondition(() -> !uiReady);
+
+        // En TV se usa la interfaz nativa nueva (Compose), salvo que el usuario
+        // haya elegido la anterior desde Ajustes.
+        if (isTvDevice() && !getSharedPreferences(PREFS_UI, MODE_PRIVATE).getBoolean(KEY_CLASSIC_TV, false)) {
+            uiReady = true;
+            startActivity(new Intent(this, com.jox3.iptvexo.tv.TvActivity.class));
+            finish();
+            return;
+        }
         // Seguridad: nunca más de 4 s de splash aunque la página tarde
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> uiReady = true, 4000);
         setContentView(R.layout.activity_main);
@@ -123,13 +135,7 @@ public class MainActivity extends AppCompatActivity {
         webView.addJavascriptInterface(new Bridge(), "AndroidPlayer");
 
         // Detectar TV Box y cargar versión optimizada
-        boolean isTv = getPackageManager().hasSystemFeature(
-            android.content.pm.PackageManager.FEATURE_LEANBACK);
-        boolean isTvUiMode = (getResources().getConfiguration().uiMode &
-            android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
-            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
-
-        if (isTv || isTvUiMode) {
+        if (isTvDevice()) {
             // TV Box — forzar landscape fullscreen
             setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
             WindowInsetsControllerCompat c =
@@ -149,6 +155,15 @@ public class MainActivity extends AppCompatActivity {
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override public void handleOnBackPressed() { handleBack(); }
         });
+    }
+
+    private boolean isTvDevice() {
+        boolean leanback = getPackageManager().hasSystemFeature(
+            android.content.pm.PackageManager.FEATURE_LEANBACK);
+        boolean tvMode = (getResources().getConfiguration().uiMode &
+            android.content.res.Configuration.UI_MODE_TYPE_MASK) ==
+            android.content.res.Configuration.UI_MODE_TYPE_TELEVISION;
+        return leanback || tvMode;
     }
 
     /** true = navegación bloqueada en el WebView (se abre fuera si es posible). */
@@ -186,6 +201,16 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public String appVersion() {
             return updater != null ? updater.installedVersion() : "";
+        }
+
+        /** Desde la interfaz anterior de TV: volver a la interfaz nativa nueva. */
+        @JavascriptInterface
+        public void useNewTvUi() {
+            getSharedPreferences(PREFS_UI, MODE_PRIVATE).edit().putBoolean(KEY_CLASSIC_TV, false).apply();
+            runOnUiThread(() -> {
+                startActivity(new Intent(MainActivity.this, com.jox3.iptvexo.tv.TvActivity.class));
+                finish();
+            });
         }
 
         /** Botón "Buscar actualizaciones". */

@@ -27,4 +27,10 @@
         <item name="postSplashScreenTheme">@style/Theme.AppCompat.NoActionBar</item>
     </style>
 
+    <!-- Interfaz TV nativa: fondo de la marca mientras carga (sin parpadeo blanco) -->
+    <style name="Theme.Tv" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/tv_bg</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
 </resources>

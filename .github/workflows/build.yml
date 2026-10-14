@@ -48,7 +48,9 @@ jobs:
       - name: Resumen de errores
         if: failure()
         run: |
-          grep -E "error:|e: |What went wrong|Could not (find|resolve)|> " build.log | head -40 | while IFS= read -r line; do
+          # Primero los errores de compilación (Kotlin "e: ", Java "error:"), luego el resto
+          { grep -E "^e: |error:" build.log; grep -E -A3 "What went wrong|Could not (find|resolve)" build.log; } \
+            | head -45 | while IFS= read -r line; do
             echo "::error::${line}"
           done
 
