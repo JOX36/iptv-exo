@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,7 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -63,7 +66,6 @@ import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.EpgItem
 import com.jox3.iptvexo.tv.data.SavedItem
 import com.jox3.iptvexo.tv.data.TvRepo
-import com.jox3.iptvexo.tv.ui.ActionButton
 import com.jox3.iptvexo.tv.ui.FocusSurface
 import com.jox3.iptvexo.tv.ui.JxIcon
 import com.jox3.iptvexo.tv.ui.Jx
@@ -124,27 +126,54 @@ fun VideoLayer(live: LivePlayback, modifier: Modifier = Modifier) {
     }
 }
 
-private enum class Panel { None, Channels, Audio, Subtitles }
+/** Opciones de la barra inferior. Las que tienen panel lo muestran apenas reciben el foco. */
+private enum class Opt(val label: String, val hasPanel: Boolean) {
+    Channels("Canales", true),
+    Audio("Audio", true),
+    Subtitles("Subtítulos", true),
+    Picture("Imagen", true),
+    Favorite("Favorito", false),
+    Reload("Recargar", false),
+}
+
+/** Fondo translúcido de los paneles: se sigue viendo el video detrás. */
+private val PanelBrush = Brush.horizontalGradient(listOf(Color(0xB3070A0F), Color(0x80070A0F), Color(0x33070A0F)))
 
 /**
  * Controles a pantalla completa, al estilo del reproductor de JOX3 Verifier:
- * arriba el canal y la guía (AHORA / DESPUÉS con avance), abajo los botones.
+ * arriba el canal y la guía (AHORA / DESPUÉS con avance), abajo una barra de
+ * opciones. Al moverte por las opciones, su panel (canales, audio, subtítulos,
+ * imagen) aparece al instante; con ▲ u OK entras en él.
  *
  * Con los controles ocultos: ▲▼ cambian de canal, ◀▶ abren la lista de canales,
- * OK muestra los controles, los números van directo a un canal y Atrás vuelve
- * a la vista previa (el video sigue sin cortarse).
+ * OK muestra las opciones, los números van directo a un canal y Atrás vuelve a
+ * la guía (el video sigue sin cortarse).
  */
 @Composable
 fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     val ch = live.current ?: return
     var bars by remember { mutableStateOf(true) }
-    var panel by remember { mutableStateOf(Panel.None) }
+    var option by remember { mutableStateOf<Opt?>(null) }        // opción con el foco (decide el panel)
+    var inPanel by remember { mutableStateOf(false) }            // el foco está dentro del panel
     var rootFocused by remember { mutableStateOf(false) }
     var activity by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val rootReq = remember { FocusRequester() }
-    val firstButton = remember { FocusRequester() }
+    val optReqs = remember { Opt.values().associateWith { FocusRequester() } }
+    val panelReq = remember { FocusRequester() }
+    var pendingPanelFocus by remember { mutableStateOf(false) }
     val lib = repo.library
     val index = live.channels.indexOfFirst { it.id == ch.id }
+
+    fun hideAll() {
+        bars = false; option = null; inPanel = false
+        runCatching { rootReq.requestFocus() }
+    }
+    fun openOptions(focus: Opt, enterPanel: Boolean = false) {
+        bars = true
+        option = focus
+        pendingPanelFocus = enterPanel
+        // El foco se mueve en el siguiente cuadro, cuando la barra ya existe
+    }
 
     // Número de canal escrito con el control
     var digits by remember { mutableStateOf("") }
@@ -156,21 +185,34 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
         if (n in 1..live.channels.size) live.playIndex(n - 1)
     }
 
-    // Al cambiar de canal se muestra la información unos segundos
-    LaunchedEffect(ch.id) { bars = true; activity = System.currentTimeMillis() }
-    // Los controles se ocultan solos tras 5 s sin tocar el control
-    LaunchedEffect(bars, activity, panel) {
-        if (!bars || panel != Panel.None) return@LaunchedEffect
-        delay(5000)
-        bars = false
-        runCatching { rootReq.requestFocus() }
+    // Al cambiar de canal se muestra la información unos segundos (sin opciones)
+    LaunchedEffect(ch.id) {
+        if (option == null) { bars = true; activity = System.currentTimeMillis() }
     }
-    LaunchedEffect(panel) { if (panel == Panel.None) runCatching { rootReq.requestFocus() } }
+    // Todo se oculta solo tras 6 s sin tocar el control
+    LaunchedEffect(bars, activity) {
+        if (!bars) return@LaunchedEffect
+        delay(if (option != null) 8000 else 5000)
+        hideAll()
+    }
+    // Llevar el foco a la opción (o dentro de su panel) cuando se abren las opciones
+    LaunchedEffect(bars, option, pendingPanelFocus) {
+        val o = option ?: return@LaunchedEffect
+        if (!bars) return@LaunchedEffect
+        delay(30)
+        if (pendingPanelFocus) {
+            pendingPanelFocus = false
+            runCatching { panelReq.requestFocus() }
+        } else if (rootFocused) {
+            runCatching { optReqs.getValue(o).requestFocus() }
+        }
+    }
 
     BackHandler {
         when {
-            panel != Panel.None -> panel = Panel.None
-            bars && !rootFocused -> { bars = false; runCatching { rootReq.requestFocus() } }
+            inPanel -> option?.let { o -> runCatching { optReqs.getValue(o).requestFocus() } }
+            option != null -> hideAll()
+            bars -> hideAll()
             else -> onExit()
         }
     }
@@ -183,18 +225,14 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
             .onFocusChanged { rootFocused = it.isFocused }
             .focusable()
             .onKeyEvent { ev ->
-                if (ev.type != KeyEventType.KeyDown || !rootFocused || panel != Panel.None) return@onKeyEvent false
+                if (ev.type != KeyEventType.KeyDown || !rootFocused) return@onKeyEvent false
                 when (val code = ev.nativeKeyEvent.keyCode) {
                     AndroidKey.KEYCODE_DPAD_UP, AndroidKey.KEYCODE_CHANNEL_UP -> { live.zap(+1); true }
                     AndroidKey.KEYCODE_DPAD_DOWN, AndroidKey.KEYCODE_CHANNEL_DOWN -> { live.zap(-1); true }
                     AndroidKey.KEYCODE_DPAD_LEFT, AndroidKey.KEYCODE_DPAD_RIGHT,
-                    AndroidKey.KEYCODE_GUIDE, AndroidKey.KEYCODE_TV_INPUT -> { panel = Panel.Channels; true }
+                    AndroidKey.KEYCODE_GUIDE, AndroidKey.KEYCODE_TV_INPUT -> { openOptions(Opt.Channels, enterPanel = true); true }
                     AndroidKey.KEYCODE_DPAD_CENTER, AndroidKey.KEYCODE_ENTER, AndroidKey.KEYCODE_NUMPAD_ENTER,
-                    AndroidKey.KEYCODE_INFO, AndroidKey.KEYCODE_MENU -> {
-                        bars = true
-                        runCatching { firstButton.requestFocus() }
-                        true
-                    }
+                    AndroidKey.KEYCODE_INFO, AndroidKey.KEYCODE_MENU -> { openOptions(option ?: Opt.Channels); true }
                     AndroidKey.KEYCODE_MEDIA_PLAY_PAUSE, AndroidKey.KEYCODE_MEDIA_PAUSE, AndroidKey.KEYCODE_MEDIA_PLAY -> {
                         live.player?.let { if (it.isPlaying) it.pause() else it.play() }; true
                     }
@@ -209,7 +247,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
             // ── Arriba: canal + guía ──
             Column(
                 Modifier.fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color(0xE6000000), Color.Transparent)))
+                    .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
                     .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 48.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -231,27 +269,72 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
             }
         }
 
-        // ── Abajo: botones ──
-        if (bars) {
+        // ── Panel de la opción enfocada (translúcido, encima del video) ──
+        val o = option
+        if (bars && o != null && o.hasPanel) {
+            Box(
+                Modifier.align(Alignment.BottomStart).padding(bottom = 96.dp)
+                    .width(if (o == Opt.Channels) 400.dp else 340.dp)
+                    .fillMaxHeight(if (o == Opt.Channels) 0.72f else 0.5f)
+                    .onFocusChanged { inPanel = it.hasFocus }
+                    // Al salir del panel hacia abajo se vuelve a SU opción (no a la más cercana);
+                    // por los costados o arriba no se sale.
+                    .focusProperties {
+                        exit = { d ->
+                            if (d == FocusDirection.Down) optReqs.getValue(o) else FocusRequester.Cancel
+                        }
+                    }
+                    .focusGroup()
+            ) {
+                when (o) {
+                    Opt.Channels -> ChannelPanel(live, repo, panelReq) { hideAll() }
+                    Opt.Audio -> TrackPanel(live, C.TRACK_TYPE_AUDIO, panelReq)
+                    Opt.Subtitles -> TrackPanel(live, C.TRACK_TYPE_TEXT, panelReq)
+                    Opt.Picture -> PicturePanel(live, panelReq)
+                    else -> Unit
+                }
+            }
+        }
+
+        // ── Abajo: barra de opciones ──
+        if (bars && option != null) {
+            val isFav = lib.isFavorite("live", ch.id)
             Column(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
-                    .padding(start = 48.dp, end = 48.dp, top = 40.dp, bottom = 26.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
+                    .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 22.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                val isFav = lib.isFavorite("live", ch.id)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    ActionButton("Lista de canales", { panel = Panel.Channels }, Modifier.focusRequester(firstButton), icon = R.drawable.tv_ic_list)
-                    ActionButton("Audio", { panel = Panel.Audio }, icon = R.drawable.ic_audio)
-                    ActionButton("Subtítulos", { panel = Panel.Subtitles }, icon = R.drawable.ic_subs)
-                    ActionButton(resizeLabel(live.resizeMode), { live.resizeMode = nextResize(live.resizeMode) }, icon = R.drawable.ic_resize)
-                    ActionButton(if (isFav) "En favoritos" else "Favorito", {
-                        lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
-                    }, icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
-                    ActionButton("Recargar", { live.reload() }, icon = R.drawable.tv_ic_restart)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Opt.values().forEach { opt ->
+                        OptionTab(
+                            label = when (opt) {
+                                Opt.Favorite -> if (isFav) "En favoritos" else "Favorito"
+                                Opt.Picture -> resizeLabel(live.resizeMode)
+                                else -> opt.label
+                            },
+                            icon = when (opt) {
+                                Opt.Channels -> R.drawable.tv_ic_list
+                                Opt.Audio -> R.drawable.ic_audio
+                                Opt.Subtitles -> R.drawable.ic_subs
+                                Opt.Picture -> R.drawable.ic_resize
+                                Opt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
+                                Opt.Reload -> R.drawable.tv_ic_restart
+                            },
+                            selected = option == opt,
+                            modifier = Modifier.focusRequester(optReqs.getValue(opt)),
+                            onFocused = { option = opt },
+                            onClick = {
+                                when (opt) {
+                                    Opt.Favorite -> lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
+                                    Opt.Reload -> live.reload()
+                                    else -> runCatching { panelReq.requestFocus() }   // OK entra al panel
+                                }
+                            },
+                        )
+                    }
                 }
-                Text("▲▼ cambiar canal   ◀▶ lista de canales   0-9 ir a un canal   Atrás: volver a la guía",
-                    style = Type.Small, color = Jx.Muted)
+                Text("◀▶ opciones   ▲ u OK: entrar   Atrás: ocultar", style = Type.Small, color = Jx.Muted)
             }
         }
 
@@ -260,16 +343,34 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                 modifier = Modifier.align(Alignment.TopEnd).padding(top = 90.dp, end = 48.dp)
                     .background(Color(0xCC070A0F), RoundedCornerShape(12.dp)).padding(horizontal = 18.dp, vertical = 6.dp))
         }
-
-        when (panel) {
-            Panel.Channels -> ChannelPanel(live, repo, Modifier.align(Alignment.CenterStart)) { panel = Panel.None }
-            Panel.Audio -> TrackPanel(live, C.TRACK_TYPE_AUDIO, Modifier.align(Alignment.CenterEnd)) { panel = Panel.None }
-            Panel.Subtitles -> TrackPanel(live, C.TRACK_TYPE_TEXT, Modifier.align(Alignment.CenterEnd)) { panel = Panel.None }
-            Panel.None -> Unit
-        }
     }
 
     LaunchedEffect(Unit) { runCatching { rootReq.requestFocus() } }
+}
+
+/** Pestaña de la barra de opciones: al recibir el foco muestra su panel. */
+@Composable
+private fun OptionTab(
+    label: String, icon: Int, selected: Boolean, modifier: Modifier,
+    onFocused: () -> Unit, onClick: () -> Unit,
+) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.height(42.dp).onFocusChanged { if (it.isFocused) onFocused() },
+        shape = RoundedCornerShape(21.dp),
+        focusedScale = 1.06f,
+        container = if (selected) Color(0x4000D4FF) else Color(0x66101722),
+        content = if (selected) Jx.Text else Jx.TextSoft,
+        focusedContainer = Jx.Text,
+        focusedContent = Jx.Bg,
+        ring = false,
+    ) {
+        Row(Modifier.fillMaxHeight().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            JxIcon(icon, 16.dp)
+            Text(label, style = Type.Label, maxLines = 1)
+        }
+    }
 }
 
 @Composable
@@ -309,70 +410,89 @@ private fun EpgLines(ch: Channel, repo: TvRepo) {
     }
 }
 
-/** Lista de canales a la izquierda, con lo que pasan ahora. OK cambia de canal sin salir. */
+/** Lista de canales con lo que pasan ahora. OK cambia de canal. */
 @Composable
-private fun ChannelPanel(live: LivePlayback, repo: TvRepo, modifier: Modifier, onClose: () -> Unit) {
+private fun ChannelPanel(live: LivePlayback, repo: TvRepo, entryReq: FocusRequester, onPicked: () -> Unit) {
     val list = live.channels
     val currentIndex = list.indexOfFirst { it.id == live.current?.id }.coerceAtLeast(0)
     val state = rememberLazyListState(initialFirstVisibleItemIndex = (currentIndex - 3).coerceAtLeast(0))
-    val currentReq = remember { FocusRequester() }
-    Column(
-        modifier.width(380.dp).fillMaxHeight()
-            .background(Brush.horizontalGradient(listOf(Color(0xF2070A0F), Color(0xE6070A0F))))
-            .padding(top = 27.dp),
-    ) {
+    Column(Modifier.fillMaxSize().background(PanelBrush, RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp)).padding(top = 14.dp)) {
         Text(live.group.ifBlank { "Canales" }, style = Type.H2, color = Jx.Text,
-            modifier = Modifier.padding(start = 24.dp, bottom = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            modifier = Modifier.padding(start = 24.dp, bottom = 8.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
         LazyColumn(
             state = state,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 27.dp),
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 14.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             itemsIndexed(list, key = { _, c -> c.id }) { i, c ->
                 val playing = c.id == live.current?.id
                 PanelRow(i + 1, c, repo, playing,
-                    if (i == currentIndex) Modifier.focusRequester(currentReq) else Modifier) {
+                    if (i == currentIndex) Modifier.focusRequester(entryReq) else Modifier) {
                     live.play(c, list, live.group)
-                    onClose()
+                    onPicked()
                 }
             }
         }
     }
-    LaunchedEffect(Unit) { delay(30); runCatching { currentReq.requestFocus() } }
 }
 
 @Composable
 private fun PanelRow(num: Int, c: Channel, repo: TvRepo, playing: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val version by repo.epgVersion
     val epg by produceState(repo.cachedEpg(c), c.id, version) {
-        if (value == null) { delay(250); value = repo.epg(c) }
+        if (value.isNullOrEmpty()) { delay(250); value = repo.epg(c) }
     }
     val now = epg?.let { repo.nowPlaying(it) }
-    FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth().height(54.dp), focusedScale = 1.02f) {
+    FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth().height(54.dp), focusedScale = 1.02f,
+        focusedContainer = Color(0xCC152131)) {
         Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("$num", style = Type.Number, color = if (playing) Jx.Accent else Jx.Faint, modifier = Modifier.width(34.dp))
+            Text("$num", style = Type.Number, color = if (playing) Jx.Accent else Jx.Muted, modifier = Modifier.width(34.dp))
             RemoteImage(c.logo, c.name, Modifier.size(34.dp).clip(RoundedCornerShape(7.dp)), scale = ContentScale.Fit)
             Column(Modifier.weight(1f)) {
                 Text(c.name, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (playing) Jx.Accent else androidx.tv.material3.LocalContentColor.current)
-                if (now != null) Text(now.title, style = Type.Small, color = Jx.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (now != null) Text(now.title, style = Type.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
 }
 
-/** Elegir pista de audio o subtítulos. */
+/** Opción elegible dentro de un panel (pista, formato de imagen). */
+@Composable
+private fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth().height(44.dp), focusedScale = 1.02f,
+        focusedContainer = Color(0xCC152131)) {
+        Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = Type.Label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (selected) JxIcon(R.drawable.tv_ic_check, 16.dp, Jx.Ok, "Seleccionado")
+        }
+    }
+}
+
+@Composable
+private fun PanelBox(title: String, content: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(PanelBrush, RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp)).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(title, style = Type.H2, color = Jx.Text)
+        Spacer(Modifier.height(4.dp))
+        content()
+    }
+}
+
+/** Audio o subtítulos: la pista elegida se aplica al instante y el panel sigue abierto. */
 @OptIn(UnstableApi::class)
 @Composable
-private fun TrackPanel(live: LivePlayback, type: Int, modifier: Modifier, onClose: () -> Unit) {
+private fun TrackPanel(live: LivePlayback, type: Int, entryReq: FocusRequester) {
     val p = live.player ?: return
     @Suppress("UNUSED_VARIABLE") val v = live.tracksVersion
-    data class Opt(val label: String, val selected: Boolean, val apply: () -> Unit)
+    data class Choice(val label: String, val selected: Boolean, val apply: () -> Unit)
     val opts = buildList {
         if (type == C.TRACK_TYPE_TEXT) {
             val off = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-            add(Opt("Desactivados", off) {
+            add(Choice("Desactivados", off) {
                 p.trackSelectionParameters = p.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
             })
         }
@@ -382,7 +502,7 @@ private fun TrackPanel(live: LivePlayback, type: Int, modifier: Modifier, onClos
                 if (!g.isTrackSupported(i)) continue
                 n++
                 val f = g.getTrackFormat(i)
-                add(Opt(trackLabel(f, type, n), g.isTrackSelected(i)) {
+                add(Choice(trackLabel(f, type, n), g.isTrackSelected(i)) {
                     p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
                         .setTrackTypeDisabled(type, false)
                         .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
@@ -391,31 +511,31 @@ private fun TrackPanel(live: LivePlayback, type: Int, modifier: Modifier, onClos
             }
         }
     }
-    val firstReq = remember { FocusRequester() }
-    Column(
-        modifier.width(340.dp).fillMaxHeight().background(Color(0xF2070A0F)).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtítulos", style = Type.H2, color = Jx.Text)
-        Spacer(Modifier.height(6.dp))
+    PanelBox(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtítulos") {
         if (opts.isEmpty() || (type == C.TRACK_TYPE_TEXT && opts.size == 1)) {
             Text(if (type == C.TRACK_TYPE_AUDIO) "Este canal tiene un solo audio." else "Este canal no trae subtítulos.",
-                style = Type.Body, color = Jx.Muted)
+                style = Type.Body, color = Jx.TextSoft)
         }
         opts.forEachIndexed { i, o ->
-            FocusSurface(
-                onClick = { o.apply(); onClose() },
-                modifier = Modifier.fillMaxWidth().height(44.dp).let { if (i == 0) it.focusRequester(firstReq) else it },
-                focusedScale = 1.02f,
-            ) {
-                Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(o.label, style = Type.Label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    if (o.selected) JxIcon(R.drawable.tv_ic_check, 16.dp, Jx.Ok, "Seleccionado")
-                }
-            }
+            ChoiceRow(o.label, o.selected, if (o.selected || (i == 0 && opts.none { it.selected })) Modifier.focusRequester(entryReq) else Modifier) { o.apply() }
         }
     }
-    LaunchedEffect(Unit) { delay(30); runCatching { firstReq.requestFocus() } }
+}
+
+/** Formato de imagen: ajustar, ampliar o estirar. */
+@Composable
+private fun PicturePanel(live: LivePlayback, entryReq: FocusRequester) {
+    val modes = listOf(
+        AspectRatioFrameLayout.RESIZE_MODE_FIT to "Ajustar (sin recortar)",
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Ampliar (llenar recortando)",
+        AspectRatioFrameLayout.RESIZE_MODE_FILL to "Estirar",
+    )
+    PanelBox("Imagen") {
+        modes.forEach { (mode, label) ->
+            val sel = live.resizeMode == mode
+            ChoiceRow(label, sel, if (sel) Modifier.focusRequester(entryReq) else Modifier) { live.resizeMode = mode }
+        }
+    }
 }
 
 private fun trackLabel(f: Format, type: Int, n: Int): String {
@@ -428,14 +548,8 @@ private fun trackLabel(f: Format, type: Int, n: Int): String {
     return listOf(name, ch).filter { it.isNotEmpty() }.joinToString(" · ")
 }
 
-private fun nextResize(mode: Int) = when (mode) {
-    AspectRatioFrameLayout.RESIZE_MODE_FIT -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-    AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-    else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-}
-
 private fun resizeLabel(mode: Int) = when (mode) {
     AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Imagen: ampliar"
     AspectRatioFrameLayout.RESIZE_MODE_FILL -> "Imagen: estirar"
-    else -> "Imagen: ajustar"
+    else -> "Imagen"
 }
