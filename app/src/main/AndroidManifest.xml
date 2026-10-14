@@ -57,6 +57,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Interfaz nativa para Android TV / TV Box (Jetpack Compose for TV).
+             La abre MainActivity al detectar un TV; no tiene icono propio. -->
+        <activity
+            android:name=".tv.TvActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.Tv" />
+
         <!-- Reproductor nativo (ExoPlayer) - EVITA EL ERROR CORS -->
         <!-- supportsPictureInPicture: requerido para que enterPictureInPictureMode no crashee -->
         <activity

@@ -266,6 +266,7 @@ public class PlayerActivity extends AppCompatActivity {
 
         if (isVodType()) setupVod();
         else setupLive();
+        applyFavIcons();
 
         // Mostrar EPG si hay datos (solo Live)
         if (!isVodType() && epgNow != null && !epgNow.isEmpty()) {
@@ -300,6 +301,8 @@ public class PlayerActivity extends AppCompatActivity {
         itemId       = intent.getStringExtra("id");
         channelIndex = intent.getIntExtra("channel_index", -1);
         isSeries     = intent.getBooleanExtra("is_series", false);
+        // La interfaz TV indica si ya es favorito, para mostrar la estrella correcta
+        isFav        = intent.getBooleanExtra("is_fav", false);
         channels.clear();
         if (intent.getBooleanExtra("channels_in_handoff", false)) {
             parseChannels(PlayerHandoff.get());
@@ -2091,11 +2094,15 @@ public class PlayerActivity extends AppCompatActivity {
 
     private void toggleFav(ImageButton btn) {
         isFav = !isFav; favChanged = true; favAdded = isFav;
+        applyFavIcons();
+        toast(isFav ? "\u2B50 Agregado a favoritos" : "Quitado de favoritos");
+    }
+
+    private void applyFavIcons() {
         int res = isFav ? R.drawable.ic_star : R.drawable.ic_star_outline;
         if (liveBtnFav != null) liveBtnFav.setImageResource(res);
         if (vodBtnFav != null) vodBtnFav.setImageResource(res);
         if (vodFsBtnFav != null) vodFsBtnFav.setImageResource(res);
-        toast(isFav ? "\u2B50 Agregado a favoritos" : "Quitado de favoritos");
     }
 
     // \u2550\u2550 CHROMECAST \u2550\u2550

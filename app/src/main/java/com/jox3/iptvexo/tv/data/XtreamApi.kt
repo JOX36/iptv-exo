@@ -1,0 +1,242 @@
+package com.jox3.iptvexo.tv.data
+
+import android.util.Base64
+import com.jox3.iptvexo.NetClient
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.IOException
+import java.net.URLEncoder
+
+/** Cliente de la API Xtream Codes (player_api.php). Todas las llamadas corren en IO. */
+class XtreamApi(val account: Account) {
+
+    private val host = account.host.trimEnd('/')
+
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+
+    private fun apiUrl(action: String?, extra: String = ""): String = buildString {
+        append(host).append("/player_api.php?username=").append(enc(account.user))
+        append("&password=").append(enc(account.pass))
+        if (action != null) append("&action=").append(action)
+        append(extra)
+    }
+
+    private suspend fun get(url: String): String = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url(url)
+            .header("User-Agent", NetClient.API_USER_AGENT)
+            .header("Accept", "application/json, */*")
+            .build()
+        NetClient.api().newCall(req).execute().use { r ->
+            if (!r.isSuccessful) throw IOException("El servidor respondió HTTP ${r.code}")
+            val body = r.body?.string().orEmpty()
+            if (body.isBlank()) throw IOException("Respuesta vacía del servidor")
+            body
+        }
+    }
+
+    private suspend fun array(url: String): JSONArray {
+        val text = get(url).trim()
+        return if (text.startsWith("[")) JSONArray(text) else JSONArray()
+    }
+
+    // ── URLs de reproducción ──
+    fun liveUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.m3u8"
+    fun movieUrl(id: String, ext: String) = "$host/movie/${account.user}/${account.pass}/$id.${ext.ifBlank { "mp4" }}"
+    fun episodeUrl(id: String, ext: String) = "$host/series/${account.user}/${account.pass}/$id.${ext.ifBlank { "mkv" }}"
+
+    // ── Cuenta ──
+    suspend fun serverInfo(): ServerInfo {
+        val json = JSONObject(get(apiUrl(null)))
+        val u = json.optJSONObject("user_info") ?: throw IOException("Respuesta no válida del servidor")
+        if (u.optInt("auth", 1) == 0) throw IOException("Usuario o contraseña incorrectos")
+        val exp = u.optString("exp_date", "").toLongOrNull()?.takeIf { it > 0 }?.times(1000)
+        return ServerInfo(
+            status = u.optString("status", ""),
+            expires = exp,
+            activeCons = u.optString("active_cons", "0"),
+            maxCons = u.optString("max_connections", "?"),
+        )
+    }
+
+    // ── Catálogo ──
+    suspend fun categories(section: Section): List<Category> {
+        val arr = array(apiUrl(section.apiCategories))
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            Category(o.optString("category_id"), o.optString("category_name", "?").trim())
+        }
+    }
+
+    suspend fun channels(categoryId: String? = null): List<Channel> {
+        val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
+        val arr = array(apiUrl("get_live_streams", extra))
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            Channel(
+                id = o.optString("stream_id"),
+                name = o.optString("name", "?").trim(),
+                logo = o.optString("stream_icon", ""),
+                categoryId = o.optString("category_id", ""),
+                num = o.optInt("num", i + 1),
+            )
+        }
+    }
+
+    suspend fun movies(categoryId: String? = null): List<Movie> {
+        val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
+        val arr = array(apiUrl("get_vod_streams", extra))
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            Movie(
+                id = o.optString("stream_id"),
+                name = o.optString("name", "?").trim(),
+                poster = o.optString("stream_icon", ""),
+                rating = o.optString("rating", "").takeUnless { it == "0" || it == "null" }.orEmpty(),
+                ext = o.optString("container_extension", "mp4"),
+                categoryId = o.optString("category_id", ""),
+                added = o.optString("added", "0").toLongOrNull() ?: 0L,
+            )
+        }
+    }
+
+    suspend fun series(categoryId: String? = null): List<Series> {
+        val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
+        val arr = array(apiUrl("get_series", extra))
+        return (0 until arr.length()).mapNotNull { i ->
+            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+            Series(
+                id = o.optString("series_id"),
+                name = o.optString("name", "?").trim(),
+                poster = o.optString("cover", ""),
+                rating = o.optString("rating", "").takeUnless { it == "0" || it == "null" }.orEmpty(),
+                categoryId = o.optString("category_id", ""),
+                updated = o.optString("last_modified", "0").toLongOrNull() ?: 0L,
+            )
+        }
+    }
+
+    suspend fun movieInfo(id: String): MovieInfo {
+        val json = JSONObject(get(apiUrl("get_vod_info", "&vod_id=${enc(id)}")))
+        val info = json.optJSONObject("info") ?: JSONObject()
+        val data = json.optJSONObject("movie_data") ?: JSONObject()
+        return MovieInfo(
+            plot = info.str("plot", "description"),
+            genre = info.str("genre"),
+            director = info.str("director"),
+            cast = info.str("cast", "actors"),
+            duration = info.str("duration"),
+            year = info.str("releasedate", "release_date", "year").take(4),
+            rating = info.str("rating").takeUnless { it == "0" }.orEmpty(),
+            backdrop = info.firstImage("backdrop_path"),
+            poster = info.str("movie_image", "cover_big"),
+            ext = data.optString("container_extension", ""),
+        )
+    }
+
+    suspend fun seriesInfo(id: String): SeriesInfo {
+        val json = JSONObject(get(apiUrl("get_series_info", "&series_id=${enc(id)}")))
+        val info = json.optJSONObject("info") ?: JSONObject()
+        val seasons = sortedMapOf<Int, MutableList<Episode>>()
+        fun addEpisode(o: JSONObject, seasonHint: Int) {
+            val season = o.optInt("season", seasonHint)
+            val epInfo = o.optJSONObject("info") ?: JSONObject()
+            seasons.getOrPut(season) { mutableListOf() }.add(
+                Episode(
+                    id = o.optString("id"),
+                    season = season,
+                    num = o.optInt("episode_num", seasons[season]?.size?.plus(1) ?: 1),
+                    title = o.optString("title", "").trim(),
+                    plot = epInfo.str("plot"),
+                    image = epInfo.str("movie_image", "cover_big"),
+                    duration = epInfo.str("duration"),
+                    ext = o.optString("container_extension", "mkv"),
+                )
+            )
+        }
+        // Los paneles devuelven "episodes" como objeto {"1":[...]} o como arreglo de arreglos
+        when (val eps = json.opt("episodes")) {
+            is JSONObject -> eps.keys().forEach { k ->
+                val list = eps.optJSONArray(k) ?: return@forEach
+                for (i in 0 until list.length()) list.optJSONObject(i)?.let { addEpisode(it, k.toIntOrNull() ?: 1) }
+            }
+            is JSONArray -> for (s in 0 until eps.length()) {
+                val list = eps.optJSONArray(s) ?: continue
+                for (i in 0 until list.length()) list.optJSONObject(i)?.let { addEpisode(it, s + 1) }
+            }
+        }
+        seasons.values.forEach { list -> list.sortBy { it.num } }
+        return SeriesInfo(
+            name = info.str("name"),
+            plot = info.str("plot"),
+            genre = info.str("genre"),
+            year = info.str("releaseDate", "release_date", "year").take(4),
+            rating = info.str("rating").takeUnless { it == "0" }.orEmpty(),
+            backdrop = info.firstImage("backdrop_path"),
+            poster = info.str("cover"),
+            seasons = seasons,
+        )
+    }
+
+    /** Guía corta de un canal: el programa actual y los siguientes. */
+    suspend fun shortEpg(streamId: String, limit: Int = 4): List<EpgItem> {
+        val json = JSONObject(get(apiUrl("get_short_epg", "&stream_id=${enc(streamId)}&limit=$limit")))
+        val list = json.optJSONArray("epg_listings") ?: return emptyList()
+        return (0 until list.length()).mapNotNull { i ->
+            val o = list.optJSONObject(i) ?: return@mapNotNull null
+            val start = o.optString("start_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
+            val end = o.optString("stop_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
+            EpgItem(b64(o.optString("title")), b64(o.optString("description")), start, end)
+        }.filter { it.title.isNotBlank() }
+    }
+
+    private fun b64(s: String): String = try {
+        String(Base64.decode(s, Base64.DEFAULT), Charsets.UTF_8).trim()
+    } catch (e: Exception) { s }
+
+    private fun JSONObject.str(vararg keys: String): String {
+        for (k in keys) {
+            val v = optString(k, "").trim()
+            if (v.isNotEmpty() && v != "null") return v
+        }
+        return ""
+    }
+
+    /** backdrop_path puede ser texto o arreglo de URLs. */
+    private fun JSONObject.firstImage(key: String): String = when (val v = opt(key)) {
+        is JSONArray -> if (v.length() > 0) v.optString(0) else ""
+        is String -> v
+        else -> ""
+    }
+
+    companion object {
+        /**
+         * Acepta lo que el usuario pegue en "Servidor": un host normal, una URL
+         * get.php?username=..&password=.. o un enlace /live/usuario/clave/...
+         */
+        fun parseLogin(hostIn: String, userIn: String, passIn: String): Account? {
+            var host = hostIn.trim().trimEnd('/')
+            var user = userIn.trim()
+            var pass = passIn.trim()
+            if (host.isEmpty()) return null
+            if (!host.startsWith("http://") && !host.startsWith("https://")) host = "http://$host"
+            try {
+                val uri = android.net.Uri.parse(host)
+                val origin = "${uri.scheme}://${uri.authority}"
+                val qUser = uri.getQueryParameter("username")
+                val qPass = uri.getQueryParameter("password")
+                val segs = uri.pathSegments.orEmpty()
+                when {
+                    qUser != null && qPass != null -> { host = origin; user = qUser; pass = qPass }
+                    segs.size >= 3 -> { host = origin; user = segs[1]; pass = segs[2] }
+                    segs.size == 2 && user.isEmpty() -> { host = origin; user = segs[0]; pass = segs[1] }
+                    else -> host = origin
+                }
+            } catch (e: Exception) { /* se usa tal cual */ }
+            if (user.isEmpty() || pass.isEmpty()) return null
+            return Account(host, user, pass)
+        }
+    }
+}

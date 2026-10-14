@@ -1,0 +1,154 @@
+package com.jox3.iptvexo.tv.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.Text
+import com.jox3.iptvexo.R
+import com.jox3.iptvexo.tv.Nav
+import com.jox3.iptvexo.tv.Route
+import com.jox3.iptvexo.tv.TvHost
+import com.jox3.iptvexo.tv.data.Account
+import com.jox3.iptvexo.tv.data.Channel
+import com.jox3.iptvexo.tv.data.Movie
+import com.jox3.iptvexo.tv.data.ServerInfo
+import com.jox3.iptvexo.tv.data.TvRepo
+import com.jox3.iptvexo.tv.ui.ActionButton
+import com.jox3.iptvexo.tv.ui.ChannelTile
+import com.jox3.iptvexo.tv.ui.Jx
+import com.jox3.iptvexo.tv.ui.PosterCard
+import com.jox3.iptvexo.tv.ui.Safe
+import com.jox3.iptvexo.tv.ui.ShelfRow
+import com.jox3.iptvexo.tv.ui.StatusBox
+import com.jox3.iptvexo.tv.ui.Type
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/** Favoritos: canales, películas y series. OK mantenido quita un favorito. */
+@Composable
+fun FavoritesScreen(repo: TvRepo, nav: Nav, host: TvHost) {
+    val lib = repo.library
+    val favs = lib.favorites.toList()
+    val live = favs.filter { it.kind == "live" }
+    val movies = favs.filter { it.kind == "movie" }
+    val series = favs.filter { it.kind == "series" }
+
+    if (favs.isEmpty()) {
+        StatusBox("Aún no tienes favoritos.\nMantén pulsado OK sobre un canal, película o serie para agregarlo.")
+        return
+    }
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = Safe.V, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
+    ) {
+        item(key = "title") {
+            Text("Favoritos", style = Type.H1, color = Jx.Text, modifier = Modifier.padding(start = Safe.H))
+        }
+        if (live.isNotEmpty()) item(key = "live") {
+            val chans = live.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
+            ShelfRow("Canales") {
+                itemsIndexed(chans, key = { _, c -> "c" + c.id }) { i, c ->
+                    ChannelTile(c.name, c.logo, onClick = { host.player.playChannel(chans, i, "Favoritos") },
+                        onLongClick = { lib.toggleFavorite(live[i]) })
+                }
+            }
+        }
+        if (movies.isNotEmpty()) item(key = "movies") {
+            ShelfRow("Películas") {
+                items(movies, key = { "m" + it.id }) { s ->
+                    PosterCard(s.name, s.image, onClick = {
+                        nav.open(Route.MovieDetail(Movie(s.id, s.name, s.image, "", s.ext, s.categoryId, 0)))
+                    }, onLongClick = { lib.toggleFavorite(s) })
+                }
+            }
+        }
+        if (series.isNotEmpty()) item(key = "series") {
+            ShelfRow("Series") {
+                items(series, key = { "s" + it.id }) { s ->
+                    PosterCard(s.name, s.image, onClick = { nav.open(Route.SeriesDetail(s.id, s.name, s.image)) },
+                        onLongClick = { lib.toggleFavorite(s) })
+                }
+            }
+        }
+    }
+}
+
+/** Cuenta, actualizaciones y opciones de la app. */
+@Composable
+fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit) {
+    val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
+    val firstReq = remember { FocusRequester() }
+    val date = SimpleDateFormat("d 'de' MMMM 'de' yyyy", Locale("es"))
+
+    Row(Modifier.fillMaxSize().padding(horizontal = Safe.H, vertical = Safe.V), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
+        Column(Modifier.width(380.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Ajustes y cuenta", style = Type.H1, color = Jx.Text)
+            Card {
+                Line("Servidor", account.label)
+                Line("Usuario", account.user)
+                val i = info?.getOrNull()
+                when {
+                    info == null -> Line("Estado", "Consultando…")
+                    i == null -> Line("Estado", "No se pudo consultar")
+                    else -> {
+                        Line("Estado", if (i.status.equals("Active", true)) "Activa" else i.status,
+                            if (i.status.equals("Active", true)) Jx.Ok else Jx.Live)
+                        val exp = i.expires
+                        if (exp != null) {
+                            val days = ((exp - System.currentTimeMillis()) / 86_400_000L).coerceAtLeast(0)
+                            Line("Vence", date.format(Date(exp)))
+                            Line("Días restantes", "$days", when { days < 7 -> Jx.Live; days < 30 -> Jx.Gold; else -> Jx.Ok })
+                        } else Line("Vence", "Sin fecha")
+                        Line("Conexiones", "${i.activeCons} / ${i.maxCons}")
+                    }
+                }
+            }
+        }
+        Column(Modifier.width(320.dp).padding(top = 52.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ActionButton("Buscar actualizaciones", host::checkUpdates, Modifier.fillMaxWidth().focusRequester(firstReq),
+                icon = R.drawable.tv_ic_update)
+            ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
+            ActionButton("Usar la interfaz anterior", host::openClassicUi, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list)
+            Text("JOX3 TV ${host.appVersion()}", style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(top = 8.dp))
+            Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = Type.Small, color = Jx.Faint)
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { firstReq.requestFocus() } }
+}
+
+@Composable
+private fun Card(content: @Composable () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(Jx.Surface, RoundedCornerShape(12.dp)).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) { content() }
+}
+
+@Composable
+private fun Line(label: String, value: String, color: androidx.compose.ui.graphics.Color = Jx.Text) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, style = Type.Label, color = Jx.Muted, modifier = Modifier.weight(1f))
+        Text(value, style = Type.Label, color = color)
+    }
+}
