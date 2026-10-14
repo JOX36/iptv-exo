@@ -156,6 +156,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     var option by remember { mutableStateOf<Opt?>(null) }        // opción con el foco (decide el panel)
     var inPanel by remember { mutableStateOf(false) }            // el foco está dentro del panel
     var rootFocused by remember { mutableStateOf(false) }
+    var anyFocus by remember { mutableStateOf(false) }      // el reproductor o algo dentro tiene el foco
     var activity by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val rootReq = remember { FocusRequester() }
     val optReqs = remember { Opt.values().associateWith { FocusRequester() } }
@@ -164,9 +165,33 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     val lib = repo.library
     val index = live.channels.indexOfFirst { it.id == ch.id }
 
+    // Pedidos de foco "diferidos": se cumplen en el cuadro siguiente, cuando lo que
+    // iba a desaparecer (un panel, una opción) ya no está. Así el foco nunca queda
+    // en un elemento borrado (era lo que a veces dejaba el OK sin responder).
+    var focusRootTick by remember { mutableIntStateOf(0) }
+    var focusOptTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(focusRootTick) {
+        if (focusRootTick == 0) return@LaunchedEffect
+        delay(16); runCatching { rootReq.requestFocus() }
+    }
+    LaunchedEffect(focusOptTick) {
+        if (focusOptTick == 0) return@LaunchedEffect
+        delay(16); option?.let { o -> runCatching { optReqs.getValue(o).requestFocus() } }
+    }
+
     fun hideAll() {
         bars = false; option = null; inPanel = false
         runCatching { rootReq.requestFocus() }
+        focusRootTick++
+    }
+
+    /** Atrás, de adentro hacia afuera: panel → opciones → información → volver a la guía. */
+    fun goBack() {
+        when {
+            inPanel && option != null -> focusOptTick++
+            option != null || bars -> hideAll()
+            else -> onExit()
+        }
     }
     fun openOptions(focus: Opt, enterPanel: Boolean = false) {
         bars = true
@@ -208,19 +233,30 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
         }
     }
 
-    BackHandler {
-        when {
-            inPanel -> option?.let { o -> runCatching { optReqs.getValue(o).requestFocus() } }
-            option != null -> hideAll()
-            bars -> hideAll()
-            else -> onExit()
-        }
+    // Red de seguridad: si el foco se pierde (un panel desapareció con el foco dentro),
+    // vuelve al reproductor para que OK y las flechas sigan respondiendo.
+    LaunchedEffect(anyFocus) {
+        if (anyFocus) return@LaunchedEffect
+        delay(120)
+        if (!anyFocus) runCatching { rootReq.requestFocus() }
     }
+
+    // Respaldo: si el foco se perdiera, Atrás igual llega por aquí
+    BackHandler { goBack() }
 
     Box(
         Modifier
             .fillMaxSize()
-            .onPreviewKeyEvent { activity = System.currentTimeMillis(); false }
+            .onPreviewKeyEvent { ev ->
+                activity = System.currentTimeMillis()
+                val code = ev.nativeKeyEvent.keyCode
+                if (code == AndroidKey.KEYCODE_BACK || code == AndroidKey.KEYCODE_ESCAPE) {
+                    // Se atiende al soltar la tecla y se consume entera (bajada y subida)
+                    if (ev.type == KeyEventType.KeyUp && !ev.nativeKeyEvent.isCanceled) goBack()
+                    true
+                } else false
+            }
+            .onFocusChanged { anyFocus = it.hasFocus }
             .focusRequester(rootReq)
             .onFocusChanged { rootFocused = it.isFocused }
             .focusable()
@@ -281,7 +317,11 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     // por los costados o arriba no se sale.
                     .focusProperties {
                         exit = { d ->
-                            if (d == FocusDirection.Down) optReqs.getValue(o) else FocusRequester.Cancel
+                            when (d) {
+                                FocusDirection.Down -> optReqs.getValue(o)
+                                FocusDirection.Left, FocusDirection.Right, FocusDirection.Up -> FocusRequester.Cancel
+                                else -> FocusRequester.Default
+                            }
                         }
                     }
                     .focusGroup()
