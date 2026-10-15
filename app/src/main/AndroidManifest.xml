@@ -22,6 +22,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false" />
 
     <application
+        android:name=".App"
         android:allowBackup="true"
         android:label="JOX3 TV"
         android:icon="@drawable/ic_launcher"
