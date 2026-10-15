@@ -139,7 +139,7 @@ private enum class Opt(val label: String, val hasPanel: Boolean) {
 }
 
 /** Fondo translúcido de los paneles: se sigue viendo el video detrás. */
-private val PanelBrush = Brush.horizontalGradient(listOf(Color(0xB3070A0F), Color(0x80070A0F), Color(0x33070A0F)))
+internal val PanelBrush = Brush.horizontalGradient(listOf(Color(0xB3070A0F), Color(0x80070A0F), Color(0x33070A0F)))
 
 /**
  * Controles a pantalla completa, al estilo del reproductor de JOX3 Verifier:
@@ -330,9 +330,9 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
             ) {
                 when (o) {
                     Opt.Channels -> ChannelPanel(live, repo, panelReq) { hideAll() }
-                    Opt.Audio -> TrackPanel(live, C.TRACK_TYPE_AUDIO, panelReq)
-                    Opt.Subtitles -> TrackPanel(live, C.TRACK_TYPE_TEXT, panelReq)
-                    Opt.Picture -> PicturePanel(live, panelReq)
+                    Opt.Audio -> TrackPanel(live.player, live.tracksVersion, C.TRACK_TYPE_AUDIO, panelReq)
+                    Opt.Subtitles -> TrackPanel(live.player, live.tracksVersion, C.TRACK_TYPE_TEXT, panelReq)
+                    Opt.Picture -> PicturePanel(live.resizeMode, { live.resizeMode = it }, panelReq)
                     else -> Unit
                 }
             }
@@ -392,7 +392,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
 
 /** Pestaña de la barra de opciones: al recibir el foco muestra su panel. */
 @Composable
-private fun OptionTab(
+internal fun OptionTab(
     label: String, icon: Int, selected: Boolean, modifier: Modifier,
     onFocused: () -> Unit, onClick: () -> Unit,
 ) {
@@ -416,7 +416,7 @@ private fun OptionTab(
 }
 
 @Composable
-private fun Clock() {
+internal fun Clock() {
     val now by produceState(System.currentTimeMillis()) {
         while (true) { value = System.currentTimeMillis(); delay(20_000) }
     }
@@ -502,7 +502,7 @@ private fun PanelRow(num: Int, c: Channel, repo: TvRepo, playing: Boolean, modif
 
 /** Opción elegible dentro de un panel (pista, formato de imagen). */
 @Composable
-private fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+internal fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
     FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth().height(44.dp), focusedScale = 1.02f,
         focusedContainer = Color(0xCC152131)) {
         Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -513,7 +513,7 @@ private fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier, onCl
 }
 
 @Composable
-private fun PanelBox(title: String, content: @Composable () -> Unit) {
+internal fun PanelBox(title: String, content: @Composable () -> Unit) {
     Column(
         Modifier.fillMaxSize().background(PanelBrush, RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp)).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -527,9 +527,12 @@ private fun PanelBox(title: String, content: @Composable () -> Unit) {
 /** Audio o subtítulos: la pista elegida se aplica al instante y el panel sigue abierto. */
 @OptIn(UnstableApi::class)
 @Composable
-private fun TrackPanel(live: LivePlayback, type: Int, entryReq: FocusRequester) {
-    val p = live.player ?: return
-    @Suppress("UNUSED_VARIABLE") val v = live.tracksVersion
+internal fun TrackPanel(
+    player: androidx.media3.exoplayer.ExoPlayer?, tracksVersion: Int, type: Int, entryReq: FocusRequester,
+    what: String = "Este canal",
+) {
+    val p = player ?: return
+    @Suppress("UNUSED_VARIABLE") val v = tracksVersion
     data class Choice(val label: String, val selected: Boolean, val apply: () -> Unit)
     val opts = buildList {
         if (type == C.TRACK_TYPE_TEXT) {
@@ -554,9 +557,12 @@ private fun TrackPanel(live: LivePlayback, type: Int, entryReq: FocusRequester) 
         }
     }
     PanelBox(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtítulos") {
-        if (opts.isEmpty() || (type == C.TRACK_TYPE_TEXT && opts.size == 1)) {
-            Text(if (type == C.TRACK_TYPE_AUDIO) "Este canal tiene un solo audio." else "Este canal no trae subtítulos.",
-                style = Type.Body, color = Jx.TextSoft)
+        if (opts.isEmpty()) {
+            // Siempre hay algo enfocable: así ▲ desde la opción nunca apunta a un panel vacío
+            ChoiceRow(if (type == C.TRACK_TYPE_AUDIO) "Audio principal" else "Sin subtítulos", true,
+                Modifier.focusRequester(entryReq)) { }
+        } else if (type == C.TRACK_TYPE_TEXT && opts.size == 1) {
+            Text("$what no trae subtítulos.", style = Type.Body, color = Jx.TextSoft)
         }
         opts.forEachIndexed { i, o ->
             ChoiceRow(o.label, o.selected, if (o.selected || (i == 0 && opts.none { it.selected })) Modifier.focusRequester(entryReq) else Modifier) { o.apply() }
@@ -566,21 +572,21 @@ private fun TrackPanel(live: LivePlayback, type: Int, entryReq: FocusRequester) 
 
 /** Formato de imagen: ajustar, ampliar o estirar. */
 @Composable
-private fun PicturePanel(live: LivePlayback, entryReq: FocusRequester) {
+internal fun PicturePanel(mode: Int, onSet: (Int) -> Unit, entryReq: FocusRequester) {
     val modes = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT to "Ajustar (sin recortar)",
         AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Ampliar (llenar recortando)",
         AspectRatioFrameLayout.RESIZE_MODE_FILL to "Estirar",
     )
     PanelBox("Imagen") {
-        modes.forEach { (mode, label) ->
-            val sel = live.resizeMode == mode
-            ChoiceRow(label, sel, if (sel) Modifier.focusRequester(entryReq) else Modifier) { live.resizeMode = mode }
+        modes.forEach { (m, label) ->
+            val sel = mode == m
+            ChoiceRow(label, sel, if (sel) Modifier.focusRequester(entryReq) else Modifier) { onSet(m) }
         }
     }
 }
 
-private fun trackLabel(f: Format, type: Int, n: Int): String {
+internal fun trackLabel(f: Format, type: Int, n: Int): String {
     val lang = f.language?.takeIf { it.isNotBlank() && it != "und" }?.let {
         Locale(it).getDisplayLanguage(Locale("es")).replaceFirstChar { c -> c.uppercase() }
     }
