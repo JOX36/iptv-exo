@@ -30,6 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import com.jox3.iptvexo.tv.ui.safeFocusRestorer
+import com.jox3.iptvexo.tv.ui.rememberFocusMemory
+import com.jox3.iptvexo.tv.ui.focusMemoryItem
+import com.jox3.iptvexo.tv.ui.focusMemoryGroup
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -76,9 +79,13 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     val gridReq = remember { FocusRequester() }
     var firstFocusDone by remember { mutableStateOf(false) }
+    val catMem = rememberFocusMemory()
+    val gridMem = rememberFocusMemory()
 
     val catList = cats?.getOrNull()
     LaunchedEffect(catList) { if (selectedId == null) selectedId = catList?.firstOrNull()?.id }
+    // Al volver a las categorías, el foco cae en la que está abierta
+    LaunchedEffect(selectedId) { catMem.remember(selectedId) }
     val selected = catList?.firstOrNull { it.id == selectedId }
 
     val items by produceState<Result<List<GridItem>>?>(null, selectedId, reload) {
@@ -95,7 +102,7 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
         Column(Modifier.width(210.dp).fillMaxHeight().background(Jx.Rail).padding(top = 27.dp)) {
             Text(title.uppercase(), style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
-                Modifier.fillMaxSize().safeFocusRestorer(),
+                Modifier.fillMaxSize().focusMemoryGroup(catMem),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -105,7 +112,8 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
                     LaunchedEffect(focused) { if (focused && !isSel) { delay(350); selectedId = c.id } }
                     FocusSurface(
                         onClick = { selectedId = c.id; runCatching { gridReq.requestFocus() } },
-                        modifier = Modifier.fillMaxWidth().height(38.dp).onFocusChanged { focused = it.isFocused },
+                        modifier = Modifier.fillMaxWidth().height(38.dp).focusMemoryItem(catMem, c.id)
+                            .onFocusChanged { focused = it.isFocused },
                         focusedScale = 1f,
                         container = if (isSel) Jx.SurfaceHi else Color.Transparent,
                         content = if (isSel) Jx.Accent else Jx.TextSoft,
@@ -130,7 +138,7 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
                 list.isEmpty() -> StatusBox("Categoría vacía")
                 else -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(112.dp),
-                    modifier = Modifier.fillMaxSize().focusRequester(gridReq).safeFocusRestorer(),
+                    modifier = Modifier.fillMaxSize().focusRequester(gridReq).focusMemoryGroup(gridMem),
                     contentPadding = PaddingValues(start = 28.dp, end = 40.dp, top = 12.dp, bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -138,7 +146,7 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
                     items(list, key = { it.id }) { g ->
                         PosterCard(
                             g.name, g.poster, onClick = g.open,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().focusMemoryItem(gridMem, g.id),
                             width = 112.dp,
                             subtitle = g.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
                             favorite = lib.isFavorite(g.fav.kind, g.id),

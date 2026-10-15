@@ -37,6 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jox3.iptvexo.tv.ui.rememberFocusMemory
+import com.jox3.iptvexo.tv.ui.focusMemoryItem
+import com.jox3.iptvexo.tv.ui.focusMemoryGroup
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -128,6 +131,7 @@ fun LiveGuide(
     val end = start + HOURS * 3_600_000L
     val totalW = PER_MIN * (HOURS * 60).toFloat()
     val hScroll = rememberScrollState()
+    val chMem = rememberFocusMemory()
     var focused by remember { mutableStateOf<Pair<Channel, EpgItem?>?>(null) }
 
     Column(modifier.fillMaxHeight().padding(top = 27.dp)) {
@@ -161,7 +165,7 @@ fun LiveGuide(
         // ── Rejilla ──
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
-                Modifier.fillMaxSize().focusRequester(listReq).safeFocusRestorer(),
+                Modifier.fillMaxSize().focusRequester(listReq).focusMemoryGroup(chMem),
                 state = listState,
                 contentPadding = PaddingValues(start = 10.dp, bottom = 27.dp),
             ) {
@@ -171,7 +175,7 @@ fun LiveGuide(
                         ch, repo, start, end, nowMs, totalW, hScroll,
                         playing = playing,
                         favorite = lib.isFavorite("live", ch.id),
-                        chModifier = if (playing) Modifier.focusRequester(playingReq) else Modifier,
+                        chModifier = (if (playing) Modifier.focusRequester(playingReq) else Modifier).focusMemoryItem(chMem, ch.id),
                         onFocus = { p -> focused = ch to p },
                         onClick = { if (playing) live.enterFullscreen() else live.play(ch, list, group) },
                         onLongClick = { lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId)) },
