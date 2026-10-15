@@ -109,6 +109,8 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
     // Carga de imágenes (logos, pósters, fondos) con caché en disco
     implementation 'io.coil-kt:coil-compose:2.7.0'
+    // Código QR para "Agregar cuenta desde el celular"
+    implementation 'com.google.zxing:core:3.5.3'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
 

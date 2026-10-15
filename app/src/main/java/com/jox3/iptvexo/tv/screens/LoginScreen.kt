@@ -1,6 +1,17 @@
 package com.jox3.iptvexo.tv.screens
 
+import android.os.Handler
+import android.os.Looper
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import com.jox3.iptvexo.tv.data.RemoteAddServer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +64,21 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
     val scope = rememberCoroutineScope()
     val firstReq = remember { FocusRequester() }
 
+    // ── Agregar desde el celular (QR) ──
+    var qrUrl by remember { mutableStateOf<String?>(null) }   // null = preparando, "" = sin red local
+    var qr by remember { mutableStateOf<ImageBitmap?>(null) }
+    var received by remember { mutableStateOf<List<Account>>(emptyList()) }
+    DisposableEffect(Unit) {
+        val main = Handler(Looper.getMainLooper())
+        val srv = RemoteAddServer { accs -> main.post { received = accs } }
+        val job = scope.launch(Dispatchers.IO) {
+            val u = srv.start()
+            val bmp = if (u.isEmpty()) null else runCatching { RemoteAddServer.qrBitmap(u).asImageBitmap() }.getOrNull()
+            withContext(Dispatchers.Main) { qrUrl = u; qr = bmp }
+        }
+        onDispose { job.cancel(); srv.stop() }
+    }
+
     fun submit() {
         if (busy) return
         val acc = XtreamApi.parseLogin(host, user, pass)
@@ -66,6 +92,15 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
                 error = e.message ?: "No se pudo conectar con el servidor"
             } finally { busy = false }
         }
+    }
+
+    // Llegó una cuenta desde el celular: llenar el formulario y entrar
+    LaunchedEffect(received) {
+        val a = received.firstOrNull() ?: return@LaunchedEffect
+        received.drop(1).reversed().forEach { accounts.use(it) }   // las demás quedan guardadas
+        host = a.host; user = a.user; pass = a.pass
+        error = ""
+        submit()
     }
 
     Row(Modifier.fillMaxSize().background(Jx.Bg).padding(horizontal = 72.dp, vertical = 40.dp),
@@ -95,12 +130,12 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
                 style = Type.Small, color = Jx.Faint)
         }
 
-        // ── Cuentas guardadas ──
-        if (saved.isNotEmpty()) {
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+        // ── Cuentas guardadas + agregar desde el celular ──
+        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.Center) {
+            if (saved.isNotEmpty()) {
                 Text("CUENTAS GUARDADAS", style = Type.Eyebrow, color = Jx.Muted)
                 Spacer(Modifier.height(12.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(saved, key = { it.key }) { acc ->
                         FocusSurface(
                             onClick = { onLogin(acc) },
@@ -115,11 +150,38 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
                         }
                     }
                 }
+                Spacer(Modifier.height(24.dp))
             }
-        } else {
-            Box(Modifier.weight(1f))
+            PhoneQrCard(qrUrl, qr)
         }
     }
 
     LaunchedEffect(Unit) { runCatching { firstReq.requestFocus() } }
+}
+
+/** Tarjeta con el QR para enviar la cuenta desde el celular (misma red WiFi). */
+@Composable
+private fun PhoneQrCard(url: String?, qr: ImageBitmap?) {
+    Row(
+        Modifier.fillMaxWidth().background(Jx.Surface, RoundedCornerShape(14.dp)).padding(18.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(156.dp).background(Color.White, RoundedCornerShape(10.dp)).padding(8.dp),
+            contentAlignment = Alignment.Center) {
+            if (qr != null) Image(qr, contentDescription = "Código QR", modifier = Modifier.fillMaxSize())
+            else Text(if (url == null) "…" else "Sin red", style = Type.Label, color = Color.Black)
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Agregar desde el celular", style = Type.H2, color = Jx.Text)
+            if (url == "") {
+                Text("Conecta el TV a la red WiFi o por cable para usar esta opción.", style = Type.Small, color = Jx.Muted)
+            } else {
+                Text("1. Conecta el celular al mismo WiFi del TV", style = Type.Small, color = Jx.Muted)
+                Text("2. Escanea este código con la cámara", style = Type.Small, color = Jx.Muted)
+                Text("3. Pega el enlace de tu lista y pulsa Enviar", style = Type.Small, color = Jx.Muted)
+                if (!url.isNullOrEmpty()) Text(url.substringBefore("/?"), style = Type.Small, color = Jx.Faint)
+            }
+        }
+    }
 }
