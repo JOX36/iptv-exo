@@ -32,6 +32,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.delay
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusProperties
@@ -208,8 +209,22 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
         }
     }
 
+    // Red de seguridad del foco: si nada lo tiene (una tarjeta desapareció con el foco
+    // encima, una lista se recargó…), el control dejaba de responder. Se devuelve solo.
+    val detailReq = remember { FocusRequester() }
+    var anyFocus by remember { mutableStateOf(true) }
+    LaunchedEffect(anyFocus) {
+        if (anyFocus) return@LaunchedEffect
+        delay(350)
+        if (anyFocus || vod.open || live.fullscreen) return@LaunchedEffect
+        runCatching {
+            if (detail != null) detailReq.requestFocus()
+            else if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus()
+        }
+    }
+
     CompositionLocalProvider(LocalLive provides live) {
-    Box(Modifier.fillMaxSize().background(Jx.Bg)) {
+    Box(Modifier.fillMaxSize().background(Jx.Bg).onFocusChanged { anyFocus = it.hasFocus }) {
         // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
         val covered = detail != null || live.fullscreen || vod.open
         Box(
@@ -246,7 +261,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
 
         // Detalle a pantalla completa
         if (detail != null) {
-            Box(Modifier.fillMaxSize().background(Jx.Bg).zIndex(3f)) {
+            Box(Modifier.fillMaxSize().background(Jx.Bg).zIndex(3f).focusRequester(detailReq).focusGroup()) {
                 key(detail) {
                     when (detail) {
                         is Route.MovieDetail -> MovieDetailScreen(repo, nav, host, detail.movie)
