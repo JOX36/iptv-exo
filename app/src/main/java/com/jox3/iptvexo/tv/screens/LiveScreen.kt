@@ -38,6 +38,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
@@ -90,6 +91,10 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     val playingReq = remember { FocusRequester() }
     val listState = rememberLazyListState()
     var firstFocusDone by remember { mutableStateOf(false) }
+    // Vista: lista con vista previa, o guía por horas (se recuerda)
+    val ctx = LocalContext.current
+    val uiPrefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
+    var guideMode by remember { mutableStateOf(uiPrefs.getString("live_view", "list") == "guide") }
 
     val catList = cats?.getOrNull()
     val allCats = remember(catList) {
@@ -141,6 +146,21 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     Row(Modifier.fillMaxSize()) {
         // ── Categorías ──
         Column(Modifier.width(210.dp).fillMaxHeight().background(Jx.Rail).padding(top = 27.dp)) {
+            FocusSurface(
+                onClick = {
+                    guideMode = !guideMode
+                    uiPrefs.edit().putString("live_view", if (guideMode) "guide" else "list").apply()
+                },
+                modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 14.dp).fillMaxWidth().height(40.dp),
+                focusedScale = 1f,
+                container = Jx.Surface,
+            ) {
+                Row(Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JxIcon(if (guideMode) R.drawable.tv_ic_list else R.drawable.tv_ic_live, 16.dp, Jx.Accent)
+                    Text(if (guideMode) "Ver en lista" else "Guía por horas", style = Type.Label)
+                }
+            }
             Text("CATEGORÍAS", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
                 Modifier.fillMaxSize().focusRestorer(),
@@ -164,6 +184,25 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                     }
                 }
             }
+        }
+
+        LaunchedEffect(list) {
+            if (!firstFocusDone && !list.isNullOrEmpty()) {
+                firstFocusDone = true
+                delay(50); runCatching { channelsReq.requestFocus() }
+            }
+        }
+
+        if (guideMode) {
+            when {
+                channels == null -> Box(Modifier.weight(1f)) { StatusBox("Cargando…") }
+                list == null -> Box(Modifier.weight(1f)) { StatusBox("No se pudo cargar la categoría", onRetry = { reload++ }) }
+                list.isEmpty() -> Box(Modifier.weight(1f)) {
+                    StatusBox(if (selected?.id == FAV_ID) "Mantén OK sobre un canal para agregarlo a favoritos" else "Sin canales")
+                }
+                else -> LiveGuide(repo, list, selected?.name.orEmpty(), listState, channelsReq, playingReq, Modifier.weight(1f))
+            }
+            return@Row
         }
 
         // ── Canales ──
@@ -195,12 +234,6 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                             onLongClick = { lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId)) },
                         )
                     }
-                }
-            }
-            LaunchedEffect(list) {
-                if (!firstFocusDone && !list.isNullOrEmpty()) {
-                    firstFocusDone = true
-                    delay(50); runCatching { channelsReq.requestFocus() }
                 }
             }
         }
