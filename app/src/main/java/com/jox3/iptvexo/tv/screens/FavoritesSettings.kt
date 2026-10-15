@@ -136,6 +136,10 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
                 icon = R.drawable.tv_ic_update)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
             ActionButton("Usar la interfaz anterior", host::openClassicUi, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list)
+            var newVod by remember { mutableStateOf(host.player.useNewVodPlayer) }
+            ActionButton(if (newVod) "Películas: reproductor nuevo" else "Películas: reproductor anterior", {
+                newVod = !newVod; host.player.useNewVodPlayer = newVod
+            }, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_play)
             // Arranque seguro: si FFmpeg se apagó tras un cierre, permitir reactivarlo
             val ctx = LocalContext.current
             var ffmpegOff by remember { mutableStateOf(!PlayerSafety.ffmpegAllowed(ctx)) }

@@ -49,6 +49,8 @@ import com.jox3.iptvexo.tv.player.LiveFullscreen
 import com.jox3.iptvexo.tv.player.LivePlayback
 import com.jox3.iptvexo.tv.player.LocalLive
 import com.jox3.iptvexo.tv.player.VideoLayer
+import com.jox3.iptvexo.tv.player.VodFullscreen
+import com.jox3.iptvexo.tv.player.VodPlayback
 import androidx.tv.material3.Text
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.data.Account
@@ -141,17 +143,29 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     // ── Reproductor en vivo (uno solo: vista previa y pantalla completa) ──
     val live = remember { LivePlayback(context.applicationContext, repo) }
     live.beforeFullscreen = { runCatching { baseFocus.saveFocusedChild() } }
+    // ── Reproductor de películas y series (pantalla completa) ──
+    val vod = remember { VodPlayback(context.applicationContext, repo.library) }
+    vod.beforeOpen = { runCatching { baseFocus.saveFocusedChild() }; live.stop() }
+    host.player.vod = vod
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
-                Lifecycle.Event.ON_PAUSE -> live.onPause()
-                Lifecycle.Event.ON_RESUME -> live.onResume()
+                Lifecycle.Event.ON_PAUSE -> { live.onPause(); vod.onPause() }
+                Lifecycle.Event.ON_RESUME -> { live.onResume(); vod.onResume() }
                 else -> Unit
             }
         }
         lifecycle.addObserver(obs)
-        onDispose { lifecycle.removeObserver(obs); live.release() }
+        onDispose { lifecycle.removeObserver(obs); live.release(); vod.release(); host.player.vod = null }
+    }
+    var wasVod by remember { mutableStateOf(false) }
+    LaunchedEffect(vod.open) {
+        if (vod.open) { wasVod = true; return@LaunchedEffect }
+        if (wasVod) {
+            wasVod = false
+            runCatching { if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus() }
+        }
     }
     // Fuera de En vivo no hay vista previa: el canal se corta (salvo en pantalla completa)
     LaunchedEffect(section, live.fullscreen) {
@@ -172,6 +186,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     var lastBack by remember { mutableLongStateOf(0L) }
     BackHandler {
         when {
+            vod.open -> vod.close()
             live.fullscreen -> live.exitFullscreen()
             detail != null -> nav.back()
             section != Route.Home -> nav.open(Route.Home)
@@ -196,7 +211,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     CompositionLocalProvider(LocalLive provides live) {
     Box(Modifier.fillMaxSize().background(Jx.Bg)) {
         // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
-        val covered = detail != null || live.fullscreen
+        val covered = detail != null || live.fullscreen || vod.open
         Box(
             Modifier
                 .fillMaxSize()
@@ -242,8 +257,15 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
             }
         }
 
+        // Películas y series
+        if (vod.open) {
+            Box(Modifier.fillMaxSize().zIndex(5f)) {
+                VodFullscreen(vod, repo.library) { vod.close() }
+            }
+        }
+
         // Controles del reproductor en vivo a pantalla completa
-        if (live.fullscreen) {
+        if (live.fullscreen && !vod.open) {
             Box(Modifier.fillMaxSize().zIndex(4f)) {
                 LiveFullscreen(live, repo) {
                     live.exitFullscreen()

@@ -3,7 +3,10 @@ package com.jox3.iptvexo.tv
 import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import com.jox3.iptvexo.MainActivity
 import com.jox3.iptvexo.PlayerActivity
+import com.jox3.iptvexo.tv.player.VodItem
+import com.jox3.iptvexo.tv.player.VodPlayback
 import com.jox3.iptvexo.PlayerHandoff
 import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.Episode
@@ -19,6 +22,17 @@ import org.json.JSONObject
 class PlayerLauncher(private val activity: ComponentActivity) {
 
     var repo: TvRepo? = null
+    /** Reproductor nuevo (Compose) para películas y series; null fuera de la interfaz TV. */
+    var vod: VodPlayback? = null
+
+    /** true = películas y series en el reproductor nuevo (se puede volver al anterior en Ajustes). */
+    var useNewVodPlayer: Boolean
+        get() = !activity.getSharedPreferences(MainActivity.PREFS_UI, android.content.Context.MODE_PRIVATE)
+            .getBoolean(KEY_VOD_CLASSIC, false)
+        set(v) {
+            activity.getSharedPreferences(MainActivity.PREFS_UI, android.content.Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_VOD_CLASSIC, !v).apply()
+        }
     private var launched: SavedItem? = null
     private var launchedChannels: List<Channel> = emptyList()
 
@@ -43,6 +57,11 @@ class PlayerLauncher(private val activity: ComponentActivity) {
     fun playMovie(id: String, name: String, poster: String, ext: String, categoryId: String = "") {
         val r = repo ?: return
         val item = SavedItem("movie", id, name, poster, ext = ext, categoryId = categoryId)
+        val player = vod
+        if (player != null && useNewVodPlayer) {
+            player.open(listOf(VodItem(r.api.movieUrl(id, ext), name, "Película", poster, id, item, item)), 0)
+            return
+        }
         r.library.rememberPlayback(item)
         launch(r.api.movieUrl(id, ext), name, "", "vod", poster, id, JSONArray(), -1, false, item)
     }
@@ -51,6 +70,17 @@ class PlayerLauncher(private val activity: ComponentActivity) {
     fun playEpisode(seriesId: String, seriesName: String, cover: String, all: List<Episode>, index: Int) {
         val r = repo ?: return
         val ep = all.getOrNull(index) ?: return
+        val player = vod
+        if (player != null && useNewVodPlayer) {
+            val fav = SavedItem("series", seriesId, seriesName, cover)
+            player.open(all.map { e ->
+                val img = e.image.ifBlank { cover }
+                val resume = SavedItem("episode", e.id, episodeName(seriesName, e), img, ext = e.ext, seriesId = seriesId)
+                VodItem(r.api.episodeUrl(e.id, e.ext), episodeName(seriesName, e).substringAfter(" · "), seriesName,
+                    img, e.id, resume, fav)
+            }, index)
+            return
+        }
         val arr = JSONArray()
         all.forEach { e ->
             arr.put(JSONObject().put("url", r.api.episodeUrl(e.id, e.ext)).put("name", episodeName(seriesName, e))
@@ -100,6 +130,8 @@ class PlayerLauncher(private val activity: ComponentActivity) {
     }
 
     companion object {
+        const val KEY_VOD_CLASSIC = "vod_classic"
+
         fun episodeName(series: String, e: Episode) =
             "$series · T${e.season}E${e.num}" + if (e.title.isNotBlank() && !e.title.contains(series, true)) " - ${e.title}" else ""
     }
