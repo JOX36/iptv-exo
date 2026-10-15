@@ -75,9 +75,9 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         delay(250)   // esperar a que termine de escribir
         value = withContext(Dispatchers.Default) {
             Results(
-                idx.channels.filter { TvRepo.normalize(it.name).contains(q) }.take(40),
-                idx.movies.filter { TvRepo.normalize(it.name).contains(q) }.take(40),
-                idx.series.filter { TvRepo.normalize(it.name).contains(q) }.take(40),
+                idx.channels.filter { TvRepo.normalize(it.name).contains(q) }.distinctBy { it.id }.take(40),
+                idx.movies.filter { TvRepo.normalize(it.name).contains(q) }.distinctBy { it.id }.take(40),
+                idx.series.filter { TvRepo.normalize(it.name).contains(q) }.distinctBy { it.id }.take(40),
             )
         }
     }
