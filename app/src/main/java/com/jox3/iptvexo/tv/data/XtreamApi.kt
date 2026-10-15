@@ -85,7 +85,7 @@ class XtreamApi(val account: Account) {
                 num = o.optInt("num", i + 1),
                 epgId = o.optString("epg_channel_id", "").takeUnless { it == "null" }.orEmpty(),
             )
-        }
+        }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
     }
 
     suspend fun movies(categoryId: String? = null): List<Movie> = withContext(Dispatchers.Default) {
@@ -102,7 +102,7 @@ class XtreamApi(val account: Account) {
                 categoryId = o.optString("category_id", ""),
                 added = o.optString("added", "0").toLongOrNull() ?: 0L,
             )
-        }
+        }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
     }
 
     suspend fun series(categoryId: String? = null): List<Series> = withContext(Dispatchers.Default) {
@@ -118,7 +118,7 @@ class XtreamApi(val account: Account) {
                 categoryId = o.optString("category_id", ""),
                 updated = o.optString("last_modified", "0").toLongOrNull() ?: 0L,
             )
-        }
+        }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
     }
 
     suspend fun movieInfo(id: String): MovieInfo = withContext(Dispatchers.Default) {
@@ -170,7 +170,10 @@ class XtreamApi(val account: Account) {
                 for (i in 0 until list.length()) list.optJSONObject(i)?.let { addEpisode(it, s + 1) }
             }
         }
-        seasons.values.forEach { list -> list.sortBy { it.num } }
+        seasons.values.forEach { list ->
+            val unique = list.distinctBy { it.id }.sortedBy { it.num }
+            list.clear(); list.addAll(unique)
+        }
         return@withContext SeriesInfo(
             name = info.str("name"),
             plot = info.str("plot"),
