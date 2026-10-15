@@ -93,7 +93,12 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         cur?.let { c -> list.firstOrNull { it.start >= c.end } }
 
     // ── Búsqueda en todo el catálogo ──
-    data class Index(val channels: List<Channel>, val movies: List<Movie>, val series: List<Series>)
+    /** Catálogo completo con los nombres ya normalizados (sin tildes): buscar es solo comparar texto. */
+    class Index(val channels: List<Channel>, val movies: List<Movie>, val series: List<Series>) {
+        val channelKeys: List<String> = channels.map { normalize(it.name) }
+        val movieKeys: List<String> = movies.map { normalize(it.name) }
+        val seriesKeys: List<String> = series.map { normalize(it.name) }
+    }
 
     private var index: Index? = null
 
@@ -101,7 +106,8 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         val c = async { runCatching { api.channels() }.getOrDefault(emptyList()) }
         val m = async { runCatching { api.movies() }.getOrDefault(emptyList()) }
         val s = async { runCatching { api.series() }.getOrDefault(emptyList()) }
-        Index(c.await(), m.await(), s.await())
+        val (ch, mv, sr) = Triple(c.await(), m.await(), s.await())
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Index(ch, mv, sr) }
     }.also { built -> lock.withLock { index = built } }
 
     /** Películas recientes de la cuenta (para el inicio). */
@@ -119,7 +125,8 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
 
     companion object {
         /** Texto sin tildes y en minúsculas, para buscar "accion" y encontrar "Acción". */
+        private val MARKS = Regex("\\p{Mn}+")
         fun normalize(s: String): String =
-            Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase()
+            Normalizer.normalize(s, Normalizer.Form.NFD).replace(MARKS, "").lowercase()
     }
 }

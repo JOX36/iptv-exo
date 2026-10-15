@@ -60,6 +60,27 @@ class LibraryStore(context: Context, accountKey: String) {
     /** Sube cada vez que cambia el progreso: obliga a recalcular "continuar viendo". */
     val progressVersion = mutableStateOf(0)
 
+    /** Búsquedas recientes (como en TiviMate), la más nueva primero. */
+    val searchHistory = mutableStateListOf<String>().apply {
+        val arr = try { JSONArray(prefs.getString("$ns.search", "[]")) } catch (e: Exception) { JSONArray() }
+        for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { add(it) }
+    }
+
+    fun addSearch(query: String) {
+        val q = query.trim()
+        if (q.length < 2) return
+        searchHistory.removeAll { it.equals(q, ignoreCase = true) }
+        searchHistory.add(0, q)
+        while (searchHistory.size > 12) searchHistory.removeAt(searchHistory.size - 1)
+        saveSearches()
+    }
+
+    fun removeSearch(query: String) { searchHistory.remove(query); saveSearches() }
+    fun clearSearches() { searchHistory.clear(); saveSearches() }
+    private fun saveSearches() {
+        prefs.edit().putString("$ns.search", JSONArray(searchHistory.toList()).toString()).apply()
+    }
+
     fun isFavorite(kind: String, id: String) = favorites.any { it.kind == kind && it.id == id }
 
     fun toggleFavorite(item: SavedItem): Boolean {

@@ -72,17 +72,26 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         val idx = index ?: return@produceState
         val q = TvRepo.normalize(query.trim())
         if (q.length < 2) { value = null; return@produceState }
-        delay(250)   // esperar a que termine de escribir
+        delay(220)   // esperar a que termine de escribir (si pulsa otra letra, esto se cancela)
         value = withContext(Dispatchers.Default) {
-            Results(
-                idx.channels.filter { TvRepo.normalize(it.name).contains(q) }.distinctBy { it.id }.take(40),
-                idx.movies.filter { TvRepo.normalize(it.name).contains(q) }.distinctBy { it.id }.take(40),
-                idx.series.filter { TvRepo.normalize(it.name).contains(q) }.distinctBy { it.id }.take(40),
-            )
+            // Los nombres ya vienen normalizados en el índice: solo se compara texto
+            fun <T> pick(list: List<T>, keys: List<String>): List<T> {
+                val out = ArrayList<T>(40)
+                for (i in keys.indices) { if (keys[i].contains(q)) { out.add(list[i]); if (out.size == 40) break } }
+                return out
+            }
+            Results(pick(idx.channels, idx.channelKeys), pick(idx.movies, idx.movieKeys), pick(idx.series, idx.seriesKeys))
         }
     }
     val firstKey = remember { FocusRequester() }
     val lib = repo.library
+    // Si se queda unos segundos en una búsqueda con resultados, se guarda en el historial
+    LaunchedEffect(results) {
+        val r = results ?: return@LaunchedEffect
+        if (r.isEmpty) return@LaunchedEffect
+        delay(3000)
+        lib.addSearch(query)
+    }
 
     Row(Modifier.fillMaxSize()) {
         // ── Teclado ──
@@ -117,7 +126,12 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
             val r = results
             when {
                 index == null -> StatusBox("Preparando la búsqueda en todo el catálogo…")
-                query.trim().length < 2 -> StatusBox("Escribe al menos 2 letras para buscar canales, películas y series.")
+                query.trim().length < 2 -> SearchHistory(
+                    lib.searchHistory.toList(),
+                    onPick = { query = it },
+                    onRemove = { lib.removeSearch(it) },
+                    onClear = { lib.clearSearches() },
+                )
                 r == null -> StatusBox("Buscando…")
                 r.isEmpty -> StatusBox("Sin resultados para “${query.trim()}”")
                 else -> LazyColumn(
@@ -128,14 +142,14 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
                     if (r.channels.isNotEmpty()) item(key = "ch") {
                         ShelfRow("En vivo · ${r.channels.size}") {
                             itemsIndexed(r.channels, key = { _, c -> "c" + c.id }) { i, c ->
-                                ChannelTile(c.name, c.logo, onClick = { live.playFullscreen(r.channels, i, "Búsqueda") })
+                                ChannelTile(c.name, c.logo, onClick = { lib.addSearch(query); live.playFullscreen(r.channels, i, "Búsqueda") })
                             }
                         }
                     }
                     if (r.movies.isNotEmpty()) item(key = "mv") {
                         ShelfRow("Películas · ${r.movies.size}") {
                             items(r.movies, key = { "m" + it.id }) { m ->
-                                PosterCard(m.name, m.poster, onClick = { nav.open(Route.MovieDetail(m)) }, width = 96.dp,
+                                PosterCard(m.name, m.poster, onClick = { lib.addSearch(query); nav.open(Route.MovieDetail(m)) }, width = 96.dp,
                                     favorite = lib.isFavorite("movie", m.id))
                             }
                         }
@@ -143,7 +157,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
                     if (r.series.isNotEmpty()) item(key = "sr") {
                         ShelfRow("Series · ${r.series.size}") {
                             items(r.series, key = { "s" + it.id }) { s ->
-                                PosterCard(s.name, s.poster, onClick = { nav.open(Route.SeriesDetail(s.id, s.name, s.poster)) },
+                                PosterCard(s.name, s.poster, onClick = { lib.addSearch(query); nav.open(Route.SeriesDetail(s.id, s.name, s.poster)) },
                                     width = 96.dp, favorite = lib.isFavorite("series", s.id))
                             }
                         }
@@ -169,5 +183,44 @@ private fun Key(label: String, modifier: Modifier, onClick: () -> Unit) {
         ring = false,
     ) {
         Text(label, style = if (label.length == 1) Type.Number else Type.Small, modifier = Modifier.align(Alignment.Center))
+    }
+}
+
+/** Búsquedas recientes: OK la repite, OK mantenido la borra. */
+@Composable
+private fun SearchHistory(items: List<String>, onPick: (String) -> Unit, onRemove: (String) -> Unit, onClear: () -> Unit) {
+    if (items.isEmpty()) {
+        StatusBox("Escribe al menos 2 letras para buscar canales, películas y series.\nTus búsquedas aparecerán aquí.")
+        return
+    }
+    Column(Modifier.fillMaxSize().padding(start = 28.dp, end = 40.dp, top = 27.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("BÚSQUEDAS RECIENTES", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.weight(1f))
+            Text("OK: buscar otra vez · OK mantenido: borrar", style = Type.Small, color = Jx.Faint)
+        }
+        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(bottom = 24.dp)) {
+            items(items, key = { it }) { q ->
+                FocusSurface(
+                    onClick = { onPick(q) },
+                    onLongClick = { onRemove(q) },
+                    modifier = Modifier.width(420.dp).height(44.dp),
+                    focusedScale = 1.02f,
+                    container = Jx.Surface,
+                ) {
+                    Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        JxIcon(R.drawable.tv_ic_search, 14.dp)
+                        Text(q, style = Type.Label, maxLines = 1)
+                    }
+                }
+            }
+            item(key = "__clear") {
+                FocusSurface(onClick = onClear, modifier = Modifier.padding(top = 6.dp).height(40.dp), focusedScale = 1.02f) {
+                    Text("Borrar historial", style = Type.Label, color = Jx.Live,
+                        modifier = Modifier.align(Alignment.Center).padding(horizontal = 16.dp))
+                }
+            }
+        }
     }
 }
