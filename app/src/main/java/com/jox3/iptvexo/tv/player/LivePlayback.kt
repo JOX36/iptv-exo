@@ -60,6 +60,8 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     var resizeMode by mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT)
     /** Sube cuando cambian las pistas de audio/subtítulos disponibles. */
     var tracksVersion by mutableIntStateOf(0); private set
+    /** true mientras el video avanza: mantiene la pantalla encendida (sin protector de pantalla). */
+    var playingNow by mutableStateOf(false); private set
 
     /** Lo pone la interfaz: guardar dónde estaba el foco antes de ir a pantalla completa. */
     var beforeFullscreen: () -> Unit = {}
@@ -120,6 +122,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         current = null
         fullscreen = false
         status = null
+        playingNow = false
         quality = ""
     }
 
@@ -230,6 +233,8 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         }
 
         override fun onTracksChanged(tracks: Tracks) { tracksVersion++ }
+
+        override fun onIsPlayingChanged(isPlaying: Boolean) { playingNow = isPlaying }
     }
 
     companion object {
