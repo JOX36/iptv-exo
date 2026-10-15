@@ -62,8 +62,9 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
 
     suspend fun epg(ch: Channel): List<EpgItem> {
         cachedEpg(ch)?.let { return it }
+        // 14 programas: alcanza para la guía por horas
         var list = epgPermits.withPermit {
-            try { api.shortEpg(ch.id, 6) } catch (e: Exception) { emptyList() }
+            try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
         }
         if (list.isEmpty() && ExternalEpg.isReady()) {
             val now = System.currentTimeMillis() / 1000

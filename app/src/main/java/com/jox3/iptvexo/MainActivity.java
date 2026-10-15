@@ -213,6 +213,29 @@ public class MainActivity extends AppCompatActivity {
             });
         }
 
+        /** Guía de internet: descarga la de los países de estas categorías (en segundo plano). */
+        @JavascriptInterface
+        public void epgPrepare(String namesJson) {
+            try {
+                org.json.JSONArray a = new org.json.JSONArray(namesJson);
+                java.util.List<com.jox3.iptvexo.tv.data.Category> cats = new java.util.ArrayList<>();
+                for (int i = 0; i < a.length(); i++) cats.add(new com.jox3.iptvexo.tv.data.Category(String.valueOf(i), a.optString(i)));
+                com.jox3.iptvexo.tv.data.ExternalEpg.INSTANCE.ensure(MainActivity.this,
+                        com.jox3.iptvexo.tv.data.EpgCountries.INSTANCE.filesFor(cats), null);
+            } catch (Exception ignored) { }
+        }
+
+        /** Programas de un canal en la guía de internet (JSON) o "" si no hay. */
+        @JavascriptInterface
+        public String epgLookup(String name, String group, double fromSec, double toSec) {
+            try {
+                if (!com.jox3.iptvexo.tv.data.ExternalEpg.INSTANCE.isReady()) return "";
+                String hint = com.jox3.iptvexo.tv.data.EpgCountries.INSTANCE.ofCategory(group == null ? "" : group);
+                return com.jox3.iptvexo.tv.data.ExternalEpg.INSTANCE.lookupJson(MainActivity.this, name == null ? "" : name,
+                        null, (long) fromSec, (long) toSec, hint.isEmpty() ? null : hint);
+            } catch (Exception e) { return ""; }
+        }
+
         /** Botón "Buscar actualizaciones". */
         @JavascriptInterface
         public void checkUpdates() {

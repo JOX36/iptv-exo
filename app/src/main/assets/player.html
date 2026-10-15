@@ -926,7 +926,7 @@ function showSetup(){
   IDX.items=[];IDX.done=false;IDX.running=false;
   S.isLocal=false;S.localItems=[];
   S.host='';S.user='';S.pass='';
-  S.cats={live:[],vod:[],series:[]};
+  S.cats={live:[],vod:[],series:[]};EXT_EPG_ON=false;
   S.activeCat={live:null,vod:null,series:null};
   S.channels=[];S.current=null;
   document.getElementById('setupScreen').style.display='flex';
@@ -1124,6 +1124,7 @@ async function loadSec(sec){
       const data=await xApi(act);
       S.cats[sec]=(Array.isArray(data)?data:[]).map(c=>({id:c.category_id,name:c.category_name||'Sin nombre',loaded:false,items:[]}));
       if(!S.cats[sec].length) throw new Error('Sin categorías');
+      if(sec==='live')setTimeout(extEpgPrepare,1500);
     }catch(e){setContent(`<div class="empty"><div class="empty-icon">❌</div><p>${e.message}</p></div>`);return}
   }
   renderSide();
@@ -1800,7 +1801,7 @@ async function play(item){
   };
   startLive();
   document.getElementById('playerWrap').scrollIntoView({behavior:'smooth',block:'nearest'});
-  loadEpg(item.id);
+  loadEpg(item.id,item);
 }
 function stopPlayer(){
   const vid=document.getElementById('vid');
@@ -1954,7 +1955,7 @@ async function switchAccount(a){
   stopPlayer();
   S.isLocal=false; S.localItems=[];
   S.host=a.host;S.user=a.user;S.pass=a.pass;
-  S.cats={live:[],vod:[],series:[]};
+  S.cats={live:[],vod:[],series:[]};EXT_EPG_ON=false;
   S.activeCat={live:null,vod:null,series:null};
   S.channels=[];S.current=null;
   IDX.items=[];IDX.done=false;IDX.running=false;
@@ -1971,11 +1972,30 @@ async function switchAccount(a){
 
 // ══ EPG ══
 const EPG={data:null,streamId:null,timer:null};const EPG_CACHE={};
-async function loadEpg(streamId){
+// Guía de internet (la misma de la interfaz de TV y de JOX3 Verifier): se usa
+// cuando el servidor no trae guía para el canal.
+let EXT_EPG_ON=false;
+function extEpgPrepare(){
+  if(EXT_EPG_ON||!window.AndroidPlayer||!AndroidPlayer.epgPrepare)return;
+  const names=(S.cats?.live||[]).map(c=>c.name);if(!names.length)return;
+  EXT_EPG_ON=true;try{AndroidPlayer.epgPrepare(JSON.stringify(names))}catch(e){}
+}
+function extEpgList(item){
+  if(!item||!window.AndroidPlayer||!AndroidPlayer.epgLookup)return [];
+  extEpgPrepare();
+  try{
+    const now=Math.floor(Date.now()/1000);const r=AndroidPlayer.epgLookup(item.name||'',item.group||'',now-3600,now+12*3600);
+    if(!r)return [];const j=JSON.parse(r);
+    return (j.list||[]).map(p=>({title:p.t,desc:p.d||'',start:new Date(p.s*1000),end:new Date(p.e*1000)}));
+  }catch(e){return []}
+}
+async function loadEpg(streamId,item){
   EPG.streamId=streamId;clearInterval(EPG.timer);document.getElementById('epgBar').classList.remove('visible');
   try{
-    const data=await xApi('get_short_epg',`&stream_id=${streamId}&limit=6`);const list=data?.epg_listings||[];if(!list.length)return;
-    EPG.data=list.map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:epgDate(e,false),end:epgDate(e,true)}));
+    let list=[];try{const data=await xApi('get_short_epg',`&stream_id=${streamId}&limit=6`);list=data?.epg_listings||[]}catch(e){}
+    if(EPG.streamId!==streamId)return;
+    if(list.length) EPG.data=list.map(e=>({title:e.title?atob(e.title):'—',desc:e.desc?atob(e.desc):'',start:epgDate(e,false),end:epgDate(e,true)}));
+    else{EPG.data=extEpgList(item||S.current);if(!EPG.data.length)return;}
     const now=new Date();const cur=EPG.data.find(e=>now>=e.start&&now<e.end)||EPG.data[0];
     if(cur) EPG_CACHE[streamId]={title:cur.title,ts:Date.now()};
     renderEpgBar();EPG.timer=setInterval(renderEpgBar,30000);
@@ -1987,7 +2007,10 @@ async function loadEpgForCards(items){
     const batch=liveItems.slice(i,i+5);
     await Promise.allSettled(batch.map(async item=>{
       if(EPG_CACHE[item.id]&&Date.now()-EPG_CACHE[item.id].ts<600000)return;
-      try{const data=await xApi('get_short_epg',`&stream_id=${item.id}&limit=2`);const list=data?.epg_listings||[];const first=list[0];let t='';try{t=first&&first.title?atob(first.title):''}catch(e2){t=first?.title||''}if(t)EPG_CACHE[item.id]={title:t,ts:Date.now()}}catch(e){}
+      let t='';
+      try{const data=await xApi('get_short_epg',`&stream_id=${item.id}&limit=2`);const list=data?.epg_listings||[];const first=list[0];try{t=first&&first.title?atob(first.title):''}catch(e2){t=first?.title||''}}catch(e){}
+      if(!t){const now=new Date();const cur=extEpgList(item).find(e=>now>=e.start&&now<e.end);if(cur)t=cur.title}
+      if(t)EPG_CACHE[item.id]={title:t,ts:Date.now()};
     }));
     refreshCardEpg();await new Promise(r=>setTimeout(r,300));
   }
