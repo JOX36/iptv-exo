@@ -249,7 +249,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit) {
             Box(
                 Modifier.align(Alignment.BottomStart).padding(bottom = 150.dp)
                     .width(if (o == VOpt.Info) 460.dp else 340.dp)
-                    .fillMaxHeight(0.52f)
+                    .fillMaxHeight(0.66f)
                     .onFocusChanged { f -> inPanel = f.hasFocus }
                     .focusProperties {
                         exit = { d ->

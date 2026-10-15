@@ -37,6 +37,8 @@ class XtreamApi(val account: Account) {
         }
     }
 
+    // El JSON se lee fuera del hilo principal (Default): con catálogos grandes
+    // leerlo en el hilo de la interfaz congelaba el control y Android cerraba la app.
     private suspend fun array(url: String): JSONArray {
         val text = get(url).trim()
         return if (text.startsWith("[")) JSONArray(text) else JSONArray()
@@ -48,12 +50,12 @@ class XtreamApi(val account: Account) {
     fun episodeUrl(id: String, ext: String) = "$host/series/${account.user}/${account.pass}/$id.${ext.ifBlank { "mkv" }}"
 
     // ── Cuenta ──
-    suspend fun serverInfo(): ServerInfo {
+    suspend fun serverInfo(): ServerInfo = withContext(Dispatchers.Default) {
         val json = JSONObject(get(apiUrl(null)))
         val u = json.optJSONObject("user_info") ?: throw IOException("Respuesta no válida del servidor")
         if (u.optInt("auth", 1) == 0) throw IOException("Usuario o contraseña incorrectos")
         val exp = u.optString("exp_date", "").toLongOrNull()?.takeIf { it > 0 }?.times(1000)
-        return ServerInfo(
+        return@withContext ServerInfo(
             status = u.optString("status", ""),
             expires = exp,
             activeCons = u.optString("active_cons", "0"),
@@ -62,18 +64,18 @@ class XtreamApi(val account: Account) {
     }
 
     // ── Catálogo ──
-    suspend fun categories(section: Section): List<Category> {
+    suspend fun categories(section: Section): List<Category> = withContext(Dispatchers.Default) {
         val arr = array(apiUrl(section.apiCategories))
-        return (0 until arr.length()).mapNotNull { i ->
+        return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             Category(o.optString("category_id"), o.optString("category_name", "?").trim())
         }
     }
 
-    suspend fun channels(categoryId: String? = null): List<Channel> {
+    suspend fun channels(categoryId: String? = null): List<Channel> = withContext(Dispatchers.Default) {
         val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
         val arr = array(apiUrl("get_live_streams", extra))
-        return (0 until arr.length()).mapNotNull { i ->
+        return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             Channel(
                 id = o.optString("stream_id"),
@@ -86,10 +88,10 @@ class XtreamApi(val account: Account) {
         }
     }
 
-    suspend fun movies(categoryId: String? = null): List<Movie> {
+    suspend fun movies(categoryId: String? = null): List<Movie> = withContext(Dispatchers.Default) {
         val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
         val arr = array(apiUrl("get_vod_streams", extra))
-        return (0 until arr.length()).mapNotNull { i ->
+        return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             Movie(
                 id = o.optString("stream_id"),
@@ -103,10 +105,10 @@ class XtreamApi(val account: Account) {
         }
     }
 
-    suspend fun series(categoryId: String? = null): List<Series> {
+    suspend fun series(categoryId: String? = null): List<Series> = withContext(Dispatchers.Default) {
         val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
         val arr = array(apiUrl("get_series", extra))
-        return (0 until arr.length()).mapNotNull { i ->
+        return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             Series(
                 id = o.optString("series_id"),
@@ -119,11 +121,11 @@ class XtreamApi(val account: Account) {
         }
     }
 
-    suspend fun movieInfo(id: String): MovieInfo {
+    suspend fun movieInfo(id: String): MovieInfo = withContext(Dispatchers.Default) {
         val json = JSONObject(get(apiUrl("get_vod_info", "&vod_id=${enc(id)}")))
         val info = json.optJSONObject("info") ?: JSONObject()
         val data = json.optJSONObject("movie_data") ?: JSONObject()
-        return MovieInfo(
+        return@withContext MovieInfo(
             plot = info.str("plot", "description"),
             genre = info.str("genre"),
             director = info.str("director"),
@@ -137,7 +139,7 @@ class XtreamApi(val account: Account) {
         )
     }
 
-    suspend fun seriesInfo(id: String): SeriesInfo {
+    suspend fun seriesInfo(id: String): SeriesInfo = withContext(Dispatchers.Default) {
         val json = JSONObject(get(apiUrl("get_series_info", "&series_id=${enc(id)}")))
         val info = json.optJSONObject("info") ?: JSONObject()
         val seasons = sortedMapOf<Int, MutableList<Episode>>()
@@ -169,7 +171,7 @@ class XtreamApi(val account: Account) {
             }
         }
         seasons.values.forEach { list -> list.sortBy { it.num } }
-        return SeriesInfo(
+        return@withContext SeriesInfo(
             name = info.str("name"),
             plot = info.str("plot"),
             genre = info.str("genre"),
@@ -182,10 +184,10 @@ class XtreamApi(val account: Account) {
     }
 
     /** Guía corta de un canal: el programa actual y los siguientes. */
-    suspend fun shortEpg(streamId: String, limit: Int = 4): List<EpgItem> {
+    suspend fun shortEpg(streamId: String, limit: Int = 4): List<EpgItem> = withContext(Dispatchers.Default) {
         val json = JSONObject(get(apiUrl("get_short_epg", "&stream_id=${enc(streamId)}&limit=$limit")))
-        val list = json.optJSONArray("epg_listings") ?: return emptyList()
-        return (0 until list.length()).mapNotNull { i ->
+        val list = json.optJSONArray("epg_listings") ?: return@withContext emptyList()
+        return@withContext (0 until list.length()).mapNotNull { i ->
             val o = list.optJSONObject(i) ?: return@mapNotNull null
             val start = o.optString("start_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
             val end = o.optString("stop_timestamp", "").toLongOrNull()?.times(1000) ?: 0L

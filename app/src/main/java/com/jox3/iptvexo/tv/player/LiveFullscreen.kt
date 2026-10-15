@@ -7,6 +7,8 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -503,7 +505,7 @@ private fun PanelRow(num: Int, c: Channel, repo: TvRepo, playing: Boolean, modif
 /** Opción elegible dentro de un panel (pista, formato de imagen). */
 @Composable
 internal fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth().height(44.dp), focusedScale = 1.02f,
+    FocusSurface(onClick = onClick, modifier = modifier.fillMaxWidth().height(40.dp), focusedScale = 1.02f,
         focusedContainer = Color(0xCC152131)) {
         Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(label, style = Type.Label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -515,7 +517,10 @@ internal fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier, onC
 @Composable
 internal fun PanelBox(title: String, content: @Composable () -> Unit) {
     Column(
-        Modifier.fillMaxSize().background(PanelBrush, RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp)).padding(20.dp),
+        Modifier.fillMaxSize().background(PanelBrush, RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp))
+            // Con muchas opciones (velocidad, apagado) el panel se desplaza: ninguna queda cortada
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Text(title, style = Type.H2, color = Jx.Text)
