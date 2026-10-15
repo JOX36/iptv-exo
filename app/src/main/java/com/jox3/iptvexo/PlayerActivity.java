@@ -802,6 +802,8 @@ public class PlayerActivity extends AppCompatActivity {
 
     }
 
+    private boolean startingMarked = false;
+
     /** Crea el reproductor, su listener y la sesión multimedia (una vez por Activity). */
     private void createPlayer() {
         // Cliente HTTP compartido: reutiliza conexiones → cambio de canal más rápido
@@ -810,8 +812,13 @@ public class PlayerActivity extends AppCompatActivity {
         // Renderers con extensión FFmpeg habilitada — si el decodificador de hardware
         // no soporta el codec (HEVC/AC3/DTS típicos en VOD/series), cae automáticamente
         // al decodificador por software antes de fallar.
+        // Arranque seguro: si el arranque anterior se cayó (FFmpeg en algunos TV Box), va sin FFmpeg
+        PlayerSafety.markStarting(this);
+        startingMarked = true;
         DefaultRenderersFactory renderersFactory = new DefaultRenderersFactory(this)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                .setExtensionRendererMode(PlayerSafety.ffmpegAllowed(this)
+                        ? DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                        : DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
                 .setEnableDecoderFallback(true);
 
         // Buffer ajustado para IPTV: arranca antes (1,5 s) y tras un corte
@@ -883,6 +890,7 @@ public class PlayerActivity extends AppCompatActivity {
             public void onPlaybackStateChanged(int state) {
                 if (state == Player.STATE_READY) {
                     showLoading(false);
+                    if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(PlayerActivity.this); }
                     // Actualizar resolución para Live y VOD
                     handler.postDelayed(() -> {
                         androidx.media3.common.Format vf = player != null ? player.getVideoFormat() : null;

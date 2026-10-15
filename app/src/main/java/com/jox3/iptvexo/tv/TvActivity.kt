@@ -11,7 +11,9 @@ import coil.Coil
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.jox3.iptvexo.App
 import com.jox3.iptvexo.MainActivity
+import com.jox3.iptvexo.PlayerSafety
 import com.jox3.iptvexo.NetClient
 import com.jox3.iptvexo.Updater
 import com.jox3.iptvexo.tv.ui.JoxTheme
@@ -45,6 +47,21 @@ class TvActivity : ComponentActivity(), TvHost {
         updater.checkOnStartup()
 
         setContent { JoxTheme { TvApp(this) } }
+        showLastCrash()
+    }
+
+    /** Si la app se cerró por un error, mostrar qué pasó (una sola vez). */
+    private fun showLastCrash() {
+        val crash = App.takeLastCrash(this)
+        if (crash.isEmpty()) return
+        val ffmpegOff = !PlayerSafety.ffmpegAllowed(this)
+        val msg = (if (ffmpegOff) "El audio avanzado (FFmpeg) se desactivó para evitar que vuelva a pasar. " +
+            "Puedes reactivarlo en Ajustes.\n\n" else "") + "Detalle técnico:\n" + crash.take(1500)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("La app se cerró la última vez")
+            .setMessage(msg)
+            .setPositiveButton("Entendido", null)
+            .show()
     }
 
     override fun onResume() {

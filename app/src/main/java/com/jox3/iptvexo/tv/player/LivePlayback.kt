@@ -1,6 +1,7 @@
 package com.jox3.iptvexo.tv.player
 
 import android.content.Context
+import com.jox3.iptvexo.PlayerSafety
 import android.os.Handler
 import android.os.Looper
 import androidx.annotation.OptIn
@@ -69,8 +70,17 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     private val main = Handler(Looper.getMainLooper())
     private val retryRunnable = Runnable { load() }
     private var retries = 0
-    /** Algunos servidores fallan con .m3u8 y funcionan con .ts (o al revés). */
-    private var altFormat = false
+    // ── Formato del canal (traído de JOX3 Verifier) ──
+    // Muchos servidores entregan HLS aunque la dirección diga .ts, o la cuenta solo
+    // permite uno de los dos. Si un canal no abre por formato se prueban las otras
+    // variantes y la que funcione se recuerda POR SERVIDOR: los demás canales de ese
+    // servidor abren a la primera.
+    private val formatPrefs = context.getSharedPreferences("jox3_player", Context.MODE_PRIVATE)
+    /** 0 = formato preferido, 1 = la otra extensión, 2 = la dirección original leída a la fuerza con el otro tipo. */
+    private var altStep = 0
+    private var playingUrl = ""
+    private var playingMime: String? = null
+    private var startingMarked = false
     private var paused = false
 
     fun isPlaying(ch: Channel) = current?.id == ch.id && status == null
@@ -82,7 +92,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         if (current?.id == ch.id && exo?.playbackState != Player.STATE_IDLE) return
         current = ch
         retries = 0
-        altFormat = false
+        altStep = 0
         repo.library.addRecentChannel(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
         load()
     }
@@ -113,7 +123,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
 
     fun playIndex(i: Int) { channels.getOrNull(i)?.let { play(it, channels, group) } }
 
-    fun reload() { retries = 0; load() }
+    fun reload() { retries = 0; altStep = 0; load() }
 
     fun stop() {
         main.removeCallbacks(retryRunnable)
@@ -147,11 +157,21 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
 
     // ── Interno ──
 
-    private fun ensurePlayer(): ExoPlayer = exo ?: ExoPlayer.Builder(context)
+    private fun ensurePlayer(): ExoPlayer = exo ?: run {
+        // Arranque seguro: si esto se cae, la próxima vez abre sin FFmpeg
+        PlayerSafety.markStarting(context); startingMarked = true
+        buildPlayer()
+    }
+
+    private fun buildPlayer(): ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(NetClient.player())))
         .setRenderersFactory(
             DefaultRenderersFactory(context)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+                // FFmpeg (AC-3, DTS…) salvo que un arranque anterior se haya caído por su culpa
+                .setExtensionRendererMode(
+                    if (PlayerSafety.ffmpegAllowed(context)) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                    else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+                )
                 .setEnableDecoderFallback(true)
         )
         // Arranque rápido (1,5 s) y colchón amplio contra cortes
@@ -164,21 +184,86 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         .build()
         .also { p -> p.addListener(listener); exo = p }
 
-    private fun url(ch: Channel): String {
-        val base = repo.api.liveUrl(ch.id)
-        return if (altFormat) base.removeSuffix(".m3u8") + ".ts" else base
+    private fun fmtKey(url: String) = "fmt_" + (try { java.net.URI(url).host } catch (e: Exception) { null } ?: "")
+
+    private fun swapFormat(url: String): String? = when {
+        url.endsWith(".ts", true) -> url.dropLast(3) + ".m3u8"
+        url.endsWith(".m3u8", true) -> url.dropLast(5) + ".ts"
+        else -> null
+    }
+
+    private fun mimeFor(url: String): String? = when {
+        url.endsWith(".m3u8", true) -> MimeTypes.APPLICATION_M3U8
+        url.endsWith(".ts", true) -> MimeTypes.VIDEO_MP2T
+        else -> null
+    }
+
+    /** Dirección y tipo según lo que ya funcionó en este servidor: "m3u8", "ts" o "ts-hls". */
+    private fun preferred(url: String): Pair<String, String?> {
+        val pref = formatPrefs.getString(fmtKey(url), null) ?: return url to mimeFor(url)
+        val isTs = url.endsWith(".ts", true)
+        return when {
+            pref == "m3u8" && isTs -> (url.dropLast(3) + ".m3u8") to MimeTypes.APPLICATION_M3U8
+            pref == "ts-hls" -> (if (isTs) url else url.dropLast(5) + ".ts") to MimeTypes.APPLICATION_M3U8
+            pref == "ts" && url.endsWith(".m3u8", true) -> (url.dropLast(5) + ".ts") to MimeTypes.VIDEO_MP2T
+            else -> url to mimeFor(url)
+        }
+    }
+
+    private fun rememberFormat() {
+        if (altStep == 0 || playingUrl.isEmpty()) return
+        val fmt = when {
+            playingUrl.endsWith(".m3u8", true) -> "m3u8"
+            playingUrl.endsWith(".ts", true) && playingMime == MimeTypes.APPLICATION_M3U8 -> "ts-hls"
+            playingUrl.endsWith(".ts", true) -> "ts"
+            else -> return
+        }
+        formatPrefs.edit().putString(fmtKey(playingUrl), fmt).apply()
+    }
+
+    /**
+     * true si se lanzó otro intento por un problema de formato. Orden: (1) la otra
+     * extensión (.ts ↔ .m3u8); (2) la dirección original leída a la fuerza como HLS
+     * (o TS): pasa cuando el servidor redirige el .ts a una lista .m3u8 de otra fuente.
+     */
+    private fun tryOtherFormat(error: PlaybackException): Boolean {
+        val ch = current ?: return false
+        if (altStep >= 2) return false
+        val http = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+        val formatProblem = error.errorCode in 3000..3999 || http == 403 || http == 404 || http == 406 || http == 415
+        if (!formatProblem) return false
+        val orig = repo.api.liveUrl(ch.id)
+        val next: Pair<String, String?> = if (altStep == 0) {
+            val alt = swapFormat(playingUrl) ?: return false
+            alt to mimeFor(alt)
+        } else {
+            orig to (if (orig.endsWith(".ts", true)) MimeTypes.APPLICATION_M3U8 else MimeTypes.VIDEO_MP2T)
+        }
+        altStep++
+        status = "Probando otro formato… ($altStep/2)"
+        start(next.first, next.second)
+        return true
     }
 
     private fun load() {
         val ch = current ?: return
         main.removeCallbacks(retryRunnable)
         status = if (retries == 0) "Cargando…" else "Reconectando ($retries/$MAX_RETRIES)…"
+        altStep = 0
+        val (u, mime) = preferred(repo.api.liveUrl(ch.id))
+        start(u, mime)
+    }
+
+    private fun start(url: String, mime: String?) {
+        val ch = current ?: return
+        playingUrl = url
+        playingMime = mime
         quality = ""
         val item = MediaItem.Builder()
-            .setUri(url(ch))
+            .setUri(url)
             .setMediaId(ch.id)
             .setMediaMetadata(MediaMetadata.Builder().setTitle(ch.name).setArtist(group).build())
-            .apply { if (altFormat) setMimeType(MimeTypes.VIDEO_MP2T) }
+            .apply { if (mime != null) setMimeType(mime) }
             .build()
         val p = ensurePlayer()
         p.setMediaItem(item)
@@ -200,7 +285,11 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     private val listener = object : Player.Listener {
         override fun onPlaybackStateChanged(state: Int) {
             when (state) {
-                Player.STATE_READY -> { status = null; retries = 0 }
+                Player.STATE_READY -> {
+                    status = null; retries = 0
+                    rememberFormat()
+                    if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
+                }
                 Player.STATE_BUFFERING -> if (status == null) status = "Cargando…"
                 // Un canal en vivo no "termina": el servidor cortó la transmisión
                 Player.STATE_ENDED -> scheduleRetry()
@@ -216,9 +305,9 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
                 p.prepare()
                 return
             }
-            // Probar el otro formato (.m3u8 ↔ .ts) y, si sigue fallando, esperar cada vez más
-            altFormat = !altFormat
-            if (retries == 0) { retries = 1; load() } else scheduleRetry()
+            // Primero otro formato (si el error es de formato); si no, reintentos con espera creciente
+            if (tryOtherFormat(error)) return
+            scheduleRetry()
         }
 
         override fun onVideoSizeChanged(videoSize: VideoSize) {
