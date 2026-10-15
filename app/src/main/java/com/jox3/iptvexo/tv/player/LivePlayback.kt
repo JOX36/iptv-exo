@@ -126,6 +126,8 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     fun reload() { retries = 0; altStep = 0; load() }
 
     fun stop() {
+        // Cerrar sin que la app se caiga no es un arranque fallido de FFmpeg
+        if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
         main.removeCallbacks(retryRunnable)
         exo?.stop()
         exo?.clearMediaItems()
@@ -298,6 +300,8 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // Un error normal (red, formato) no es un cierre por FFmpeg
+            if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
             val p = exo ?: return
             if (error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW) {
                 // Se quedó atrás del directo: volver al punto en vivo sin reconectar
