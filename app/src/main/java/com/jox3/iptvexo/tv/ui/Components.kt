@@ -29,7 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusRestorer
+import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -281,7 +281,7 @@ fun ShelfRow(title: String, modifier: Modifier = Modifier, content: LazyListScop
     Column(modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(title, style = Type.H2, color = Jx.Text, modifier = Modifier.padding(start = Safe.H))
         LazyRow(
-            modifier = Modifier.focusRestorer(),
+            modifier = Modifier.safeFocusRestorer(),
             contentPadding = PaddingValues(horizontal = Safe.H, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             content = content,
