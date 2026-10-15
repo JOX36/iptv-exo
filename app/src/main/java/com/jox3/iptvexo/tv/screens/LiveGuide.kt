@@ -40,7 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
+import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -161,7 +161,7 @@ fun LiveGuide(
         // ── Rejilla ──
         Box(Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
-                Modifier.fillMaxSize().focusRequester(listReq).focusRestorer(),
+                Modifier.fillMaxSize().focusRequester(listReq).safeFocusRestorer(),
                 state = listState,
                 contentPadding = PaddingValues(start = 10.dp, bottom = 27.dp),
             ) {

@@ -33,7 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
+import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -163,7 +163,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
             }
             Text("CATEGORÍAS", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
-                Modifier.fillMaxSize().focusRestorer(),
+                Modifier.fillMaxSize().safeFocusRestorer(),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -214,7 +214,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                 list == null -> StatusBox("No se pudo cargar la categoría", onRetry = { reload++ })
                 list.isEmpty() -> StatusBox(if (selected?.id == FAV_ID) "Mantén OK sobre un canal para agregarlo a favoritos" else "Sin canales")
                 else -> LazyColumn(
-                    Modifier.fillMaxSize().focusRequester(channelsReq).focusRestorer(),
+                    Modifier.fillMaxSize().focusRequester(channelsReq).safeFocusRestorer(),
                     state = listState,
                     contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),

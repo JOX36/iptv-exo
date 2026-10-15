@@ -29,7 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
+import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,7 +95,7 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
         Column(Modifier.width(210.dp).fillMaxHeight().background(Jx.Rail).padding(top = 27.dp)) {
             Text(title.uppercase(), style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
-                Modifier.fillMaxSize().focusRestorer(),
+                Modifier.fillMaxSize().safeFocusRestorer(),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -130,7 +130,7 @@ private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: s
                 list.isEmpty() -> StatusBox("Categoría vacía")
                 else -> LazyVerticalGrid(
                     columns = GridCells.Adaptive(112.dp),
-                    modifier = Modifier.fillMaxSize().focusRequester(gridReq).focusRestorer(),
+                    modifier = Modifier.fillMaxSize().focusRequester(gridReq).safeFocusRestorer(),
                     contentPadding = PaddingValues(start = 28.dp, end = 40.dp, top = 12.dp, bottom = 32.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),

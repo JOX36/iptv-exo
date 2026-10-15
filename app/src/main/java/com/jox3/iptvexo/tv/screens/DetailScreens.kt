@@ -31,7 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
+import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -133,7 +133,7 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
                 Column(Modifier.padding(top = 26.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("También te puede gustar", style = Type.H2, color = Jx.Text, modifier = Modifier.padding(start = Safe.H))
                     LazyRow(
-                        Modifier.focusRestorer(),
+                        Modifier.safeFocusRestorer(),
                         contentPadding = PaddingValues(horizontal = Safe.H, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
@@ -219,7 +219,7 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     data == null -> { com.jox3.iptvexo.tv.ui.StatusBox("No se pudo cargar la serie", onRetry = { reload++ }); return@Column }
                     seasons.isEmpty() -> { com.jox3.iptvexo.tv.ui.StatusBox("Esta serie aún no tiene episodios"); return@Column }
                 }
-                LazyRow(Modifier.focusRestorer(), horizontalArrangement = Arrangement.spacedBy(10.dp),
+                LazyRow(Modifier.safeFocusRestorer(), horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp)) {
                     items(seasons.keys.toList(), key = { it }) { s ->
                         val sel = s == season
@@ -238,7 +238,7 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     }
                 }
                 LazyColumn(
-                    Modifier.fillMaxSize().padding(top = 10.dp).focusRequester(mainReq).focusRestorer(),
+                    Modifier.fillMaxSize().padding(top = 10.dp).focusRequester(mainReq).safeFocusRestorer(),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(bottom = 32.dp, top = 4.dp, start = 4.dp, end = 4.dp),
                 ) {
