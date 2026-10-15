@@ -113,6 +113,8 @@ fun VideoLayer(live: LivePlayback, modifier: Modifier = Modifier) {
             update = { v ->
                 if (v.player !== live.player) v.player = live.player
                 v.resizeMode = if (full) live.resizeMode else AspectRatioFrameLayout.RESIZE_MODE_FIT
+                // Mientras el canal se reproduce, el TV no entra en reposo ni en protector de pantalla
+                v.keepScreenOn = live.playingNow
             },
             modifier = Modifier.fillMaxSize(),
         )
