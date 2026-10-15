@@ -28,6 +28,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jox3.iptvexo.tv.ui.rememberFocusMemory
+import com.jox3.iptvexo.tv.ui.focusMemoryItem
+import com.jox3.iptvexo.tv.ui.focusMemoryGroup
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -176,6 +179,9 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
     val episodes = seasons[season].orEmpty()
     val isFav = lib.isFavorite("series", seriesId)
     val mainReq = remember { FocusRequester() }
+    val seasonMem = rememberFocusMemory()
+    val epMem = rememberFocusMemory()
+    LaunchedEffect(season) { seasonMem.remember(season) }
 
     Box(Modifier.fillMaxSize()) {
         // Fondo tenue a la izquierda
@@ -219,13 +225,13 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     data == null -> { com.jox3.iptvexo.tv.ui.StatusBox("No se pudo cargar la serie", onRetry = { reload++ }); return@Column }
                     seasons.isEmpty() -> { com.jox3.iptvexo.tv.ui.StatusBox("Esta serie aún no tiene episodios"); return@Column }
                 }
-                LazyRow(Modifier.safeFocusRestorer(), horizontalArrangement = Arrangement.spacedBy(10.dp),
+                LazyRow(Modifier.focusMemoryGroup(seasonMem), horizontalArrangement = Arrangement.spacedBy(10.dp),
                     contentPadding = PaddingValues(vertical = 6.dp, horizontal = 4.dp)) {
                     items(seasons.keys.toList(), key = { it }) { s ->
                         val sel = s == season
                         FocusSurface(
                             onClick = { season = s },
-                            modifier = Modifier.height(36.dp),
+                            modifier = Modifier.height(36.dp).focusMemoryItem(seasonMem, s),
                             shape = RoundedCornerShape(18.dp),
                             focusedScale = 1.05f,
                             container = if (sel) Jx.Text else Color.Transparent,
@@ -238,12 +244,13 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     }
                 }
                 LazyColumn(
-                    Modifier.fillMaxSize().padding(top = 10.dp).focusRequester(mainReq).safeFocusRestorer(),
+                    Modifier.fillMaxSize().padding(top = 10.dp).focusRequester(mainReq).focusMemoryGroup(epMem),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(bottom = 32.dp, top = 4.dp, start = 4.dp, end = 4.dp),
                 ) {
                     items(episodes, key = { it.id }) { ep ->
-                        EpisodeRow(ep, cover, lib.positionOf(ep.id).let { (p, d) -> if (d > 0) p.toFloat() / d else 0f }) {
+                        EpisodeRow(ep, cover, lib.positionOf(ep.id).let { (p, d) -> if (d > 0) p.toFloat() / d else 0f },
+                            Modifier.focusMemoryItem(epMem, ep.id)) {
                             host.player.playEpisode(seriesId, title, cover, allEpisodes, allEpisodes.indexOf(ep))
                         }
                     }
@@ -255,11 +262,11 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
 }
 
 @Composable
-private fun EpisodeRow(ep: Episode, cover: String, watched: Float, onClick: () -> Unit) {
+private fun EpisodeRow(ep: Episode, cover: String, watched: Float, modifier: Modifier = Modifier, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     FocusSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(if (focused) 104.dp else 78.dp).onFocusChanged { focused = it.isFocused },
+        modifier = modifier.fillMaxWidth().height(if (focused) 104.dp else 78.dp).onFocusChanged { focused = it.isFocused },
         focusedScale = 1.02f,
         focusedContainer = Jx.SurfaceHi,
     ) {

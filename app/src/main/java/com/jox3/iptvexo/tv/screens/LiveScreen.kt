@@ -30,6 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jox3.iptvexo.tv.ui.rememberFocusMemory
+import com.jox3.iptvexo.tv.ui.focusMemoryItem
+import com.jox3.iptvexo.tv.ui.focusMemoryGroup
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -91,6 +94,9 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     val playingReq = remember { FocusRequester() }
     val listState = rememberLazyListState()
     var firstFocusDone by remember { mutableStateOf(false) }
+    val catMem = rememberFocusMemory()
+    val chMem = rememberFocusMemory()
+    LaunchedEffect(selected?.id) { catMem.remember(selected?.id) }
     // Vista: lista con vista previa, o guía por horas (se recuerda)
     val ctx = LocalContext.current
     val uiPrefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
@@ -163,7 +169,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
             }
             Text("CATEGORÍAS", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
-                Modifier.fillMaxSize().safeFocusRestorer(),
+                Modifier.fillMaxSize().focusMemoryGroup(catMem),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -174,7 +180,8 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                     LaunchedEffect(focused) { if (focused && !isSel) { delay(350); selected = c } }
                     FocusSurface(
                         onClick = { selected = c; runCatching { channelsReq.requestFocus() } },
-                        modifier = Modifier.fillMaxWidth().height(38.dp).onFocusChanged { focused = it.isFocused },
+                        modifier = Modifier.fillMaxWidth().height(38.dp).focusMemoryItem(catMem, c.id)
+                            .onFocusChanged { focused = it.isFocused },
                         focusedScale = 1f,
                         container = if (isSel) Jx.SurfaceHi else androidx.compose.ui.graphics.Color.Transparent,
                         content = if (isSel) Jx.Accent else Jx.TextSoft,
@@ -214,7 +221,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                 list == null -> StatusBox("No se pudo cargar la categoría", onRetry = { reload++ })
                 list.isEmpty() -> StatusBox(if (selected?.id == FAV_ID) "Mantén OK sobre un canal para agregarlo a favoritos" else "Sin canales")
                 else -> LazyColumn(
-                    Modifier.fillMaxSize().focusRequester(channelsReq).safeFocusRestorer(),
+                    Modifier.fillMaxSize().focusRequester(channelsReq).focusMemoryGroup(chMem),
                     state = listState,
                     contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -225,7 +232,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                             ch, repo,
                             favorite = lib.isFavorite("live", ch.id),
                             playing = playing,
-                            modifier = if (playing) Modifier.focusRequester(playingReq) else Modifier,
+                            modifier = (if (playing) Modifier.focusRequester(playingReq) else Modifier).focusMemoryItem(chMem, ch.id),
                             onFocus = { focusedChannel = ch },
                             onClick = {
                                 if (playing) live.enterFullscreen()

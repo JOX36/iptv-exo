@@ -1,32 +1,61 @@
 package com.jox3.iptvexo.tv.ui
 
 import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 
 /**
- * Al volver a una lista, el foco regresa al elemento donde estaba.
+ * Memoria del foco de una lista: al volver a ella (con las flechas o desde un
+ * detalle), el foco cae en el último elemento donde estaba.
  *
- * Reemplaza a `focusRestorer()` de Compose, que en esta versión cierra la app
- * ("Release should only be called once") cuando una lista desaparece o cambia
- * mientras guarda el foco (p. ej. "Continuar viendo" al salir de una película).
- * Esta versión no "fija" elementos de la lista: si el elemento ya no existe,
- * simplemente entra al primero visible.
+ * Por qué no se usa `focusRestorer()` de Compose: en esta versión cierra la app
+ * cuando la lista cambia ("Release should only be called once"), y la variante
+ * con saveFocusedChild/restoreFocusedChild pide el foco DENTRO del movimiento de
+ * foco y luego lo cancela: el control parecía "pegado" al volver a las categorías.
+ *
+ * Aquí la lista solo REDIRIGE el movimiento al elemento recordado, y únicamente si
+ * ese elemento existe en pantalla; si no, entra al más cercano como siempre.
  */
-fun Modifier.safeFocusRestorer(): Modifier = composed {
-    val req = remember { FocusRequester() }
-    this
-        .focusRequester(req)
-        .focusProperties {
-            exit = { runCatching { req.saveFocusedChild() }; FocusRequester.Default }
-            enter = {
-                if (runCatching { req.restoreFocusedChild() }.getOrDefault(false)) FocusRequester.Cancel
-                else FocusRequester.Default
-            }
-        }
-        .focusGroup()
+@Stable
+class FocusMemory {
+    internal val req = FocusRequester()
+    internal var key by mutableStateOf<Any?>(null)
+    internal var attached = 0
+    /** Recordar un elemento de antemano (p. ej. la categoría seleccionada). */
+    fun remember(key: Any?) { this.key = key }
 }
+
+@Composable
+fun rememberFocusMemory(): FocusMemory = remember { FocusMemory() }
+
+/** La lista entera: al entrar, va al elemento recordado. */
+fun Modifier.focusMemoryGroup(mem: FocusMemory): Modifier = this
+    .focusProperties { enter = { if (mem.attached > 0) mem.req else FocusRequester.Default } }
+    .focusGroup()
+
+/** Cada elemento de la lista (con su clave única). */
+@Composable
+fun Modifier.focusMemoryItem(mem: FocusMemory, key: Any): Modifier {
+    val isTarget by remember(mem, key) { derivedStateOf { mem.key == key } }
+    DisposableEffect(isTarget) {
+        if (isTarget) mem.attached++
+        onDispose { if (isTarget) mem.attached-- }
+    }
+    return this
+        .then(if (isTarget) Modifier.focusRequester(mem.req) else Modifier)
+        .onFocusChanged { if (it.hasFocus) mem.key = key }
+}
+
+/** Fila sin memoria (sus elementos los ponen otras pantallas): entra al elemento más cercano. */
+fun Modifier.safeFocusRestorer(): Modifier = this.focusGroup()
