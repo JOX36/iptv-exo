@@ -3,6 +3,7 @@ package com.jox3.iptvexo.tv.ui
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -76,10 +77,14 @@ fun FocusSurface(
     ring: Boolean = true,
     body: @Composable BoxScope.() -> Unit,
 ) {
+    // El aro de foco lo dibuja la app (Modifier.border), no el borde de tv-material:
+    // ese borde cierra la app si la tarjeta mide casi cero en algún cuadro
+    // ("Width and height must be greater than or equal to zero").
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = container,
@@ -90,11 +95,11 @@ fun FocusSurface(
             pressedContentColor = focusedContent,
         ),
         scale = ClickableSurfaceDefaults.scale(focusedScale = focusedScale, pressedScale = focusedScale * 0.97f),
-        border = ClickableSurfaceDefaults.border(
-            focusedBorder = if (ring) Border(BorderStroke(2.dp, Jx.Accent), inset = 0.dp, shape = shape) else Border.None,
-        ),
-        content = body,
-    )
+        border = ClickableSurfaceDefaults.border(),
+    ) {
+        body()
+        if (ring && focused) Box(Modifier.matchParentSize().border(2.dp, Jx.Accent, shape))
+    }
 }
 
 /**
@@ -241,9 +246,10 @@ fun ActionButton(
     primary: Boolean = false,
     progress: Float? = null,
 ) {
+    var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        modifier = modifier.height(44.dp),
+        modifier = modifier.height(44.dp).onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = RoundedCornerShape(10.dp)),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = if (primary) Jx.Accent else Color(0x99101722),
@@ -251,12 +257,14 @@ fun ActionButton(
             focusedContainerColor = if (primary) Jx.Accent else Jx.Text,
             focusedContentColor = if (primary) Jx.OnAccent else Jx.Bg,
         ),
-        border = ClickableSurfaceDefaults.border(
-            border = if (primary) Border.None else Border(BorderStroke(1.dp, Color(0xFF3A4B5E)), shape = RoundedCornerShape(10.dp)),
-            focusedBorder = Border(BorderStroke(2.dp, Jx.Text), inset = (-3).dp, shape = RoundedCornerShape(12.dp)),
-        ),
+        border = ClickableSurfaceDefaults.border(),
         scale = ClickableSurfaceDefaults.scale(focusedScale = 1.06f),
     ) {
+        // Borde propio (ver FocusSurface)
+        when {
+            focused -> Box(Modifier.matchParentSize().border(2.dp, if (primary) Jx.Text else Jx.Accent, RoundedCornerShape(10.dp)))
+            !primary -> Box(Modifier.matchParentSize().border(1.dp, Color(0xFF3A4B5E), RoundedCornerShape(10.dp)))
+        }
         Column(
             Modifier.padding(horizontal = 20.dp).fillMaxHeight(),
             verticalArrangement = Arrangement.Center,
@@ -268,7 +276,7 @@ fun ActionButton(
             if (progress != null) {
                 Spacer(Modifier.height(4.dp))
                 Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0x40000000), RoundedCornerShape(1.dp))) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(progress).background(androidx.tv.material3.LocalContentColor.current))
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(progress.coerceIn(0f, 1f)).background(androidx.tv.material3.LocalContentColor.current))
                 }
             }
         }

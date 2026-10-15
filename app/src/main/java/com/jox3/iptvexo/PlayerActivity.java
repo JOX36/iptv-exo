@@ -948,6 +948,7 @@ public class PlayerActivity extends AppCompatActivity {
 
             @Override
             public void onPlayerError(androidx.media3.common.PlaybackException e) {
+                if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(PlayerActivity.this); }
                 if (!isVodType() && e.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW
                         && player != null) {
                     // Nos quedamos atrás de la ventana en vivo (pausa larga, red lenta):
@@ -2947,6 +2948,7 @@ public class PlayerActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(this); }
         if (castContext != null) {
             if (castStateListener != null) castContext.removeCastStateListener(castStateListener);
             if (castSessionListener != null) {

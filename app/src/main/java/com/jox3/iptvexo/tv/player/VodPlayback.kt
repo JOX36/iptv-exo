@@ -98,6 +98,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     }
 
     fun close() {
+        if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
         saveProgress()
         main.removeCallbacks(ticker)
         exo?.stop()
@@ -277,6 +278,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
 
         override fun onPlayerError(error: PlaybackException) {
+            if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
             val p = exo ?: return
             // Cortes de red: reintentar desde el mismo punto, con espera creciente
             if (retries < 3) {
