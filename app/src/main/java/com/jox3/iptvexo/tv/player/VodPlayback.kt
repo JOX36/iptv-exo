@@ -80,6 +80,13 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     var sleepAt by mutableLongStateOf(0L); private set
     /** El apagado automático se cumplió: la reproducción quedó en pausa. */
     var sleepFired by mutableStateOf(false); private set
+    /** Reproductor pequeño en una esquina: sigue sonando mientras se elige otra cosa. */
+    var mini by mutableStateOf(false); private set
+    /** Pantalla completa (abierto y no minimizado). */
+    val full: Boolean get() = open && !mini
+
+    fun minimize() { if (open) mini = true }
+    fun maximize() { if (open) mini = false }
 
     /** Lo llama la interfaz antes de abrir (detener el canal en vivo, recordar el foco). */
     var beforeOpen: () -> Unit = {}
@@ -92,6 +99,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         if (items.isEmpty()) return
         beforeOpen()
         saveProgress()
+        mini = false
         queue = items
         index = start.coerceIn(0, items.lastIndex)
         load(resume = true)
@@ -104,6 +112,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         exo?.stop()
         exo?.clearMediaItems()
         queue = emptyList()
+        mini = false
         status = null; failed = false; ended = false; playing = false
         sleepAt = 0L; sleepFired = false
         lib.refreshProgress()

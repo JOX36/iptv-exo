@@ -74,6 +74,8 @@ import java.util.Locale
 private const val FAV_ID = "__fav"
 private const val RECENT_ID = "__recent"
 private val clock = SimpleDateFormat("h:mm a", Locale("es"))
+private fun allCatsFor(catList: List<Category>?) =
+    listOf(Category(FAV_ID, "Favoritos"), Category(RECENT_ID, "Recientes")) + catList.orEmpty()
 private fun hhmm(ms: Long) = if (ms > 0) clock.format(Date(ms)) else ""
 
 /**
@@ -113,13 +115,23 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     val chrome = LocalShellChrome.current
     var compact by remember { mutableStateOf(false) }
     val catListReq = remember { FocusRequester() }
+    val catListState = rememberLazyListState()
     var expandTick by remember { mutableIntStateOf(0) }
+    var pendingChannelFocus by remember { mutableStateOf(false) }
     fun expand() { if (compact) { compact = false; expandTick++ } }
     LaunchedEffect(compact) { chrome.railHidden = compact }
     DisposableEffect(Unit) { onDispose { chrome.railHidden = false } }
+    /** Lleva el foco a la categoría abierta (desplazando la lista hasta ella). */
+    suspend fun focusSelectedCategory() {
+        delay(16)
+        val idx = allCatsFor(cats?.getOrNull()).indexOfFirst { it.id == selected?.id }
+        if (idx >= 0) runCatching { catListState.scrollToItem((idx - 3).coerceAtLeast(0)) }
+        delay(30)
+        runCatching { catListReq.requestFocus() }
+    }
     LaunchedEffect(expandTick) {
         if (expandTick == 0) return@LaunchedEffect
-        delay(40); runCatching { catListReq.requestFocus() }
+        focusSelectedCategory()
     }
     BackHandler(enabled = compact && !live.fullscreen) { expand() }
     val leftExpands = Modifier.onPreviewKeyEvent { ev ->
@@ -129,15 +141,18 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     }
 
     val catList = cats?.getOrNull()
-    val allCats = remember(catList) {
-        listOf(Category(FAV_ID, "Favoritos"), Category(RECENT_ID, "Recientes")) + catList.orEmpty()
-    }
-    // Primera categoría real al entrar
+    val allCats = remember(catList) { allCatsFor(catList) }
+    // Al entrar: la última categoría elegida (se recuerda entre sesiones) y el foco en las
+    // categorías, para que el usuario elija; los canales se muestran al pulsar OK o ▶.
     LaunchedEffect(catList) {
         if (selected == null && catList != null) {
-            selected = if (lib.favorites.any { it.kind == "live" }) allCats[0] else catList.firstOrNull()
+            val saved = uiPrefs.getString("live_cat", null)
+            selected = allCats.firstOrNull { it.id == saved }
+                ?: if (lib.favorites.any { it.kind == "live" }) allCats[0] else catList.firstOrNull()
+            if (!firstFocusDone) { firstFocusDone = true; focusSelectedCategory() }
         }
     }
+    LaunchedEffect(selected?.id) { selected?.id?.let { uiPrefs.edit().putString("live_cat", it).apply() } }
 
     // La lista de favoritos solo se recalcula si se está viendo esa categoría
     val favKey = if (selected?.id == FAV_ID) lib.favorites.size else -1
@@ -196,6 +211,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
             Text("CATEGORÍAS", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
                 Modifier.fillMaxSize().focusRequester(catListReq).focusMemoryGroup(catMem),
+                state = catListState,
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -205,7 +221,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                     // Al detenerse sobre una categoría se carga sola (sin pulsar OK)
                     LaunchedEffect(focused) { if (focused && !isSel) { delay(350); selected = c } }
                     FocusSurface(
-                        onClick = { selected = c; runCatching { channelsReq.requestFocus() } },
+                        onClick = { selected = c; pendingChannelFocus = true },
                         modifier = Modifier.fillMaxWidth().height(38.dp).focusMemoryItem(catMem, c.id)
                             .onFocusChanged { focused = it.isFocused },
                         focusedScale = 1f,
@@ -219,11 +235,11 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
             }
         }
 
-        LaunchedEffect(list) {
-            if (!firstFocusDone && !list.isNullOrEmpty()) {
-                firstFocusDone = true
-                delay(50); runCatching { channelsReq.requestFocus() }
-            }
+        // OK en una categoría: cuando sus canales estén listos, el foco pasa a ellos
+        LaunchedEffect(list, pendingChannelFocus) {
+            if (!pendingChannelFocus || list == null) return@LaunchedEffect
+            pendingChannelFocus = false
+            if (list.isNotEmpty()) { delay(40); runCatching { channelsReq.requestFocus() } }
         }
 
         if (guideMode) {

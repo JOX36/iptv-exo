@@ -32,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import kotlinx.coroutines.delay
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.foundation.focusGroup
@@ -51,6 +54,7 @@ import com.jox3.iptvexo.tv.player.LivePlayback
 import com.jox3.iptvexo.tv.player.LocalLive
 import com.jox3.iptvexo.tv.player.VideoLayer
 import com.jox3.iptvexo.tv.player.VodFullscreen
+import com.jox3.iptvexo.tv.player.VodMini
 import com.jox3.iptvexo.tv.player.VodPlayback
 import androidx.tv.material3.Text
 import com.jox3.iptvexo.R
@@ -163,14 +167,6 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs); live.release(); vod.release(); host.player.vod = null }
     }
-    var wasVod by remember { mutableStateOf(false) }
-    LaunchedEffect(vod.open) {
-        if (vod.open) { wasVod = true; return@LaunchedEffect }
-        if (wasVod) {
-            wasVod = false
-            runCatching { if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus() }
-        }
-    }
     // Fuera de En vivo no hay vista previa: el canal se corta (salvo en pantalla completa)
     LaunchedEffect(section, live.fullscreen) {
         if (section != Route.Live && !live.fullscreen) live.stop()
@@ -190,7 +186,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     var lastBack by remember { mutableLongStateOf(0L) }
     BackHandler {
         when {
-            vod.open -> vod.close()
+            vod.full -> vod.close()
             live.fullscreen -> live.exitFullscreen()
             detail != null -> nav.back()
             section != Route.Home -> nav.open(Route.Home)
@@ -216,10 +212,30 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     // encima, una lista se recargó…), el control dejaba de responder. Se devuelve solo.
     val detailReq = remember { FocusRequester() }
     var anyFocus by remember { mutableStateOf(true) }
+    // Al salir de pantalla completa (cerrar o minimizar) el foco vuelve a donde estaba
+    var wasVod by remember { mutableStateOf(false) }
+    LaunchedEffect(vod.full) {
+        if (vod.full) { wasVod = true; return@LaunchedEffect }
+        if (wasVod) {
+            wasVod = false
+            delay(30)
+            runCatching {
+                if (detail != null) detailReq.requestFocus()
+                else if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus()
+            }
+        }
+    }
+    // El reproductor pequeño se cierra al cambiar de sección (p. ej. de Películas a Inicio o En vivo)
+    var miniSection by remember { mutableStateOf<Route?>(null) }
+    LaunchedEffect(vod.mini, section) {
+        if (!vod.mini) { miniSection = null; return@LaunchedEffect }
+        if (miniSection == null) miniSection = section
+        else if (miniSection != section) vod.close()
+    }
     LaunchedEffect(anyFocus) {
         if (anyFocus) return@LaunchedEffect
         delay(350)
-        if (anyFocus || vod.open || live.fullscreen) return@LaunchedEffect
+        if (anyFocus || vod.full || live.fullscreen) return@LaunchedEffect
         runCatching {
             if (detail != null) detailReq.requestFocus()
             else if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus()
@@ -228,9 +244,19 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
 
     val chrome = remember { ShellChrome() }
     CompositionLocalProvider(LocalLive provides live, LocalShellChrome provides chrome) {
-    Box(Modifier.fillMaxSize().background(Jx.Bg).onFocusChanged { anyFocus = it.hasFocus }) {
+    Box(Modifier.fillMaxSize().background(Jx.Bg).onFocusChanged { anyFocus = it.hasFocus }
+        // Con el reproductor pequeño: ⏯ pausa o sigue, ■ lo cierra
+        .onPreviewKeyEvent { ev ->
+            if (!vod.mini || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+            when (ev.nativeKeyEvent.keyCode) {
+                android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+                android.view.KeyEvent.KEYCODE_MEDIA_PAUSE -> { vod.togglePlay(); true }
+                android.view.KeyEvent.KEYCODE_MEDIA_STOP -> { vod.close(); true }
+                else -> false
+            }
+        }) {
         // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
-        val covered = detail != null || live.fullscreen || vod.open
+        val covered = detail != null || live.fullscreen || vod.full
         Box(
             Modifier
                 .fillMaxSize()
@@ -277,14 +303,16 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
         }
 
         // Películas y series
-        if (vod.open) {
+        if (vod.full) {
             Box(Modifier.fillMaxSize().zIndex(5f)) {
-                VodFullscreen(vod, repo.library) { vod.close() }
+                VodFullscreen(vod, repo.library, onExit = { vod.close() }, onMinimize = { vod.minimize() })
             }
+        } else if (vod.open) {
+            VodMini(vod, Modifier.align(Alignment.BottomEnd).padding(end = 28.dp, bottom = 24.dp).zIndex(4.5f))
         }
 
         // Controles del reproductor en vivo a pantalla completa
-        if (live.fullscreen && !vod.open) {
+        if (live.fullscreen && !vod.full) {
             Box(Modifier.fillMaxSize().zIndex(4f)) {
                 LiveFullscreen(live, repo) {
                     live.exitFullscreen()
