@@ -41,6 +41,11 @@ data class VodItem(
     val resume: SavedItem,
     /** Lo que se marca como favorito (la película, o la serie completa). */
     val fav: SavedItem,
+    /** Temporada (episodios; 0 = película). */
+    val season: Int = 0,
+    /** Sinopsis y datos cortos (año · género · duración), si se conocen al abrir. */
+    val plot: String = "",
+    val meta: String = "",
 )
 
 /**
@@ -87,6 +92,12 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
 
     fun minimize() { if (open) mini = true }
     fun maximize() { if (open) mini = false }
+
+    /** Sinopsis y datos que llegan después de abrir (p. ej. la ficha de la película). */
+    val extras = androidx.compose.runtime.mutableStateMapOf<String, Pair<String, String>>()
+    fun setExtras(id: String, plot: String, meta: String) { extras[id] = plot to meta }
+    fun plotOf(it: VodItem): String = extras[it.id]?.first?.ifBlank { null } ?: it.plot
+    fun metaOf(it: VodItem): String = extras[it.id]?.second?.ifBlank { null } ?: it.meta
 
     /** Lo llama la interfaz antes de abrir (detener el canal en vivo, recordar el foco). */
     var beforeOpen: () -> Unit = {}

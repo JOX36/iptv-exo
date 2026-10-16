@@ -1,6 +1,7 @@
 package com.jox3.iptvexo.tv
 
 import com.jox3.iptvexo.tv.data.Episode
+import kotlinx.coroutines.launch
 import com.jox3.iptvexo.tv.data.SavedItem
 import com.jox3.iptvexo.tv.data.TvRepo
 import com.jox3.iptvexo.tv.player.VodItem
@@ -8,6 +9,8 @@ import com.jox3.iptvexo.tv.player.VodPlayback
 
 /** Abre películas y episodios en el reproductor de la interfaz TV (VodPlayback). */
 class PlayerLauncher {
+
+    private val scope = kotlinx.coroutines.MainScope()
 
     var repo: TvRepo? = null
     var vod: VodPlayback? = null
@@ -19,6 +22,12 @@ class PlayerLauncher {
         if (player.open && player.item?.id == id) { player.maximize(); return }
         val item = SavedItem("movie", id, name, poster, ext = ext, categoryId = categoryId)
         player.open(listOf(VodItem(r.api.movieUrl(id, ext), name, "Película", poster, id, item, item)), 0)
+        // La sinopsis y los datos llegan después (no retrasan el inicio del video)
+        scope.launch {
+            val info = runCatching { r.api.movieInfo(id) }.getOrNull() ?: return@launch
+            player.setExtras(id, info.plot, listOfNotNull(info.year.ifBlank { null }, info.genre.ifBlank { null },
+                info.duration.ifBlank { null }, info.rating.ifBlank { null }?.let { "★ $it" }).joinToString(" · "))
+        }
     }
 
     /** Reproduce un episodio con la serie completa en cola (siguiente episodio automático). */
@@ -32,7 +41,7 @@ class PlayerLauncher {
             val img = e.image.ifBlank { cover }
             val resume = SavedItem("episode", e.id, episodeName(seriesName, e), img, ext = e.ext, seriesId = seriesId)
             VodItem(r.api.episodeUrl(e.id, e.ext), episodeName(seriesName, e).substringAfter(" · "), seriesName,
-                img, e.id, resume, fav)
+                img, e.id, resume, fav, season = e.season, plot = e.plot, meta = e.duration)
         }, index)
     }
 

@@ -60,7 +60,8 @@ private const val RECENT_ID = "__recent"
 
 /** Video en vivo con controles (vertical u horizontal). */
 @Composable
-fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier,
+              onOption: (String) -> Unit = {}, isFavorite: Boolean = false) {
     var controls by remember { mutableStateOf(true) }
     var touched by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(controls, touched, live.current?.id) {
@@ -100,7 +101,14 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                 }
                 RoundIcon(R.drawable.ic_next, "Canal siguiente", bg = Color(0x80070A0F)) { live.zap(+1); touched = System.currentTimeMillis() }
             }
-            Row(Modifier.align(Alignment.BottomEnd).padding(4.dp)) {
+            Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 12.dp, end = 4.dp, bottom = if (fullscreen) 10.dp else 4.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                // En pantalla completa, las mismas opciones del reproductor en vivo de la TV
+                if (fullscreen) LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    liveOptions(isFavorite).forEach { (key, label, icon) ->
+                        item(key = key) { OverlayPill(label, icon) { touched = System.currentTimeMillis(); onOption(key) } }
+                    }
+                } else Spacer(Modifier.weight(1f))
                 RoundIcon(R.drawable.ic_fullscreen, if (fullscreen) "Salir de pantalla completa" else "Pantalla completa",
                     onClick = if (fullscreen) onBack else onFullscreen)
             }
@@ -151,10 +159,19 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
             lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
         }
 
-        Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill("Canales", tab == 0) { tab = 0 }
-            Pill("Guía", tab == 1) { tab = 1 }
+        var sheet by remember { mutableStateOf<String?>(null) }
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { Pill("Canales", tab == 0) { tab = 0 } }
+            item { Pill("Guía", tab == 1) { tab = 1 } }
+            if (ch != null) {
+                item { Pill("Información", false, icon = R.drawable.tv_ic_info) { sheet = "info" } }
+                item { Pill("Audio", false, icon = R.drawable.ic_audio) { sheet = "audio" } }
+                item { Pill("Subtítulos", false, icon = R.drawable.ic_subs) { sheet = "subs" } }
+                item { Pill("Imagen", false, icon = R.drawable.ic_resize) { sheet = "picture" } }
+                item { Pill("Recargar", false, icon = R.drawable.tv_ic_restart) { live.reload() } }
+            }
         }
+        LiveSheets(live, repo, sheet) { sheet = null }
 
         if (tab == 0) {
             val chipState = rememberLazyListState()
@@ -274,4 +291,73 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
             }
         }
     }
+}
+
+/** Opciones del reproductor en vivo (las mismas de la TV). */
+internal fun liveOptions(favorite: Boolean): List<Triple<String, String, Int>> = listOf(
+    Triple("channels", "Canales", R.drawable.tv_ic_list),
+    Triple("info", "Información", R.drawable.tv_ic_info),
+    Triple("audio", "Audio", R.drawable.ic_audio),
+    Triple("subs", "Subtítulos", R.drawable.ic_subs),
+    Triple("picture", "Imagen", R.drawable.ic_resize),
+    Triple("fav", if (favorite) "En favoritos" else "Favorito", if (favorite) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star),
+    Triple("reload", "Recargar", R.drawable.tv_ic_restart),
+)
+
+/** Hojas de opciones del canal en vivo. */
+@Composable
+fun LiveSheets(live: LivePlayback, repo: TvRepo, sheet: String?, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val ch = live.current
+    when (sheet) {
+        "audio" -> TrackSheet(live.player, live.tracksVersion, androidx.media3.common.C.TRACK_TYPE_AUDIO, onDismiss)
+        "subs" -> TrackSheet(live.player, live.tracksVersion, androidx.media3.common.C.TRACK_TYPE_TEXT, onDismiss)
+        "picture" -> PictureSheet(live.resizeMode, { live.resizeMode = it }, onDismiss)
+        "info" -> if (ch != null) {
+            val version by repo.epgVersion
+            val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+            val list = epg.orEmpty()
+            val now = repo.nowPlaying(list)
+            val next = repo.nextAfter(list, now)
+            InfoSheet(
+                title = now?.title ?: ch.name,
+                subtitle = listOfNotNull(ch.name, now?.let { "${clock(it.start)} – ${clock(it.end)}" },
+                    next?.let { "Después: ${clock(it.start)} ${it.title}" }).joinToString(" · "),
+                body = now?.description.orEmpty(),
+                tech = techInfoFor(ctx, live, repo, ch), onDismiss = onDismiss)
+        }
+        "channels" -> androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface) {
+            val list = live.channels
+            val start = list.indexOfFirst { it.id == ch?.id }.coerceAtLeast(0)
+            val state = rememberLazyListState(initialFirstVisibleItemIndex = (start - 2).coerceAtLeast(0))
+            Text(live.group.ifBlank { "Canales" }, style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp))
+            LazyColumn(state = state, contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 24.dp)) {
+                itemsIndexed(list, key = { _, c -> c.id }) { _, c ->
+                    ChannelRow(c, repo, playing = c.id == ch?.id, favorite = repo.library.isFavorite("live", c.id),
+                        onClick = { live.play(c, list, live.group); onDismiss() },
+                        onLongClick = { repo.library.toggleFavorite(SavedItem("live", c.id, c.name, c.logo, categoryId = c.categoryId)) })
+                }
+            }
+        }
+    }
+}
+
+private fun techInfoFor(ctx: android.content.Context, live: LivePlayback, repo: TvRepo, ch: Channel) =
+    com.jox3.iptvexo.tv.player.techInfo(ctx, live.player, repo.api.liveUrl(ch.id))
+
+/** Canal en vivo a pantalla completa (horizontal), con sus hojas de opciones. */
+@Composable
+fun LiveFullscreenPhone(live: LivePlayback, repo: TvRepo, onBack: () -> Unit) {
+    var sheet by remember { mutableStateOf<String?>(null) }
+    val ch = live.current
+    val fav = ch != null && repo.library.isFavorite("live", ch.id)
+    LiveVideo(live, fullscreen = true, onFullscreen = {}, onBack = onBack, modifier = Modifier.fillMaxSize(), isFavorite = fav,
+        onOption = { key ->
+            when (key) {
+                "fav" -> ch?.let { repo.library.toggleFavorite(SavedItem("live", it.id, it.name, it.logo, categoryId = it.categoryId)) }
+                "reload" -> live.reload()
+                else -> sheet = key
+            }
+        })
+    LiveSheets(live, repo, sheet) { sheet = null }
 }

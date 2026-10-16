@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ModalBottomSheet
@@ -58,6 +59,7 @@ import androidx.media3.ui.PlayerView
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.data.LibraryStore
 import com.jox3.iptvexo.tv.player.VodPlayback
+import com.jox3.iptvexo.tv.player.techInfo
 import com.jox3.iptvexo.tv.player.trackLabel
 import com.jox3.iptvexo.tv.ui.Jx
 import com.jox3.iptvexo.tv.ui.RemoteImage
@@ -202,7 +204,8 @@ fun SeekSlider(vod: VodPlayback, modifier: Modifier = Modifier) {
 
 /** Controles sobre el video de película/serie (vertical u horizontal). */
 @Composable
-fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier,
+             onOption: (String) -> Unit = {}) {
     var controls by remember { mutableStateOf(true) }
     var touched by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(controls, touched, vod.playing) {
@@ -235,11 +238,18 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
                     size = 62.dp, bg = Color(0xEEEAF4FA), tint = Jx.Bg, iconSize = 26.dp) { vod.togglePlay(); touched = System.currentTimeMillis() }
                 RoundIcon(R.drawable.ic_ffw10, "Adelantar 10 segundos", bg = Color(0x80070A0F)) { vod.seekBy(10_000); touched = System.currentTimeMillis() }
             }
-            Row(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(start = 12.dp, end = 4.dp, bottom = 2.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                SeekSlider(vod, Modifier.weight(1f))
-                RoundIcon(R.drawable.ic_fullscreen, if (fullscreen) "Salir de pantalla completa" else "Pantalla completa",
-                    onClick = if (fullscreen) onBack else onFullscreen)
+            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(bottom = if (fullscreen) 10.dp else 2.dp)) {
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SeekSlider(vod, Modifier.weight(1f))
+                    RoundIcon(R.drawable.ic_fullscreen, if (fullscreen) "Salir de pantalla completa" else "Pantalla completa",
+                        onClick = if (fullscreen) onBack else onFullscreen)
+                }
+                // En pantalla completa, las mismas opciones del reproductor de TV
+                if (fullscreen) LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    vodOptions(vod).forEach { (key, label, icon) ->
+                        item(key = key) { OverlayPill(label, icon) { touched = System.currentTimeMillis(); onOption(key) } }
+                    }
+                }
             }
         }
     }
@@ -253,26 +263,39 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
 fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onClose: () -> Unit) {
     val cur = vod.item ?: return
     var sheet by remember { mutableStateOf<String?>(null) }
+    val isMovie = cur.season == 0 && vod.queue.size == 1
+    // Temporadas de la serie en reproducción: se cambian sin salir del reproductor
+    val seasons = remember(vod.queue) { vod.queue.map { it.season }.distinct().sorted() }
+    var season by remember(vod.queue) { mutableIntStateOf(cur.season) }
     Column(Modifier.fillMaxSize().background(Jx.Bg)) {
         VodVideo(vod, fullscreen = false, onFullscreen = onFullscreen, onBack = onClose,
-            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f), onOption = { sheet = it })
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             item {
                 Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(if (cur.subtitle == "Película") cur.title else cur.subtitle, style = PType.H1, color = Jx.Text)
-                    Text(if (cur.subtitle == "Película") "Película" else cur.title, style = PType.Small, color = Jx.Muted, maxLines = 2)
+                    Text(if (isMovie) cur.title else cur.subtitle, style = PType.H1, color = Jx.Text)
+                    val meta = vod.metaOf(cur)
+                    Text(listOf(if (isMovie) "Película" else cur.title, meta).filter { it.isNotBlank() }.joinToString(" · "),
+                        style = PType.Small, color = Jx.Muted, maxLines = 2)
                 }
             }
             item {
                 val isFav = lib.isFavorite(cur.fav.kind, cur.fav.id)
                 LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    item { Pill("Audio", false, icon = R.drawable.ic_audio) { sheet = "audio" } }
-                    item { Pill("Subtítulos", false, icon = R.drawable.ic_subs) { sheet = "subs" } }
-                    item { Pill(speedLabel(vod.speed).let { if (it == "Normal") "Velocidad" else it }, abs(vod.speed - 1f) > 0.01f) { sheet = "speed" } }
-                    item { Pill(if (vod.sleepAt != 0L) "Apagado activo" else "Apagado", vod.sleepAt != 0L, icon = R.drawable.ic_stop) { sheet = "sleep" } }
-                    item { Pill(if (isFav) "En favoritos" else "Favorito", isFav,
+                    vodOptions(vod).filter { it.first != "next" }.forEach { (key, label, icon) ->
+                        item(key = key) {
+                            Pill(label, (key == "speed" && abs(vod.speed - 1f) > 0.01f) || (key == "sleep" && vod.sleepAt != 0L), icon = icon) { sheet = key }
+                        }
+                    }
+                    item(key = "fav") { Pill(if (isFav) "En favoritos" else "Favorito", isFav,
                         icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star) { lib.toggleFavorite(cur.fav) } }
                 }
+            }
+            // Sinopsis (películas y episodios)
+            val plot = vod.plotOf(cur)
+            item {
+                Text(plot.ifBlank { if (isMovie) "Cargando sinopsis…" else "" }, style = PType.Body, color = Jx.TextSoft,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
             }
             val next = vod.queue.getOrNull(vod.index + 1)
             if (next != null) item {
@@ -291,7 +314,13 @@ fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onC
             }
             if (vod.queue.size > 1) {
                 item { SectionTitle("Episodios", Modifier.padding(top = 6.dp, bottom = 8.dp)) }
+                if (seasons.size > 1) item {
+                    LazyRow(contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(seasons.size) { k -> val sn = seasons[k]; Pill("Temporada $sn", sn == season) { season = sn } }
+                    }
+                }
                 itemsIndexed(vod.queue, key = { _, it -> it.id }) { i, ep ->
+                    if (seasons.size > 1 && ep.season != season) return@itemsIndexed
                     val playing = i == vod.index
                     val (p, d) = lib.positionOf(ep.id)
                     Row(
@@ -314,15 +343,97 @@ fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onC
             }
         }
     }
+    VodSheets(vod, sheet) { sheet = null }
+}
+
+/** Opciones del reproductor de películas y series (las mismas de la TV). */
+internal fun vodOptions(vod: VodPlayback): List<Triple<String, String, Int>> = buildList {
+    if (vod.hasNext) add(Triple("next", "Siguiente", R.drawable.ic_next))
+    add(Triple("audio", "Audio", R.drawable.ic_audio))
+    add(Triple("subs", "Subtítulos", R.drawable.ic_subs))
+    add(Triple("speed", speedLabel(vod.speed).let { if (it == "Normal") "Velocidad" else it }, R.drawable.ic_ffw10))
+    add(Triple("sleep", if (vod.sleepAt != 0L) "Apagado activo" else "Apagado", R.drawable.ic_stop))
+    add(Triple("picture", "Imagen", R.drawable.ic_resize))
+    add(Triple("info", "Información", R.drawable.tv_ic_info))
+}
+
+/** Pastilla translúcida sobre el video (pantalla completa). */
+@Composable
+fun OverlayPill(label: String, icon: Int, onClick: () -> Unit) {
+    Row(
+        Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xCC111923)).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(icon), null, Modifier.size(16.dp), tint = Jx.TextSoft)
+        Text(label, style = PType.Label, color = Jx.Text, maxLines = 1)
+    }
+}
+
+/** Formato de imagen. */
+@Composable
+fun PictureSheet(mode: Int, onSet: (Int) -> Unit, onDismiss: () -> Unit) {
+    ChoiceSheet("Imagen", listOf(
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT to "Ajustar (sin recortar)",
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Ampliar (llenar recortando)",
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL to "Estirar",
+    ).map { (m, label) -> Triple(label, m == mode) { onSet(m) } }, onDismiss)
+}
+
+/** Información: título, sinopsis/programa y datos técnicos. */
+@Composable
+fun InfoSheet(title: String, subtitle: String, body: String, tech: List<Pair<String, String>>, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface) {
+        LazyColumn(Modifier.padding(horizontal = 22.dp), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            item { Text(title, style = PType.H1, color = Jx.Text) }
+            if (subtitle.isNotBlank()) item { Text(subtitle, style = PType.Small, color = Jx.Muted) }
+            if (body.isNotBlank()) item { Text(body, style = PType.Body, color = Jx.TextSoft) }
+            item { Text("INFORMACIÓN TÉCNICA", style = PType.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(top = 10.dp)) }
+            items(tech.size) { k ->
+                val (label, value) = tech[k]
+                Row(Modifier.fillMaxWidth()) {
+                    Text(label, style = PType.Label, color = Jx.Muted, modifier = Modifier.width(120.dp))
+                    Text(value.ifBlank { "—" }, style = PType.Label, color = Jx.Text)
+                }
+            }
+        }
+    }
+}
+
+/** Hojas de opciones del reproductor de películas y series. */
+@Composable
+fun VodSheets(vod: VodPlayback, sheet: String?, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val cur = vod.item
     when (sheet) {
-        "audio" -> TrackSheet(vod.player, vod.tracksVersion, C.TRACK_TYPE_AUDIO) { sheet = null }
-        "subs" -> TrackSheet(vod.player, vod.tracksVersion, C.TRACK_TYPE_TEXT) { sheet = null }
+        "next" -> { LaunchedEffect(Unit) { vod.next(); onDismiss() } }
+        "picture" -> PictureSheet(vod.resizeMode, { vod.resizeMode = it }, onDismiss)
+        "info" -> if (cur != null) InfoSheet(
+            title = if (cur.season == 0 && vod.queue.size == 1) cur.title else cur.subtitle,
+            subtitle = listOf(if (cur.season == 0 && vod.queue.size == 1) "Película" else cur.title, vod.metaOf(cur)).filter { it.isNotBlank() }.joinToString(" · "),
+            body = vod.plotOf(cur), tech = techInfo(ctx, vod.player, cur.url), onDismiss = onDismiss)
+        else -> VodChoiceSheets(vod, sheet, onDismiss)
+    }
+}
+
+@Composable
+private fun VodChoiceSheets(vod: VodPlayback, sheet: String?, onDismiss: () -> Unit) {
+    when (sheet) {
+        "audio" -> TrackSheet(vod.player, vod.tracksVersion, C.TRACK_TYPE_AUDIO) { onDismiss() }
+        "subs" -> TrackSheet(vod.player, vod.tracksVersion, C.TRACK_TYPE_TEXT) { onDismiss() }
         "speed" -> ChoiceSheet("Velocidad", listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f).map { s ->
-            Triple(speedLabel(s), abs(s - vod.speed) < 0.01f) { vod.setPlaybackSpeed(s) } }) { sheet = null }
+            Triple(speedLabel(s), abs(s - vod.speed) < 0.01f) { vod.setPlaybackSpeed(s) } }) { onDismiss() }
         "sleep" -> ChoiceSheet("Apagado automático", listOf(0, 15, 30, 45, 60, 90, 120, -1).map { m ->
             Triple(when (m) { 0 -> "Desactivado"; -1 -> "Al terminar este video"; else -> "En $m minutos" },
-                (m == 0 && vod.sleepAt == 0L) || (m == -1 && vod.sleepAt < 0)) { vod.setSleep(m) } }) { sheet = null }
+                (m == 0 && vod.sleepAt == 0L) || (m == -1 && vod.sleepAt < 0)) { vod.setSleep(m) } }) { onDismiss() }
     }
+}
+
+/** Película o serie a pantalla completa (horizontal), con sus hojas de opciones. */
+@Composable
+fun VodFullscreenPhone(vod: VodPlayback, onBack: () -> Unit) {
+    var sheet by remember { mutableStateOf<String?>(null) }
+    VodVideo(vod, fullscreen = true, onFullscreen = {}, onBack = onBack, modifier = Modifier.fillMaxSize(), onOption = { sheet = it })
+    VodSheets(vod, sheet) { sheet = null }
 }
 
 /** Hoja inferior con opciones (la elegida lleva ✓). */
