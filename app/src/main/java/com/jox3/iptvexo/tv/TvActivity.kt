@@ -1,6 +1,5 @@
 package com.jox3.iptvexo.tv
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -12,7 +11,6 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.jox3.iptvexo.App
-import com.jox3.iptvexo.MainActivity
 import com.jox3.iptvexo.PlayerSafety
 import com.jox3.iptvexo.NetClient
 import com.jox3.iptvexo.Updater
@@ -24,7 +22,7 @@ import com.jox3.iptvexo.tv.ui.JoxTheme
  */
 class TvActivity : ComponentActivity(), TvHost {
 
-    override val player = PlayerLauncher(this)
+    override val player = PlayerLauncher()
     private lateinit var updater: Updater
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -56,7 +54,7 @@ class TvActivity : ComponentActivity(), TvHost {
         if (crash.isEmpty()) return
         val ffmpegOff = !PlayerSafety.ffmpegAllowed(this)
         val msg = (if (ffmpegOff) "El audio avanzado (FFmpeg) se desactivó para evitar que vuelva a pasar. " +
-            "Puedes reactivarlo en Ajustes.\n\n" else "") + "Detalle técnico:\n" + crash.take(1500)
+            "Se volverá a activar solo con la próxima actualización.\n\n" else "") + "Detalle técnico:\n" + crash.take(1500)
         android.app.AlertDialog.Builder(this)
             .setTitle("La app se cerró la última vez")
             .setMessage(msg)
@@ -72,14 +70,6 @@ class TvActivity : ComponentActivity(), TvHost {
 
     override fun checkUpdates() = updater.checkNow()
     override fun appVersion(): String = updater.installedVersion()
-
-    /** Vuelve a la interfaz anterior (web) y la recuerda como preferida. */
-    override fun openClassicUi() {
-        getSharedPreferences(MainActivity.PREFS_UI, MODE_PRIVATE).edit()
-            .putBoolean(MainActivity.KEY_CLASSIC_TV, true).apply()
-        startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP))
-        finish()
-    }
 
     private fun hideSystemBars() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
