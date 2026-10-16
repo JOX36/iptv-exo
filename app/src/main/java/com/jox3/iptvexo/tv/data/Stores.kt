@@ -69,7 +69,11 @@ class LibraryStore(context: Context, accountKey: String) {
     fun addSearch(query: String) {
         val q = query.trim()
         if (q.length < 2) return
-        searchHistory.removeAll { it.equals(q, ignoreCase = true) }
+        // Mientras se escribe no se guardan los pedazos: "los" → "los simps" → "los simpson"
+        // queda solo "los simpson" (se quitan las búsquedas que eran el comienzo de esta,
+        // y si esta es el comienzo de una ya guardada, no se agrega).
+        if (searchHistory.any { it.length > q.length && it.startsWith(q, ignoreCase = true) }) return
+        searchHistory.removeAll { q.startsWith(it, ignoreCase = true) }
         searchHistory.add(0, q)
         while (searchHistory.size > 12) searchHistory.removeAt(searchHistory.size - 1)
         saveSearches()

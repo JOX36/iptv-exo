@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
@@ -207,14 +208,21 @@ fun LandscapeCard(
             container = Jx.Surface,
         ) {
             RemoteImage(image, title, Modifier.fillMaxSize())
+            // El nombre va SOBRE la imagen: siempre se ve, aunque la fila quede al borde de la pantalla
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))
+                    .padding(start = 10.dp, end = 10.dp, top = 18.dp, bottom = if (progress != null) 8.dp else 6.dp),
+            ) {
+                Text(title, style = Type.Label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (subtitle.isNotEmpty()) Text(subtitle, style = Type.Small, color = Color(0xFFD0DCE6), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (progress != null) {
                 Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x33FFFFFF))) {
-                    Box(Modifier.fillMaxHeight().fillMaxWidth(progress).background(if (focused) Jx.Accent else Jx.Muted))
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(progress.coerceIn(0f, 1f)).background(if (focused) Jx.Accent else Jx.Muted))
                 }
             }
         }
-        Text(title, style = Type.Label, color = if (focused) Jx.Text else Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (subtitle.isNotEmpty()) Text(subtitle, style = Type.Small, color = Jx.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 

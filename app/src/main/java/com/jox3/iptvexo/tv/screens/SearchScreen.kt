@@ -89,7 +89,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
     LaunchedEffect(results) {
         val r = results ?: return@LaunchedEffect
         if (r.isEmpty) return@LaunchedEffect
-        delay(3000)
+        delay(4000)
         lib.addSearch(query)
     }
 

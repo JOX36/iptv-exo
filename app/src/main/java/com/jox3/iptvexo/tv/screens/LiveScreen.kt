@@ -30,6 +30,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.jox3.iptvexo.tv.LocalShellChrome
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.activity.compose.BackHandler
 import com.jox3.iptvexo.tv.ui.rememberFocusMemory
 import com.jox3.iptvexo.tv.ui.focusMemoryItem
 import com.jox3.iptvexo.tv.ui.focusMemoryGroup
@@ -102,6 +107,27 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     val uiPrefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
     var guideMode by remember { mutableStateOf(uiPrefs.getString("live_view", "list") == "guide") }
 
+    // ── Vista compacta (como TiviMate) ──
+    // Al entrar a los canales se ocultan la barra lateral y las categorías: la vista
+    // previa crece. Atrás o ◀ desde los canales las vuelve a mostrar.
+    val chrome = LocalShellChrome.current
+    var compact by remember { mutableStateOf(false) }
+    val catListReq = remember { FocusRequester() }
+    var expandTick by remember { mutableIntStateOf(0) }
+    fun expand() { if (compact) { compact = false; expandTick++ } }
+    LaunchedEffect(compact) { chrome.railHidden = compact }
+    DisposableEffect(Unit) { onDispose { chrome.railHidden = false } }
+    LaunchedEffect(expandTick) {
+        if (expandTick == 0) return@LaunchedEffect
+        delay(40); runCatching { catListReq.requestFocus() }
+    }
+    BackHandler(enabled = compact && !live.fullscreen) { expand() }
+    val leftExpands = Modifier.onPreviewKeyEvent { ev ->
+        if (compact && ev.type == KeyEventType.KeyDown && ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT) {
+            expand(); true
+        } else false
+    }
+
     val catList = cats?.getOrNull()
     val allCats = remember(catList) {
         listOf(Category(FAV_ID, "Favoritos"), Category(RECENT_ID, "Recientes")) + catList.orEmpty()
@@ -151,7 +177,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
 
     Row(Modifier.fillMaxSize()) {
         // ── Categorías ──
-        Column(Modifier.width(210.dp).fillMaxHeight().background(Jx.Rail).padding(top = 27.dp)) {
+        if (!compact) Column(Modifier.width(210.dp).fillMaxHeight().background(Jx.Rail).padding(top = 27.dp)) {
             FocusSurface(
                 onClick = {
                     guideMode = !guideMode
@@ -169,7 +195,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
             }
             Text("CATEGORÍAS", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(start = 20.dp, bottom = 10.dp))
             LazyColumn(
-                Modifier.fillMaxSize().focusMemoryGroup(catMem),
+                Modifier.fillMaxSize().focusRequester(catListReq).focusMemoryGroup(catMem),
                 contentPadding = PaddingValues(start = 10.dp, end = 10.dp, bottom = 27.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
@@ -207,13 +233,17 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
                 list.isEmpty() -> Box(Modifier.weight(1f)) {
                     StatusBox(if (selected?.id == FAV_ID) "Mantén OK sobre un canal para agregarlo a favoritos" else "Sin canales")
                 }
-                else -> LiveGuide(repo, list, selected?.name.orEmpty(), listState, channelsReq, playingReq, Modifier.weight(1f))
+                else -> LiveGuide(repo, list, selected?.name.orEmpty(), listState, channelsReq, playingReq,
+                    Modifier.weight(1f).onFocusChanged { if (it.hasFocus) compact = true },
+                    onChannelLeft = { expand(); true })
             }
             return@Row
         }
 
         // ── Canales ──
-        Column(Modifier.width(340.dp).fillMaxHeight().padding(top = 27.dp)) {
+        Column(Modifier.width(if (compact) 380.dp else 340.dp).fillMaxHeight().padding(top = 27.dp, start = if (compact) 16.dp else 0.dp)
+            .onFocusChanged { if (it.hasFocus) compact = true }
+            .then(leftExpands)) {
             Text(selected?.name.orEmpty(), style = Type.H1, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(start = 20.dp, end = 16.dp, bottom = 10.dp))
             when {
