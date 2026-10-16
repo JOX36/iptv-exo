@@ -15,6 +15,8 @@ class PlayerLauncher {
     fun playMovie(id: String, name: String, poster: String, ext: String, categoryId: String = "") {
         val r = repo ?: return
         val player = vod ?: return
+        // Si ya se está viendo en el reproductor pequeño, solo se agranda (sin recargar)
+        if (player.open && player.item?.id == id) { player.maximize(); return }
         val item = SavedItem("movie", id, name, poster, ext = ext, categoryId = categoryId)
         player.open(listOf(VodItem(r.api.movieUrl(id, ext), name, "Película", poster, id, item, item)), 0)
     }
@@ -23,7 +25,8 @@ class PlayerLauncher {
     fun playEpisode(seriesId: String, seriesName: String, cover: String, all: List<Episode>, index: Int) {
         val r = repo ?: return
         val player = vod ?: return
-        if (all.getOrNull(index) == null) return
+        val ep = all.getOrNull(index) ?: return
+        if (player.open && player.item?.id == ep.id) { player.maximize(); return }
         val fav = SavedItem("series", seriesId, seriesName, cover)
         player.open(all.map { e ->
             val img = e.image.ifBlank { cover }

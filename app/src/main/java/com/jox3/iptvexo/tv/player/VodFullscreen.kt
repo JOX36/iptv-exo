@@ -73,6 +73,7 @@ private enum class VOpt(val label: String, val panel: Boolean, val enter: Boolea
     Picture("Imagen", true),
     Info("Información", true, enter = false),
     Favorite("Favorito", false),
+    Close("Cerrar", false),
 }
 
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
@@ -96,7 +97,7 @@ private fun sleepLabel(min: Int) = when (min) { 0 -> "Desactivado"; -1 -> "Al te
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit) {
+fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMinimize: () -> Unit = onExit) {
     val cur = vod.item ?: return
     var bars by remember { mutableStateOf(true) }
     var option by remember { mutableStateOf<VOpt?>(null) }
@@ -130,7 +131,8 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit) {
             dialog -> onExit()
             inPanel && option != null -> focusOptTick++
             bars -> hideAll()
-            else -> onExit()
+            // Atrás con los controles ocultos: sigue en un reproductor pequeño mientras eliges otra cosa
+            else -> onMinimize()
         }
     }
 
@@ -317,6 +319,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit) {
                                 VOpt.Picture -> R.drawable.ic_resize
                                 VOpt.Info -> R.drawable.tv_ic_info
                                 VOpt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
+                                VOpt.Close -> R.drawable.ic_close
                             },
                             selected = option == opt,
                             modifier = Modifier.focusRequester(optReqs.getValue(opt)).focusProperties {
@@ -328,6 +331,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit) {
                                     VOpt.Play -> vod.togglePlay()
                                     VOpt.Next -> vod.next()
                                     VOpt.Favorite -> lib.toggleFavorite(cur.fav)
+                                    VOpt.Close -> onExit()
                                     else -> if (opt.enter) runCatching { panelReq.requestFocus() }
                                 }
                             },
@@ -503,3 +507,47 @@ private fun codecName(mime: String?): String? = when (mime) {
 
 private fun bitrateLabel(b: Int): String? =
     if (b <= 0) null else if (b >= 1_000_000) String.format(Locale.US, "%.1f Mbps", b / 1_000_000f) else "${b / 1000} kbps"
+
+/**
+ * Reproductor pequeño (esquina inferior derecha) al pulsar Atrás en una película o
+ * serie: sigue reproduciendo mientras se navega. No recibe el foco; para volver a
+ * pantalla completa se abre de nuevo el mismo título (o ⏯ / ▶ del control).
+ */
+@OptIn(UnstableApi::class)
+@Composable
+fun VodMini(vod: VodPlayback, modifier: Modifier = Modifier) {
+    val cur = vod.item ?: return
+    Column(
+        modifier.width(300.dp).background(Color(0xF2070A0F), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)),
+    ) {
+        Box(Modifier.fillMaxWidth().height(169.dp).background(Color.Black)) {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        useController = false
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                        isFocusable = false
+                        isFocusableInTouchMode = false
+                        descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                    }
+                },
+                update = { v ->
+                    if (v.player !== vod.player) v.player = vod.player
+                    v.keepScreenOn = vod.playing
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+            val dur = vod.duration
+            if (dur > 0) {
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0x40FFFFFF))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth((vod.position.toFloat() / dur).coerceIn(0f, 1f)).background(Jx.Accent))
+                }
+            }
+        }
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(cur.title, style = Type.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(if (vod.playing) "Ábrelo de nuevo para verlo en grande · ⏯ pausa" else "En pausa · ⏯ para seguir",
+                style = Type.Small, color = Jx.Faint, maxLines = 1)
+        }
+    }
+}
