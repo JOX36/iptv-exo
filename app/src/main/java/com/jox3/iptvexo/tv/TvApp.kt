@@ -111,6 +111,10 @@ class Nav(private val stack: MutableList<Route>, private val beforeDetail: () ->
     fun back() { if (stack.size > 1) stack.removeAt(stack.size - 1) }
 }
 
+/** Lo que las pantallas pueden pedirle al marco: ocultar la barra lateral (En vivo compacto). */
+class ShellChrome { var railHidden by mutableStateOf(false) }
+val LocalShellChrome = androidx.compose.runtime.staticCompositionLocalOf { ShellChrome() }
+
 @Composable
 fun TvApp(host: TvHost) {
     val context = LocalContext.current
@@ -222,7 +226,8 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
         }
     }
 
-    CompositionLocalProvider(LocalLive provides live) {
+    val chrome = remember { ShellChrome() }
+    CompositionLocalProvider(LocalLive provides live, LocalShellChrome provides chrome) {
     Box(Modifier.fillMaxSize().background(Jx.Bg).onFocusChanged { anyFocus = it.hasFocus }) {
         // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
         val covered = detail != null || live.fullscreen || vod.open
@@ -235,7 +240,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
         ) {
           Box(Modifier.fillMaxSize().focusRequester(baseFocus).focusGroup()) {
             Row(Modifier.fillMaxSize()) {
-                Spacer(Modifier.width(RailCollapsed))
+                if (!chrome.railHidden) Spacer(Modifier.width(RailCollapsed))
                 Box(Modifier.weight(1f).fillMaxHeight()) {
                     key(section) {
                         when (section) {
@@ -251,7 +256,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
                     }
                 }
             }
-            Rail(section, nav, Modifier.zIndex(2f))
+            if (!chrome.railHidden) Rail(section, nav, Modifier.zIndex(2f))
           }
         }
 

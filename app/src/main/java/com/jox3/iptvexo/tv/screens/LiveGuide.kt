@@ -37,6 +37,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.KeyEventType
 import com.jox3.iptvexo.tv.ui.rememberFocusMemory
 import com.jox3.iptvexo.tv.ui.focusMemoryItem
 import com.jox3.iptvexo.tv.ui.focusMemoryGroup
@@ -121,6 +124,8 @@ fun LiveGuide(
     listReq: FocusRequester,
     playingReq: FocusRequester,
     modifier: Modifier = Modifier,
+    /** ◀ sobre la columna de canales (para mostrar las categorías). true = atendido. */
+    onChannelLeft: () -> Boolean = { false },
 ) {
     val live = LocalLive.current
     val lib = repo.library
@@ -175,7 +180,11 @@ fun LiveGuide(
                         ch, repo, start, end, nowMs, totalW, hScroll,
                         playing = playing,
                         favorite = lib.isFavorite("live", ch.id),
-                        chModifier = (if (playing) Modifier.focusRequester(playingReq) else Modifier).focusMemoryItem(chMem, ch.id),
+                        chModifier = (if (playing) Modifier.focusRequester(playingReq) else Modifier).focusMemoryItem(chMem, ch.id)
+                            .onPreviewKeyEvent { ev ->
+                                ev.type == KeyEventType.KeyDown &&
+                                    ev.nativeKeyEvent.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT && onChannelLeft()
+                            },
                         onFocus = { p -> focused = ch to p },
                         onClick = { if (playing) live.enterFullscreen() else live.play(ch, list, group) },
                         onLongClick = { lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId)) },
