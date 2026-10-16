@@ -56,6 +56,9 @@ public class MainActivity extends AppCompatActivity {
 
     // Almacén temporal de resultados grandes — se recogen desde JS con AndroidPlayer.getResult(id)
     // en lugar de inyectarlos como texto en evaluateJavascript (evita falta de memoria).
+    public static final String PREFS_UI = "ui_prefs";
+    public static final String KEY_CLASSIC_PHONE = "classic_phone";
+
     private final ConcurrentHashMap<String, String> resultStore = new ConcurrentHashMap<>();
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -70,6 +73,13 @@ public class MainActivity extends AppCompatActivity {
         if (isTvDevice()) {
             uiReady = true;
             startActivity(new Intent(this, com.jox3.iptvexo.tv.TvActivity.class));
+            finish();
+            return;
+        }
+        // Celular: interfaz nativa nueva, salvo que el usuario haya elegido la anterior (web)
+        if (!getSharedPreferences(PREFS_UI, MODE_PRIVATE).getBoolean(KEY_CLASSIC_PHONE, false)) {
+            uiReady = true;
+            startActivity(new Intent(this, com.jox3.iptvexo.phone.PhoneActivity.class));
             finish();
             return;
         }
@@ -207,6 +217,16 @@ public class MainActivity extends AppCompatActivity {
                 return com.jox3.iptvexo.tv.data.ExternalEpg.INSTANCE.lookupJson(MainActivity.this, name == null ? "" : name,
                         null, (long) fromSec, (long) toSec, hint.isEmpty() ? null : hint);
             } catch (Exception e) { return ""; }
+        }
+
+        /** Desde la interfaz anterior: volver a la interfaz nueva del celular. */
+        @JavascriptInterface
+        public void useNewPhoneUi() {
+            getSharedPreferences(PREFS_UI, MODE_PRIVATE).edit().putBoolean(KEY_CLASSIC_PHONE, false).apply();
+            runOnUiThread(() -> {
+                startActivity(new Intent(MainActivity.this, com.jox3.iptvexo.phone.PhoneActivity.class));
+                finish();
+            });
         }
 
         /** Botón "Buscar actualizaciones". */

@@ -60,6 +60,15 @@
 
         <!-- Interfaz nativa para Android TV / TV Box (Jetpack Compose for TV).
              La abre MainActivity al detectar un TV; no tiene icono propio. -->
+        <!-- Interfaz nativa del celular (Compose). Gira sin recrearse: el video no se corta -->
+        <activity
+            android:name=".phone.PhoneActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:screenOrientation="unspecified"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Tv" />
+
         <activity
             android:name=".tv.TvActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|smallestScreenSize|uiMode"
