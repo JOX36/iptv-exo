@@ -136,6 +136,7 @@ private enum class Opt(val label: String, val hasPanel: Boolean) {
     Audio("Audio", true),
     Subtitles("Subtítulos", true),
     Picture("Imagen", true),
+    Info("Información", true),
     Favorite("Favorito", false),
     Reload("Recargar", false),
 }
@@ -314,7 +315,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
         if (bars && o != null && o.hasPanel) {
             Box(
                 Modifier.align(Alignment.BottomStart).padding(bottom = 96.dp)
-                    .width(if (o == Opt.Channels) 400.dp else 340.dp)
+                    .width(when (o) { Opt.Channels -> 400.dp; Opt.Info -> 440.dp; else -> 340.dp })
                     .fillMaxHeight(if (o == Opt.Channels) 0.72f else 0.5f)
                     .onFocusChanged { inPanel = it.hasFocus }
                     // Al salir del panel hacia abajo se vuelve a SU opción (no a la más cercana);
@@ -335,6 +336,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     Opt.Audio -> TrackPanel(live.player, live.tracksVersion, C.TRACK_TYPE_AUDIO, panelReq)
                     Opt.Subtitles -> TrackPanel(live.player, live.tracksVersion, C.TRACK_TYPE_TEXT, panelReq)
                     Opt.Picture -> PicturePanel(live.resizeMode, { live.resizeMode = it }, panelReq)
+                    Opt.Info -> LiveInfoPanel(live, repo, ch)
                     else -> Unit
                 }
             }
@@ -364,6 +366,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 Opt.Picture -> R.drawable.ic_resize
                                 Opt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
                                 Opt.Reload -> R.drawable.tv_ic_restart
+                                Opt.Info -> R.drawable.tv_ic_info
                             },
                             selected = option == opt,
                             modifier = Modifier.focusRequester(optReqs.getValue(opt)),
@@ -605,4 +608,36 @@ private fun resizeLabel(mode: Int) = when (mode) {
     AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Imagen: ampliar"
     AspectRatioFrameLayout.RESIZE_MODE_FILL -> "Imagen: estirar"
     else -> "Imagen"
+}
+
+/** Información del canal: lo que dan ahora y después, y la información técnica. */
+@Composable
+private fun LiveInfoPanel(live: LivePlayback, repo: TvRepo, ch: Channel) {
+    @Suppress("UNUSED_VARIABLE") val v = live.tracksVersion
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+    val list = epg.orEmpty()
+    val now = repo.nowPlaying(list)
+    val next = repo.nextAfter(list, now)
+    // Refresco cada 2 s (búfer, resolución)
+    val tick by produceState(0) { while (true) { delay(2000); value++ } }
+    PanelBox("Información") {
+        @Suppress("UNUSED_VARIABLE") val t = tick
+        Text(ch.name, style = Type.Label, color = Jx.Muted)
+        if (now != null) {
+            Text("AHORA · ${hhmm(now.start)} – ${hhmm(now.end)}", style = Type.Eyebrow, color = Jx.Accent)
+            Text(now.title, style = Type.H2, color = Jx.Text)
+            if (now.description.isNotBlank()) Text(now.description, style = Type.Body, color = Jx.TextSoft, maxLines = 5, overflow = TextOverflow.Ellipsis)
+            if (next != null) Text("DESPUÉS · ${hhmm(next.start)}  ${next.title}", style = Type.Small, color = Jx.Muted)
+        } else Text("Este canal no tiene guía.", style = Type.Body, color = Jx.TextSoft)
+        Spacer(Modifier.height(6.dp))
+        Text("TÉCNICA", style = Type.Eyebrow, color = Jx.Muted)
+        techInfo(ctx, live.player, repo.api.liveUrl(ch.id)).forEach { (k, value) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                Text(k, style = Type.Label, color = Jx.Muted, modifier = Modifier.width(130.dp))
+                Text(value.ifBlank { "—" }, style = Type.Label, color = Jx.Text)
+            }
+        }
+    }
 }

@@ -148,8 +148,8 @@ private fun PhoneShell(
 
     Box(Modifier.fillMaxSize().background(if (fullscreen) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
         if (fullscreen) {
-            if (vod.open) VodVideo(vod, fullscreen = true, onFullscreen = {}, onBack = { act.exitLandscape() }, modifier = Modifier.fillMaxSize())
-            else LiveVideo(live, fullscreen = true, onFullscreen = {}, onBack = { act.exitLandscape() }, modifier = Modifier.fillMaxSize())
+            if (vod.open) VodFullscreenPhone(vod) { act.exitLandscape() }
+            else LiveFullscreenPhone(live, repo) { act.exitLandscape() }
             return@Box
         }
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {

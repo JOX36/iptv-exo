@@ -49,7 +49,6 @@ import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.Text
-import com.jox3.iptvexo.PlayerSafety
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.data.LibraryStore
 import com.jox3.iptvexo.tv.ui.FocusSurface
@@ -60,7 +59,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
-import kotlin.math.roundToInt
 
 /** Opciones de la barra inferior. Las que tienen panel lo muestran al recibir el foco. */
 private enum class VOpt(val label: String, val panel: Boolean, val enter: Boolean = panel) {
@@ -447,36 +445,21 @@ private fun SeekBar(vod: VodPlayback, modifier: Modifier, onFocused: () -> Unit,
     }
 }
 
-/** Información técnica (traída de JOX3 Verifier). */
+/** Información: sinopsis y datos del título + información técnica (de JOX3 Verifier). */
 @OptIn(UnstableApi::class)
 @Composable
 private fun InfoPanel(vod: VodPlayback) {
-    val p = vod.player
     @Suppress("UNUSED_VARIABLE") val tick = vod.position   // se refresca con el avance
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    PanelBox("Información técnica") {
-        val v = p?.videoFormat
-        val a = p?.audioFormat
-        if (v == null && a == null) Text("Espera a que el video empiece a reproducirse.", style = Type.Body, color = Jx.TextSoft)
-        if (v != null) InfoLine("Video", listOfNotNull(
-            if (v.width > 0) "${v.width}×${v.height}" else null,
-            codecName(v.sampleMimeType),
-            if (v.frameRate > 0) "${v.frameRate.roundToInt()} fps" else null,
-            bitrateLabel(v.bitrate),
-        ).joinToString("  ·  "))
-        if (a != null) InfoLine("Audio", listOfNotNull(
-            codecName(a.sampleMimeType),
-            when (a.channelCount) { 0 -> null; 1 -> "Mono"; 2 -> "Estéreo"; 6 -> "5.1"; 8 -> "7.1"; else -> "${a.channelCount} canales" },
-            if (a.sampleRate > 0) "${a.sampleRate / 1000} kHz" else null,
-            bitrateLabel(a.bitrate),
-        ).joinToString("  ·  "))
-        if (p != null) InfoLine("Búfer", "${p.totalBufferedDuration / 1000} s cargados")
-        val url = vod.item?.url.orEmpty()
-        val host = try { java.net.URI(url).let { u -> u.host + if (u.port > 0) ":${u.port}" else "" } } catch (e: Exception) { "" }
-        if (host.isNotBlank()) InfoLine("Servidor", host)
-        val ext = url.substringAfterLast('.', "").substringBefore('?').lowercase()
-        if (ext.isNotEmpty() && ext.length <= 5) InfoLine("Formato", ext.uppercase())
-        InfoLine("Audio avanzado", if (PlayerSafety.ffmpegAllowed(ctx)) "FFmpeg activo" else "FFmpeg desactivado")
+    val cur = vod.item ?: return
+    PanelBox("Información") {
+        val meta = vod.metaOf(cur)
+        if (meta.isNotBlank()) Text(meta, style = Type.Small, color = Jx.Muted)
+        val plot = vod.plotOf(cur)
+        if (plot.isNotBlank()) Text(plot, style = Type.Body, color = Jx.TextSoft, maxLines = 6, overflow = TextOverflow.Ellipsis)
+        Spacer(Modifier.height(6.dp))
+        Text("TÉCNICA", style = Type.Eyebrow, color = Jx.Muted)
+        techInfo(ctx, vod.player, cur.url).forEach { (k, v) -> InfoLine(k, v) }
     }
 }
 
@@ -488,25 +471,6 @@ private fun InfoLine(label: String, value: String) {
     }
 }
 
-private fun codecName(mime: String?): String? = when (mime) {
-    null -> null
-    "video/avc" -> "H.264"
-    "video/hevc" -> "H.265"
-    "video/mpeg2" -> "MPEG-2"
-    "video/x-vnd.on2.vp9" -> "VP9"
-    "video/av01" -> "AV1"
-    "audio/mp4a-latm" -> "AAC"
-    "audio/ac3" -> "Dolby Digital"
-    "audio/eac3" -> "Dolby Digital+"
-    "audio/true-hd" -> "Dolby TrueHD"
-    "audio/vnd.dts", "audio/vnd.dts.hd" -> "DTS"
-    "audio/mpeg", "audio/mpeg-L2" -> "MP3/MP2"
-    "audio/opus" -> "Opus"
-    else -> mime.substringAfter('/').uppercase()
-}
-
-private fun bitrateLabel(b: Int): String? =
-    if (b <= 0) null else if (b >= 1_000_000) String.format(Locale.US, "%.1f Mbps", b / 1_000_000f) else "${b / 1000} kbps"
 
 /**
  * Reproductor pequeño (esquina inferior derecha) al pulsar Atrás en una película o
