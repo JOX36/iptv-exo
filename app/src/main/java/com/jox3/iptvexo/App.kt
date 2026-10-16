@@ -59,11 +59,17 @@ object PlayerSafety {
     private const val PREFS = "jox3_player"
     private const val KEY_STARTING = "starting"
     private const val KEY_FFMPEG_OFF = "ffmpeg_off"
+    private const val KEY_OFF_VERSION = "ffmpeg_off_version"
+
+    private fun version(ctx: Context): String =
+        try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "" } catch (e: Exception) { "" }
 
     @JvmStatic
     fun markStarting(ctx: Context) {
         val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (sp.getBoolean(KEY_STARTING, false)) sp.edit().putBoolean(KEY_FFMPEG_OFF, true).commit()
+        if (sp.getBoolean(KEY_STARTING, false)) {
+            sp.edit().putBoolean(KEY_FFMPEG_OFF, true).putString(KEY_OFF_VERSION, version(ctx)).commit()
+        }
         sp.edit().putBoolean(KEY_STARTING, true).commit()
     }
 
@@ -73,16 +79,25 @@ object PlayerSafety {
         if (sp.getBoolean(KEY_STARTING, false)) sp.edit().putBoolean(KEY_STARTING, false).apply()
     }
 
+    /**
+     * FFmpeg se reactiva solo cuando llega una versión nueva de la app: así un
+     * arreglo se vuelve a probar sin que el usuario tenga que hacer nada.
+     */
     @JvmStatic
-    fun ffmpegAllowed(ctx: Context) =
-        !ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_FFMPEG_OFF, false)
+    fun ffmpegAllowed(ctx: Context): Boolean {
+        val sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (!sp.getBoolean(KEY_FFMPEG_OFF, false)) return true
+        if (sp.getString(KEY_OFF_VERSION, null) != version(ctx)) { resetFfmpeg(ctx); return true }
+        return false
+    }
 
     @JvmStatic
     fun disableFfmpeg(ctx: Context) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_FFMPEG_OFF, true).commit()
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_FFMPEG_OFF, true).putString(KEY_OFF_VERSION, version(ctx)).commit()
     }
 
-    /** Volver a intentar con FFmpeg (desde Ajustes). */
+    /** Volver a intentar con FFmpeg. */
     @JvmStatic
     fun resetFfmpeg(ctx: Context) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()

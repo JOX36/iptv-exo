@@ -93,7 +93,6 @@ interface TvHost {
     val player: PlayerLauncher
     fun checkUpdates()
     fun appVersion(): String
-    fun openClassicUi()
 }
 
 /** Navegación disponible para cada pantalla. */

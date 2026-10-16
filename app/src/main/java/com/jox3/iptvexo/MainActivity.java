@@ -20,9 +20,6 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.splashscreen.SplashScreen;
-import androidx.core.view.WindowCompat;
-import androidx.core.view.WindowInsetsCompat;
-import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.json.JSONObject;
 
@@ -40,8 +37,6 @@ public class MainActivity extends AppCompatActivity {
 
     private static final String TAG = "IPTV_EXO";
     /** Preferencia: usar la interfaz web anterior en TV en lugar de la nativa. */
-    public static final String PREFS_UI = "ui_prefs";
-    public static final String KEY_CLASSIC_TV = "classic_tv";
     private static final String UI_ORIGIN = "file:///android_asset/";
 
     private WebView webView;
@@ -71,9 +66,8 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         splash.setKeepOnScreenCondition(() -> !uiReady);
 
-        // En TV se usa la interfaz nativa nueva (Compose), salvo que el usuario
-        // haya elegido la anterior desde Ajustes.
-        if (isTvDevice() && !getSharedPreferences(PREFS_UI, MODE_PRIVATE).getBoolean(KEY_CLASSIC_TV, false)) {
+        // En TV / TV Box se usa siempre la interfaz nativa (Compose); el WebView es solo para celular.
+        if (isTvDevice()) {
             uiReady = true;
             startActivity(new Intent(this, com.jox3.iptvexo.tv.TvActivity.class));
             finish();
@@ -134,18 +128,7 @@ public class MainActivity extends AppCompatActivity {
 
         webView.addJavascriptInterface(new Bridge(), "AndroidPlayer");
 
-        // Detectar TV Box y cargar versión optimizada
-        if (isTvDevice()) {
-            // TV Box — forzar landscape fullscreen
-            setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-            WindowInsetsControllerCompat c =
-                WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
-            c.hide(WindowInsetsCompat.Type.systemBars());
-            c.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-            webView.loadUrl(UI_ORIGIN + "player_tv.html");
-        } else {
-            webView.loadUrl(UI_ORIGIN + "player.html");
-        }
+        webView.loadUrl(UI_ORIGIN + "player.html");
 
         // Buscar versión nueva al abrir (como mucho cada 12 h)
         updater = new Updater(this);
@@ -201,16 +184,6 @@ public class MainActivity extends AppCompatActivity {
         @JavascriptInterface
         public String appVersion() {
             return updater != null ? updater.installedVersion() : "";
-        }
-
-        /** Desde la interfaz anterior de TV: volver a la interfaz nativa nueva. */
-        @JavascriptInterface
-        public void useNewTvUi() {
-            getSharedPreferences(PREFS_UI, MODE_PRIVATE).edit().putBoolean(KEY_CLASSIC_TV, false).apply();
-            runOnUiThread(() -> {
-                startActivity(new Intent(MainActivity.this, com.jox3.iptvexo.tv.TvActivity.class));
-                finish();
-            });
         }
 
         /** Guía de internet: descarga la de los países de estas categorías (en segundo plano). */

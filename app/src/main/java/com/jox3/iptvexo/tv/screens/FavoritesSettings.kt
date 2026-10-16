@@ -16,10 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
-import com.jox3.iptvexo.PlayerSafety
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -135,21 +131,6 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("Buscar actualizaciones", host::checkUpdates, Modifier.fillMaxWidth().focusRequester(firstReq),
                 icon = R.drawable.tv_ic_update)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
-            ActionButton("Usar la interfaz anterior", host::openClassicUi, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list)
-            var newVod by remember { mutableStateOf(host.player.useNewVodPlayer) }
-            ActionButton(if (newVod) "Películas: reproductor nuevo" else "Películas: reproductor anterior", {
-                newVod = !newVod; host.player.useNewVodPlayer = newVod
-            }, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_play)
-            // Arranque seguro: si FFmpeg se apagó tras un cierre, permitir reactivarlo
-            val ctx = LocalContext.current
-            var ffmpegOff by remember { mutableStateOf(!PlayerSafety.ffmpegAllowed(ctx)) }
-            if (ffmpegOff) {
-                ActionButton("Reactivar audio avanzado (FFmpeg)", {
-                    PlayerSafety.resetFfmpeg(ctx); ffmpegOff = false
-                }, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update)
-                Text("Se apagó porque la app se cerró al reproducir. Sin él, algunos canales con audio AC-3/DTS pueden sonar mudos.",
-                    style = Type.Small, color = Jx.Faint)
-            }
             Text("JOX3 TV ${host.appVersion()}", style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(top = 8.dp))
             Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = Type.Small, color = Jx.Faint)
         }
