@@ -1,25 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Icono de la app (antes no tenía ninguno y Android mostraba el robot genérico) -->
+<!-- Icono para Android 5–7: mismo diseño en colores planos (sin degradados) -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#0A1420"
-        android:pathData="M24,6L84,6A18,18 0,0 1,102 24L102,84A18,18 0,0 1,84 102L24,102A18,18 0,0 1,6 84L6,24A18,18 0,0 1,24 6Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#00D4FF"
-        android:strokeWidth="5"
-        android:pathData="M26,34L82,34A6,6 0,0 1,88 40L88,76A6,6 0,0 1,82 82L26,82A6,6 0,0 1,20 76L20,40A6,6 0,0 1,26 34Z" />
-    <path
-        android:fillColor="#00D4FF"
-        android:strokeColor="#00D4FF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:pathData="M42,22L54,32L66,22" />
-    <path
-        android:fillColor="#00D4FF"
-        android:pathData="M47,46L67,58L47,70Z" />
+    <path android:fillColor="#0B1B2E" android:pathData="M24,6L84,6A18,18 0,0 1,102 24L102,84A18,18 0,0 1,84 102L24,102A18,18 0,0 1,6 84L6,24A18,18 0,0 1,24 6Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#6FE7FF" android:strokeWidth="3.5" android:strokeLineCap="round" android:pathData="M45,27L54,35L63,27" />
+    <path android:fillColor="#00B8F0" android:pathData="M33,35L75,35A8,8 0,0 1,83 43L83,69A8,8 0,0 1,75 77L33,77A8,8 0,0 1,25 69L25,43A8,8 0,0 1,33 35Z" />
+    <path android:fillColor="#07121F" android:pathData="M48,46.5Q48,44 50.2,45.3L63.5,53.6Q65.5,55 63.5,56.4L50.2,64.7Q48,66 48,63.5Z" />
+    <path android:fillColor="#FF5A4E" android:strokeColor="#07121F" android:strokeWidth="2" android:pathData="M76,42m-4.5,0a4.5,4.5 0,1 1,9 0a4.5,4.5 0,1 1,-9 0" />
+    <path android:fillColor="#5B8CFF" android:pathData="M45,80L63,80A2,2 0,0 1,65 82L65,82A2,2 0,0 1,63 84L45,84A2,2 0,0 1,43 82L43,82A2,2 0,0 1,45 80Z" />
 </vector>

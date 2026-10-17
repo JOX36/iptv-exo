@@ -384,7 +384,7 @@ fun PictureSheet(mode: Int, onSet: (Int) -> Unit, onDismiss: () -> Unit) {
 /** Información: título, sinopsis/programa y datos técnicos. */
 @Composable
 fun InfoSheet(title: String, subtitle: String, body: String, tech: List<Pair<String, String>>, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
+    PlayerSheet(onDismiss) {
         LazyColumn(Modifier.padding(horizontal = 22.dp), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Text(title, style = PType.H1, color = Jx.Text) }
             if (subtitle.isNotBlank()) item { Text(subtitle, style = PType.Small, color = Jx.Muted) }
@@ -435,7 +435,34 @@ private fun VodChoiceSheets(vod: VodPlayback, sheet: String?, onDismiss: () -> U
 fun VodFullscreenPhone(vod: VodPlayback, onBack: () -> Unit) {
     var sheet by remember { mutableStateOf<String?>(null) }
     VodVideo(vod, fullscreen = true, onFullscreen = {}, onBack = onBack, modifier = Modifier.fillMaxSize(), onOption = { sheet = it })
-    VodSheets(vod, sheet) { sheet = null }
+    androidx.compose.runtime.CompositionLocalProvider(LocalSidePanels provides true) { VodSheets(vod, sheet) { sheet = null } }
+}
+
+/** true dentro del reproductor a pantalla completa: los menús salen como panel lateral. */
+val LocalSidePanels = androidx.compose.runtime.compositionLocalOf { false }
+
+/**
+ * Menú del reproductor. En vertical: hoja inferior completa. A pantalla completa:
+ * panel translúcido pegado a la izquierda (como en la TV), con el video visible
+ * detrás; tocar fuera o Atrás lo cierra.
+ */
+@Composable
+fun PlayerSheet(onDismiss: () -> Unit, content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit) {
+    if (LocalSidePanels.current) {
+        androidx.activity.compose.BackHandler(onBack = onDismiss)
+        val none = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        Box(Modifier.fillMaxSize().clickable(interactionSource = none, indication = null, onClick = onDismiss)) {
+            Column(
+                Modifier.fillMaxHeight().width(400.dp)
+                    .background(Brush.horizontalGradient(listOf(Color(0xE0070A0F), Color(0xB3070A0F), Color(0x40070A0F))))
+                    .clickable(interactionSource = none, indication = null) { }
+                    .padding(top = 18.dp, bottom = 8.dp),
+                content = content,
+            )
+        }
+    } else {
+        ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet(), content = content)
+    }
 }
 
 /** Hojas inferiores siempre abiertas completas (no a medias): todo se ve sin arrastrar. */
@@ -445,7 +472,7 @@ fun fullSheet() = androidx.compose.material3.rememberModalBottomSheetState(skipP
 /** Hoja inferior con opciones (la elegida lleva ✓). */
 @Composable
 fun ChoiceSheet(title: String, options: List<Triple<String, Boolean, () -> Unit>>, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
+    PlayerSheet(onDismiss) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(title, style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
             options.forEach { (label, sel, action) ->
