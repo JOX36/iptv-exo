@@ -71,9 +71,10 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
     val info by produceState<com.jox3.iptvexo.tv.data.MovieInfo?>(null, movie.id) {
         value = runCatching { repo.api.movieInfo(movie.id) }.getOrNull()
     }
-    val similar by produceState(emptyList<Movie>(), movie.categoryId) {
-        value = runCatching { repo.movies(movie.categoryId) }.getOrDefault(emptyList())
-            .filter { it.id != movie.id }.take(16)
+    // Parecidas por género (no solo de la misma carpeta)
+    val similar by produceState(emptyList<Movie>(), movie.id, info) {
+        if (info == null) return@produceState
+        value = runCatching { repo.similarMovies(movie, info?.genre.orEmpty(), 16) }.getOrDefault(emptyList())
     }
     val progressVersion by lib.progressVersion
     val (pos, dur) = remember(progressVersion, movie.id) { lib.positionOf(movie.id) }

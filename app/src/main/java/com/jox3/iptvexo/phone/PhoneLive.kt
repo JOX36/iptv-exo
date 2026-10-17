@@ -126,6 +126,7 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
+    var catSheet by remember { mutableStateOf(false) }
     val cats by produceState<List<Category>?>(null) { value = runCatching { repo.categories(Section.LIVE) }.getOrDefault(emptyList()) }
     val allCats = remember(cats) { listOf(Category(FAV_ID, "★ Favoritos"), Category(RECENT_ID, "Recientes")) + cats.orEmpty() }
     var selected by remember { mutableStateOf<Category?>(null) }
@@ -164,18 +165,21 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
             item { Pill("Canales", tab == 0) { tab = 0 } }
             item { Pill("Guía", tab == 1) { tab = 1 } }
             if (ch != null) {
-                item { Pill("Información", false, icon = R.drawable.tv_ic_info) { sheet = "info" } }
-                item { Pill("Audio", false, icon = R.drawable.ic_audio) { sheet = "audio" } }
-                item { Pill("Subtítulos", false, icon = R.drawable.ic_subs) { sheet = "subs" } }
-                item { Pill("Imagen", false, icon = R.drawable.ic_resize) { sheet = "picture" } }
-                item { Pill("Recargar", false, icon = R.drawable.tv_ic_restart) { live.reload() } }
+                item { Pill("Información", false, icon = R.drawable.tv_ic_info, glass = true) { sheet = "info" } }
+                item { Pill("Audio", false, icon = R.drawable.ic_audio, glass = true) { sheet = "audio" } }
+                item { Pill("Subtítulos", false, icon = R.drawable.ic_subs, glass = true) { sheet = "subs" } }
+                item { Pill("Imagen", false, icon = R.drawable.ic_resize, glass = true) { sheet = "picture" } }
+                item { Pill("Recargar", false, icon = R.drawable.tv_ic_restart, glass = true) { live.reload() } }
             }
         }
         LiveSheets(live, repo, sheet) { sheet = null }
+        if (catSheet) CategorySheet(allCats, selected?.id, onPick = { selected = it; tab = 0 }) { catSheet = false }
 
         if (tab == 0) {
             val chipState = rememberLazyListState()
             LazyRow(state = chipState, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Todas las categorías en una lista vertical (sin desplazar tanto de lado)
+                item(key = "__all") { Pill("Categorías", false, icon = R.drawable.tv_ic_list) { catSheet = true } }
                 items(allCats, key = { it.id }) { c -> Pill(c.name, c.id == selected?.id) { selected = c } }
             }
             LaunchedEffect(cats, selected?.id) {
@@ -296,6 +300,7 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
 /** Opciones del reproductor en vivo (las mismas de la TV). */
 internal fun liveOptions(favorite: Boolean): List<Triple<String, String, Int>> = listOf(
     Triple("channels", "Canales", R.drawable.tv_ic_list),
+    Triple("guide", "Guía", R.drawable.tv_ic_live),
     Triple("info", "Información", R.drawable.tv_ic_info),
     Triple("audio", "Audio", R.drawable.ic_audio),
     Triple("subs", "Subtítulos", R.drawable.ic_subs),
@@ -326,7 +331,11 @@ fun LiveSheets(live: LivePlayback, repo: TvRepo, sheet: String?, onDismiss: () -
                 body = now?.description.orEmpty(),
                 tech = techInfoFor(ctx, live, repo, ch), onDismiss = onDismiss)
         }
-        "channels" -> androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface) {
+        "guide" -> if (ch != null) androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
+            Text("Guía · ${ch.name}", style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp))
+            Box(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) { ChannelGuideList(ch, repo) }
+        }
+        "channels" -> androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
             val list = live.channels
             val start = list.indexOfFirst { it.id == ch?.id }.coerceAtLeast(0)
             val state = rememberLazyListState(initialFirstVisibleItemIndex = (start - 2).coerceAtLeast(0))
