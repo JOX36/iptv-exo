@@ -439,6 +439,8 @@ fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (Strin
 
 @Composable
 fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccount: () -> Unit, onLogout: () -> Unit, onBack: () -> Unit) {
+    var askDelete by remember { mutableStateOf(false) }
+    if (askDelete) DeleteAccountDialog(account, onConfirm = { askDelete = false; onLogout() }, onDismiss = { askDelete = false })
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
     val date = SimpleDateFormat("d 'de' MMMM 'de' yyyy", Locale("es"))
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -475,13 +477,29 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
                 PButton("Agregar otra cuenta", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onAddAccount)
-                PButton("Cerrar sesión de esta cuenta", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout, primary = false, onClick = onLogout)
+                PButton("Eliminar esta cuenta", Modifier.fillMaxWidth(), icon = R.drawable.ic_delete, primary = false) { askDelete = true }
                 PButton("Usar la interfaz anterior", Modifier.fillMaxWidth(), primary = false) { act.openClassicUi() }
                 Text("JOX3 TV ${act.appVersion()}", style = PType.Small, color = Jx.Faint, modifier = Modifier.padding(top = 6.dp))
                 Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = PType.Small, color = Jx.Faint)
             }
         }
     }
+}
+
+/** Confirmación antes de borrar una cuenta del equipo. */
+@Composable
+private fun DeleteAccountDialog(account: Account, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Jx.Surface,
+        title = { Text("¿Eliminar esta cuenta?", style = PType.H2, color = Jx.Text) },
+        text = {
+            Text("${account.label} · ${account.user}\nSe borra del equipo junto con sus favoritos e historial. Puedes volver a agregarla cuando quieras.",
+                style = PType.Body, color = Jx.TextSoft)
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onConfirm) { Text("Eliminar", color = Jx.Live, style = PType.Label) } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancelar", color = Jx.TextSoft, style = PType.Label) } },
+    )
 }
 
 @Composable
@@ -496,7 +514,11 @@ private fun InfoLine(label: String, value: String, color: Color = Jx.Text) {
 
 @Composable
 fun PhoneLogin(accounts: AccountStore, onLogin: (Account) -> Unit, onCancel: (() -> Unit)?) {
-    val saved = remember { accounts.all() }
+    var saved by remember { mutableStateOf(accounts.all()) }
+    var toDelete by remember { mutableStateOf<Account?>(null) }
+    toDelete?.let { a ->
+        DeleteAccountDialog(a, onConfirm = { accounts.delete(a); saved = accounts.all(); toDelete = null }, onDismiss = { toDelete = null })
+    }
     var host by remember { mutableStateOf("") }
     var user by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
@@ -551,9 +573,13 @@ fun PhoneLogin(accounts: AccountStore, onLogin: (Account) -> Unit, onCancel: (()
         if (saved.isNotEmpty()) {
             item { Text("CUENTAS GUARDADAS", style = PType.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(top = 14.dp)) }
             items(saved, key = { it.key }) { acc ->
-                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Jx.Surface).clickable { onLogin(acc) }.padding(14.dp)) {
-                    Text(acc.label, style = PType.Label, color = Jx.Text)
-                    Text(acc.user, style = PType.Small, color = Jx.Faint)
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Jx.Surface).clickable { onLogin(acc) }
+                    .padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(acc.label, style = PType.Label, color = Jx.Text)
+                        Text(acc.user, style = PType.Small, color = Jx.Faint)
+                    }
+                    RoundIcon(R.drawable.ic_delete, "Eliminar cuenta", tint = Jx.Muted) { toDelete = acc }
                 }
             }
         }

@@ -1,6 +1,19 @@
 package com.jox3.iptvexo.tv.screens
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import com.jox3.iptvexo.tv.ui.FocusSurface
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,8 +67,7 @@ import com.jox3.iptvexo.tv.ui.StatusBox
 import com.jox3.iptvexo.tv.ui.Type
 
 private data class HomeData(
-    val hero: Movie?,
-    val heroInfo: MovieInfo?,
+    val heroes: List<Movie>,
     val movies: List<Movie>,
     val series: List<Series>,
 )
@@ -68,9 +80,9 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         value = runCatching {
             val movies = repo.latestMovies()
             val series = repo.latestSeries()
-            val hero = movies.firstOrNull()
-            val info = hero?.let { runCatching { repo.api.movieInfo(it.id) }.getOrNull() }
-            HomeData(hero, info, movies, series)
+            // Destacado rotativo: las películas más recientes que tienen imagen
+            val heroes = movies.filter { it.poster.isNotBlank() }.take(8).ifEmpty { movies.take(8) }
+            HomeData(heroes, movies, series)
         }
     }
     val lib = repo.library
@@ -90,10 +102,10 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
         // ── Destacado ──
-        if (data.hero != null) item(key = "hero") {
-            Hero(data.hero, data.heroInfo, heroReq,
-                onPlay = { host.player.playMovie(data.hero.id, data.hero.name, data.hero.poster, data.heroInfo?.ext?.ifBlank { null } ?: data.hero.ext, data.hero.categoryId) },
-                onInfo = { nav.open(Route.MovieDetail(data.hero)) })
+        if (data.heroes.isNotEmpty()) item(key = "hero") {
+            HeroCarousel(repo, data.heroes, heroReq,
+                onPlay = { m, info -> host.player.playMovie(m.id, m.name, m.poster, info?.ext?.ifBlank { null } ?: m.ext, m.categoryId) },
+                onInfo = { m -> nav.open(Route.MovieDetail(m)) })
         } else item(key = "pad") { Box(Modifier.height(Safe.V)) }
 
         // ── Continuar viendo ──
@@ -121,7 +133,7 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
             val chans = recents.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
             ShelfRow("Canales recientes") {
                 itemsIndexed(chans, key = { _, c -> "c" + c.id }) { i, c ->
-                    ChannelTile(c.name, c.logo, onClick = { live.playFullscreen(chans, i, "Recientes") })
+                    LiveCard(c, repo, onClick = { live.playFullscreen(chans, i, "Recientes") })
                 }
             }
         }
@@ -149,14 +161,75 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         }
     }
 
-    LaunchedEffect(data.hero) { runCatching { heroReq.requestFocus() } }
+    LaunchedEffect(data.heroes.isNotEmpty()) { runCatching { heroReq.requestFocus() } }
+}
+
+/**
+ * Destacado rotativo (como en el celular): cambia de película cada 8 s con un fundido.
+ * El foco se queda en "Reproducir", que siempre abre la película que se está mostrando.
+ */
+@Composable
+private fun HeroCarousel(
+    repo: TvRepo, movies: List<Movie>, playReq: FocusRequester,
+    onPlay: (Movie, MovieInfo?) -> Unit, onInfo: (Movie) -> Unit,
+) {
+    var index by remember { mutableIntStateOf(0) }
+    val infos = remember { mutableStateMapOf<String, MovieInfo?>() }
+    LaunchedEffect(movies) {
+        while (true) {
+            delay(8_000)
+            index = (index + 1) % movies.size
+        }
+    }
+    val m = movies[index.coerceIn(0, movies.lastIndex)]
+    LaunchedEffect(m.id) {
+        if (!infos.containsKey(m.id)) infos[m.id] = runCatching { repo.api.movieInfo(m.id) }.getOrNull()
+        // La siguiente se adelanta para que el cambio sea inmediato
+        val next = movies[(index + 1) % movies.size]
+        if (!infos.containsKey(next.id)) infos[next.id] = runCatching { repo.api.movieInfo(next.id) }.getOrNull()
+    }
+    Box(Modifier.fillMaxWidth().height(330.dp)) {
+        Crossfade(targetState = m, animationSpec = tween(600), label = "hero") { cur ->
+            Box(Modifier.fillMaxSize()) {
+                val info = infos[cur.id]
+                RemoteImage(info?.backdrop?.ifBlank { null } ?: info?.poster?.ifBlank { null } ?: cur.poster, cur.name,
+                    Modifier.fillMaxSize(), showInitials = false)
+            }
+        }
+        Hero(m, infos[m.id], playReq, index, movies.size, onPlay = { onPlay(m, infos[m.id]) }, onInfo = { onInfo(m) })
+    }
+}
+
+/** Canal reciente: logo grande y lo que está pasando ahora, con su avance. */
+@Composable
+private fun LiveCard(c: Channel, repo: TvRepo, onClick: () -> Unit) {
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(c), c.id, version) { if (value.isNullOrEmpty()) value = repo.epg(c) }
+    val now = epg?.let { repo.nowPlaying(it) }
+    val fmt = remember { SimpleDateFormat("h:mm a", Locale("es")) }
+    FocusSurface(onClick = onClick, modifier = Modifier.width(300.dp).height(132.dp), focusedScale = 1.05f, container = Jx.Surface) {
+        Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                RemoteImage(c.logo, c.name, Modifier.size(width = 84.dp, height = 56.dp).clip(RoundedCornerShape(10.dp))
+                    .background(Jx.SurfaceHi).padding(4.dp), scale = ContentScale.Fit)
+                Column(Modifier.weight(1f)) {
+                    Text(c.name, style = Type.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(if (now != null) "${fmt.format(Date(now.start))} – ${fmt.format(Date(now.end))}" else "En vivo",
+                        style = Type.Small, color = Jx.Muted, maxLines = 1)
+                }
+            }
+            Text(now?.title ?: "Sin guía", style = Type.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Jx.Line)) {
+                if (now != null) Box(Modifier.fillMaxHeight().fillMaxWidth(now.progress()).background(Jx.Accent))
+            }
+        }
+    }
 }
 
 @Composable
-private fun Hero(movie: Movie, info: MovieInfo?, playReq: FocusRequester, onPlay: () -> Unit, onInfo: () -> Unit) {
-    val backdrop = info?.backdrop?.ifBlank { null } ?: info?.poster?.ifBlank { null } ?: movie.poster
+private fun Hero(movie: Movie, info: MovieInfo?, playReq: FocusRequester, index: Int, count: Int, onPlay: () -> Unit, onInfo: () -> Unit) {
+    // La imagen de fondo la pone HeroCarousel (con fundido); aquí van los degradados y el texto
     Box(Modifier.fillMaxWidth().height(330.dp)) {
-        RemoteImage(backdrop, movie.name, Modifier.fillMaxSize(), showInitials = false)
         Box(Modifier.fillMaxSize().background(
             Brush.horizontalGradient(0f to Jx.Bg, 0.35f to Jx.Bg.copy(alpha = 0.92f), 0.75f to Jx.Bg.copy(alpha = 0.2f), 1f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(
@@ -181,6 +254,15 @@ private fun Hero(movie: Movie, info: MovieInfo?, playReq: FocusRequester, onPlay
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 6.dp)) {
                 ActionButton("Reproducir", onPlay, Modifier.focusRequester(playReq), icon = R.drawable.tv_ic_play, primary = true)
                 ActionButton("Más información", onInfo, icon = R.drawable.tv_ic_info)
+            }
+            if (count > 1) {
+                // Puntos: cuál destacado se está viendo
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    repeat(count) { k ->
+                        Box(Modifier.height(4.dp).width(if (k == index) 18.dp else 6.dp)
+                            .background(if (k == index) Jx.Accent else Color(0x55FFFFFF), RoundedCornerShape(2.dp)))
+                    }
+                }
             }
         }
     }

@@ -9,6 +9,7 @@ import org.json.JSONObject
 
 /** Cuentas guardadas y la cuenta activa. */
 class AccountStore(context: Context) {
+    private val app = context.applicationContext
     private val prefs: SharedPreferences = context.getSharedPreferences("tv_accounts", Context.MODE_PRIVATE)
 
     fun all(): List<Account> {
@@ -38,6 +39,16 @@ class AccountStore(context: Context) {
             .forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
         val ed = prefs.edit().putString("list", arr.toString())
         if (prefs.getString("current", null) == acc.key) ed.remove("current")
+        ed.apply()
+    }
+
+    /** Elimina la cuenta del equipo junto con sus favoritos, recientes e historial. */
+    fun delete(acc: Account) {
+        remove(acc)
+        val lib = app.getSharedPreferences("tv_library", Context.MODE_PRIVATE)
+        val ns = acc.key.hashCode().toString() + "."
+        val ed = lib.edit()
+        lib.all.keys.filter { it.startsWith(ns) }.forEach { ed.remove(it) }
         ed.apply()
     }
 

@@ -133,14 +133,13 @@ fun TvApp(host: TvHost) {
     key(acc.key) {
         val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
         host.player.repo = repo
-        MainShell(repo, host, acc) {
-            accounts.logout(); account = null
-        }
+        MainShell(repo, host, acc, onLogout = { accounts.logout(); account = null },
+            onDelete = { accounts.delete(acc); account = null })
     }
 }
 
 @Composable
-private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit) {
+private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit, onDelete: () -> Unit) {
     val context = LocalContext.current
     val stack = remember { mutableStateListOf<Route>(Route.Home) }
     val baseFocus = remember { FocusRequester() }
@@ -276,7 +275,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
                             Route.Movies -> MoviesScreen(repo, nav)
                             Route.Series -> SeriesScreen(repo, nav)
                             Route.Favorites -> FavoritesScreen(repo, nav, host)
-                            Route.Settings -> SettingsScreen(repo, host, account, onLogout)
+                            Route.Settings -> SettingsScreen(repo, host, account, onLogout, onDelete)
                             else -> Unit
                         }
                     }
@@ -308,7 +307,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
                 VodFullscreen(vod, repo.library, onExit = { vod.close() }, onMinimize = { vod.minimize() })
             }
         } else if (vod.open) {
-            VodMini(vod, Modifier.align(Alignment.BottomEnd).padding(end = 28.dp, bottom = 24.dp).zIndex(4.5f))
+            VodMini(vod, Modifier.align(Alignment.TopEnd).padding(end = 28.dp, top = 20.dp).zIndex(4.5f))
         }
 
         // Controles del reproductor en vivo a pantalla completa

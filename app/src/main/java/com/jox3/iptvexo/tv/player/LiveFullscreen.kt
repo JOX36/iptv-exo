@@ -284,8 +284,8 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                 }
             }
     ) {
-        if (bars) {
-            // ── Arriba: canal + guía ──
+        if (bars && option != Opt.Info) {
+            // ── Arriba: canal + guía (con Información abierta, el panel ya trae todo) ──
             Column(
                 Modifier.fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
@@ -314,9 +314,12 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
         val o = option
         if (bars && o != null && o.hasPanel) {
             Box(
-                Modifier.align(Alignment.BottomStart).padding(bottom = 96.dp)
-                    .width(when (o) { Opt.Channels -> 400.dp; Opt.Info -> 440.dp; else -> 340.dp })
-                    .fillMaxHeight(if (o == Opt.Channels) 0.72f else 0.5f)
+                (if (o == Opt.Info)
+                    // Información: ocupa toda la altura (de arriba hasta la barra de opciones)
+                    Modifier.align(Alignment.TopStart).padding(bottom = 96.dp).fillMaxWidth(0.66f).fillMaxHeight()
+                else Modifier.align(Alignment.BottomStart).padding(bottom = 96.dp)
+                    .width(if (o == Opt.Channels) 400.dp else 340.dp)
+                    .fillMaxHeight(if (o == Opt.Channels) 0.72f else 0.5f))
                     .onFocusChanged { inPanel = it.hasFocus }
                     // Al salir del panel hacia abajo se vuelve a SU opción (no a la más cercana);
                     // por los costados o arriba no se sale.
@@ -622,21 +625,59 @@ private fun LiveInfoPanel(live: LivePlayback, repo: TvRepo, ch: Channel) {
     val next = repo.nextAfter(list, now)
     // Refresco cada 2 s (búfer, resolución)
     val tick by produceState(0) { while (true) { delay(2000); value++ } }
-    PanelBox("Información") {
-        @Suppress("UNUSED_VARIABLE") val t = tick
-        Text(ch.name, style = Type.Label, color = Jx.Muted)
-        if (now != null) {
-            Text("AHORA · ${hhmm(now.start)} – ${hhmm(now.end)}", style = Type.Eyebrow, color = Jx.Accent)
-            Text(now.title, style = Type.H2, color = Jx.Text)
-            if (now.description.isNotBlank()) Text(now.description, style = Type.Body, color = Jx.TextSoft, maxLines = 5, overflow = TextOverflow.Ellipsis)
-            if (next != null) Text("DESPUÉS · ${hhmm(next.start)}  ${next.title}", style = Type.Small, color = Jx.Muted)
-        } else Text("Este canal no tiene guía.", style = Type.Body, color = Jx.TextSoft)
-        Spacer(Modifier.height(6.dp))
-        Text("TÉCNICA", style = Type.Eyebrow, color = Jx.Muted)
-        techInfo(ctx, live.player, repo.api.liveUrl(ch.id)).forEach { (k, value) ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                Text(k, style = Type.Label, color = Jx.Muted, modifier = Modifier.width(130.dp))
-                Text(value.ifBlank { "—" }, style = Type.Label, color = Jx.Text)
+    @Suppress("UNUSED_VARIABLE") val t = tick
+    InfoBox(
+        title = now?.title ?: ch.name,
+        meta = buildString {
+            append(ch.name)
+            if (live.group.isNotBlank()) append(" · ").append(live.group)
+        },
+        eyebrow = now?.let { "AHORA · ${hhmm(it.start)} – ${hhmm(it.end)}" },
+        progress = now?.let { ((System.currentTimeMillis() - it.start).toFloat() / (it.end - it.start).coerceAtLeast(1)).coerceIn(0f, 1f) },
+        body = now?.description?.takeIf { it.isNotBlank() } ?: if (now == null) "Este canal no tiene guía." else "",
+        after = next?.let { "DESPUÉS · ${hhmm(it.start)}  ${it.title}" },
+        tech = techInfo(ctx, live.player, repo.api.liveUrl(ch.id)),
+    )
+}
+
+
+/**
+ * Información a pantalla completa (izquierda, de arriba a abajo, translúcida):
+ * a la izquierda el programa o título con su sinopsis completa y a la derecha la
+ * información técnica. Así nada queda cortado como en el panel pequeño.
+ */
+@Composable
+internal fun InfoBox(
+    title: String, meta: String, eyebrow: String?, progress: Float?, body: String, after: String?,
+    tech: List<Pair<String, String>>,
+) {
+    Row(
+        Modifier.fillMaxSize()
+            .background(Brush.horizontalGradient(listOf(Color(0xF0070A0F), Color(0xD9070A0F), Color(0x99070A0F))),
+                RoundedCornerShape(bottomEnd = 16.dp))
+            .padding(start = 48.dp, top = 30.dp, end = 28.dp, bottom = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(32.dp),
+    ) {
+        Column(Modifier.weight(1.2f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = Type.H1, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (meta.isNotBlank()) Text(meta, style = Type.Small, color = Jx.Muted)
+            if (eyebrow != null) Text(eyebrow, style = Type.Eyebrow, color = Jx.Accent)
+            if (progress != null) {
+                Box(Modifier.width(220.dp).height(3.dp).background(Color(0x33FFFFFF), RoundedCornerShape(2.dp))) {
+                    Box(Modifier.fillMaxHeight().fillMaxWidth(progress).background(Jx.Accent, RoundedCornerShape(2.dp)))
+                }
+            }
+            if (body.isNotBlank()) Text(body, style = Type.Body, color = Jx.TextSoft)
+            if (after != null) Text(after, style = Type.Small, color = Jx.Muted, modifier = Modifier.padding(top = 4.dp))
+        }
+        Column(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("INFORMACIÓN TÉCNICA", style = Type.Eyebrow, color = Jx.Muted)
+            Spacer(Modifier.height(2.dp))
+            tech.forEach { (k, v) ->
+                Row(Modifier.fillMaxWidth()) {
+                    Text(k, style = Type.Label, color = Jx.Muted, modifier = Modifier.width(130.dp))
+                    Text(v.ifBlank { "—" }, style = Type.Label, color = Jx.Text)
+                }
             }
         }
     }
