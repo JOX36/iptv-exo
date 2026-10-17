@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
@@ -54,7 +55,8 @@ import kotlinx.coroutines.launch
 /** Inicio de sesión Xtream Codes + cuentas guardadas. */
 @Composable
 fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
-    val saved = remember { accounts.all() }
+    var saved by remember { mutableStateOf(accounts.all()) }
+    var deleting by remember { mutableStateOf<String?>(null) }   // cuenta esperando confirmación
     val last = saved.firstOrNull()
     var host by remember { mutableStateOf(last?.host.orEmpty()) }
     var user by remember { mutableStateOf(last?.user.orEmpty()) }
@@ -137,15 +139,34 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 LazyColumn(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(saved, key = { it.key }) { acc ->
-                        FocusSurface(
-                            onClick = { onLogin(acc) },
-                            modifier = Modifier.fillMaxWidth().height(60.dp),
-                            focusedScale = 1.02f,
-                            container = Jx.Surface,
-                        ) {
-                            Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.Center) {
-                                Text(acc.label, style = Type.Label)
-                                Text(acc.user, style = Type.Small, color = Jx.Faint)
+                        val confirm = deleting == acc.key
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            FocusSurface(
+                                onClick = { onLogin(acc) },
+                                modifier = Modifier.weight(1f).height(60.dp),
+                                focusedScale = 1.02f,
+                                container = Jx.Surface,
+                            ) {
+                                Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.Center) {
+                                    Text(if (confirm) "¿Eliminar esta cuenta? OK en la papelera" else acc.label, style = Type.Label,
+                                        color = if (confirm) Jx.Live else Jx.Text)
+                                    Text(acc.user, style = Type.Small, color = Jx.Faint)
+                                }
+                            }
+                            // Papelera: la primera pulsación pide confirmar, la segunda elimina
+                            FocusSurface(
+                                onClick = {
+                                    if (confirm) { accounts.delete(acc); saved = accounts.all(); deleting = null }
+                                    else deleting = acc.key
+                                },
+                                modifier = Modifier.size(60.dp).onFocusChanged { if (!it.isFocused && deleting == acc.key) deleting = null },
+                                focusedScale = 1.04f,
+                                container = if (confirm) Jx.Live else Jx.Surface,
+                                focusedContainer = if (confirm) Jx.Live else Jx.SurfaceHi,
+                            ) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    com.jox3.iptvexo.tv.ui.JxIcon(R.drawable.ic_delete, 24.dp, description = "Eliminar cuenta")
+                                }
                             }
                         }
                     }

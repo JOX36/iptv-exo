@@ -16,6 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -98,7 +101,8 @@ fun FavoritesScreen(repo: TvRepo, nav: Nav, host: TvHost) {
 
 /** Cuenta, actualizaciones y opciones de la app. */
 @Composable
-fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit) {
+fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit, onDelete: () -> Unit) {
+    var confirmDelete by remember { mutableStateOf(false) }
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
     val firstReq = remember { FocusRequester() }
     val date = SimpleDateFormat("d 'de' MMMM 'de' yyyy", Locale("es"))
@@ -131,6 +135,12 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("Buscar actualizaciones", host::checkUpdates, Modifier.fillMaxWidth().focusRequester(firstReq),
                 icon = R.drawable.tv_ic_update)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
+            // Se pide confirmar: la primera pulsación solo cambia el texto
+            ActionButton(if (confirmDelete) "OK otra vez para eliminar" else "Eliminar esta cuenta",
+                { if (confirmDelete) onDelete() else confirmDelete = true },
+                Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused) confirmDelete = false },
+                icon = R.drawable.ic_delete)
+            if (confirmDelete) Text("Se borra del equipo con sus favoritos e historial.", style = Type.Small, color = Jx.Live)
             Text("JOX3 TV ${host.appVersion()}", style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(top = 8.dp))
             Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = Type.Small, color = Jx.Faint)
         }

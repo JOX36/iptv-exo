@@ -88,7 +88,7 @@ fun PhoneApp(act: PhoneActivity) {
         PhoneShell(act, repo, accounts, acc,
             onSwitch = { a -> accounts.use(a); account = a },
             onAdd = { adding = true },
-            onLogout = { accounts.remove(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
+            onLogout = { accounts.delete(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
     }
 }
 

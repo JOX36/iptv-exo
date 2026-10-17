@@ -223,8 +223,8 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
             }
         }
 
-        if (bars && !dialog) {
-            // ── Arriba: título ──
+        if (bars && !dialog && option != VOpt.Info) {
+            // ── Arriba: título (con Información abierta, el panel ya lo trae) ──
             Row(
                 Modifier.fillMaxWidth()
                     .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
@@ -247,9 +247,9 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
         val o = option
         if (bars && !dialog && o != null && o.panel) {
             Box(
-                Modifier.align(Alignment.BottomStart).padding(bottom = 150.dp)
-                    .width(if (o == VOpt.Info) 460.dp else 340.dp)
-                    .fillMaxHeight(0.66f)
+                (if (o == VOpt.Info)
+                    Modifier.align(Alignment.TopStart).padding(bottom = 150.dp).fillMaxWidth(0.66f).fillMaxHeight()
+                else Modifier.align(Alignment.BottomStart).padding(bottom = 150.dp).width(340.dp).fillMaxHeight(0.66f))
                     .onFocusChanged { f -> inPanel = f.hasFocus }
                     .focusProperties {
                         exit = { d ->
@@ -452,15 +452,14 @@ private fun InfoPanel(vod: VodPlayback) {
     @Suppress("UNUSED_VARIABLE") val tick = vod.position   // se refresca con el avance
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val cur = vod.item ?: return
-    PanelBox("Información") {
-        val meta = vod.metaOf(cur)
-        if (meta.isNotBlank()) Text(meta, style = Type.Small, color = Jx.Muted)
-        val plot = vod.plotOf(cur)
-        if (plot.isNotBlank()) Text(plot, style = Type.Body, color = Jx.TextSoft, maxLines = 6, overflow = TextOverflow.Ellipsis)
-        Spacer(Modifier.height(6.dp))
-        Text("TÉCNICA", style = Type.Eyebrow, color = Jx.Muted)
-        techInfo(ctx, vod.player, cur.url).forEach { (k, v) -> InfoLine(k, v) }
-    }
+    InfoBox(
+        title = cur.title,
+        meta = listOf(cur.subtitle, vod.metaOf(cur)).filter { it.isNotBlank() }.joinToString(" · "),
+        eyebrow = null, progress = null,
+        body = vod.plotOf(cur),
+        after = null,
+        tech = techInfo(ctx, vod.player, cur.url),
+    )
 }
 
 @Composable
@@ -473,7 +472,7 @@ private fun InfoLine(label: String, value: String) {
 
 
 /**
- * Reproductor pequeño (esquina inferior derecha) al pulsar Atrás en una película o
+ * Reproductor pequeño (esquina superior derecha, sin tapar la información) al pulsar Atrás en una película o
  * serie: sigue reproduciendo mientras se navega. No recibe el foco; para volver a
  * pantalla completa se abre de nuevo el mismo título (o ⏯ / ▶ del control).
  */
@@ -482,9 +481,9 @@ private fun InfoLine(label: String, value: String) {
 fun VodMini(vod: VodPlayback, modifier: Modifier = Modifier) {
     val cur = vod.item ?: return
     Column(
-        modifier.width(300.dp).background(Color(0xF2070A0F), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)),
+        modifier.width(272.dp).background(Color(0xF2070A0F), RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp)),
     ) {
-        Box(Modifier.fillMaxWidth().height(169.dp).background(Color.Black)) {
+        Box(Modifier.fillMaxWidth().height(153.dp).background(Color.Black)) {
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
