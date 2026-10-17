@@ -58,7 +58,13 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     /** null = reproduciendo; texto = cargando / reconectando / error. */
     var status by mutableStateOf<String?>(null); private set
     var quality by mutableStateOf(""); private set
-    var resizeMode by mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT)
+    // Formato de imagen: "Estirar" por defecto; lo que elija el usuario se recuerda
+    // (es el mismo ajuste para en vivo, películas y series)
+    private val resizePrefs = context.getSharedPreferences("jox3_player", Context.MODE_PRIVATE)
+    private var resizeState by mutableIntStateOf(resizePrefs.getInt("resize_mode", AspectRatioFrameLayout.RESIZE_MODE_FILL))
+    var resizeMode: Int
+        get() = resizeState
+        set(v) { resizeState = v; resizePrefs.edit().putInt("resize_mode", v).apply() }
     /** Sube cuando cambian las pistas de audio/subtítulos disponibles. */
     var tracksVersion by mutableIntStateOf(0); private set
     /** true mientras el video avanza: mantiene la pantalla encendida (sin protector de pantalla). */

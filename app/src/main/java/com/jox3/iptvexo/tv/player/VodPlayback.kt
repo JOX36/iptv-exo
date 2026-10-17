@@ -79,7 +79,13 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     var ended by mutableStateOf(false); private set
     var quality by mutableStateOf(""); private set
     var speed by mutableFloatStateOf(1f); private set
-    var resizeMode by mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT)
+    // Formato de imagen: "Estirar" por defecto; lo que elija el usuario se recuerda
+    // (es el mismo ajuste para en vivo, películas y series)
+    private val resizePrefs = context.getSharedPreferences("jox3_player", Context.MODE_PRIVATE)
+    private var resizeState by mutableIntStateOf(resizePrefs.getInt("resize_mode", AspectRatioFrameLayout.RESIZE_MODE_FILL))
+    var resizeMode: Int
+        get() = resizeState
+        set(v) { resizeState = v; resizePrefs.edit().putInt("resize_mode", v).apply() }
     var tracksVersion by mutableIntStateOf(0); private set
     /** Hora (ms) del apagado automático; 0 = desactivado; -1 = al terminar este video. */
     var sleepAt by mutableLongStateOf(0L); private set

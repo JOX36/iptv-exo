@@ -1,25 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Banner 16:9 que muestra Android TV en su pantalla de inicio -->
+<!-- Banner 16:9 de la pantalla de inicio de Android TV: icono + nombre -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp"
     android:height="180dp"
     android:viewportWidth="320"
     android:viewportHeight="180">
-    <path
-        android:fillColor="#0A1420"
-        android:pathData="M0,0L320,0L320,180L0,180Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#00D4FF"
-        android:strokeWidth="8"
-        android:pathData="M104,52L216,52A10,10 0,0 1,226 62L226,138A10,10 0,0 1,216 148L104,148A10,10 0,0 1,94 138L94,62A10,10 0,0 1,104 52Z" />
-    <path
-        android:fillColor="#00000000"
-        android:strokeColor="#00D4FF"
-        android:strokeWidth="7"
-        android:strokeLineCap="round"
-        android:pathData="M138,26L160,44L182,26" />
-    <path
-        android:fillColor="#00D4FF"
-        android:pathData="M146,76L184,100L146,124Z" />
+    <path android:fillColor="#0B1B2E" android:pathData="M0,0L320,0L320,180L0,180Z" />
+    <path android:fillColor="#00000000" android:strokeColor="#6FE7FF" android:strokeWidth="5" android:strokeLineCap="round" android:pathData="M58,48L72,60L86,48" />
+    <path android:fillColor="#00B8F0" android:pathData="M44,62L100,62A11,11 0,0 1,111 73L111,113A11,11 0,0 1,100 124L44,124A11,11 0,0 1,33 113L33,73A11,11 0,0 1,44 62Z" />
+    <path android:fillColor="#07121F" android:pathData="M63,79Q63,75 66.5,77L86,89Q89,91 86,93L66.5,105Q63,107 63,103Z" />
+    <path android:fillColor="#FF5A4E" android:strokeColor="#07121F" android:strokeWidth="2.5" android:pathData="M100,72m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+    <path android:fillColor="#5B8CFF" android:pathData="M60,129L84,129A3,3 0,0 1,87 132L87,132A3,3 0,0 1,84 135L60,135A3,3 0,0 1,57 132L57,132A3,3 0,0 1,60 129Z" />
+    <!-- JOX3 -->
+    <path android:fillColor="#EAF4FA" android:pathData="M138,70L148,70L148,106Q148,118 136,118L130,118L130,109L135,109Q138,109 138,106Z" />
+    <path android:fillColor="#EAF4FA" android:pathData="M172,69A25,25 0,1 1,171.9,69ZM172,78A16,16 0,1 0,172.1,78Z" />
+    <path android:fillColor="#EAF4FA" android:pathData="M203,70L214,70L222,85L230,70L241,70L228,93L242,118L231,118L222,101L213,118L202,118L216,93Z" />
+    <path android:fillColor="#00D4FF" android:pathData="M248,72Q256,68 264,68Q278,68 278,80Q278,87 271,91Q280,94 280,103Q280,118 263,118Q255,118 247,114L250,106Q257,109 263,109Q270,109 270,103Q270,96 260,96L256,96L256,88L260,88Q268,88 268,81Q268,77 263,77Q257,77 251,80Z" />
+    <path android:fillColor="#9DB3C2" android:pathData="M130,134L280,134L280,136L130,136Z" />
 </vector>

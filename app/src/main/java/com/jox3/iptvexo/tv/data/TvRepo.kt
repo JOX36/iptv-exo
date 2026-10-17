@@ -111,25 +111,60 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     }.also { built -> lock.withLock { index = built } }
 
     /**
-     * Películas parecidas por GÉNERO, no por carpeta: se buscan las categorías cuyo
-     * nombre coincide con los géneros de la película ("Acción", "Comedia"…), en
-     * español o inglés. Si el servidor no tiene categorías por género, se usa la
-     * misma carpeta.
+     * Recomendaciones para una película:
+     * 1. Primero, las de la MISMA SAGA (p. ej. todas las de Harry Potter), buscadas
+     *    en todo el catálogo por el comienzo del título.
+     * 2. Luego, parecidas por GÉNERO: solo de las categorías cuyo nombre coincide con
+     *    los géneros de la película ("Acción", "Comedia"…; también en inglés). Si el
+     *    servidor no tiene categorías por género, de la misma carpeta.
      */
     suspend fun similarMovies(movie: Movie, genre: String, limit: Int = 21): List<Movie> {
+        val out = LinkedHashMap<String, Movie>()
+        // 1. Saga
+        val base = sagaKey(movie.name)
+        if (base.length >= 5) {
+            val idx = runCatching { searchIndex() }.getOrNull()
+            if (idx != null) {
+                val saga = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                    idx.movies.indices.filter { idx.movieKeys[it].startsWith(base) }.map { idx.movies[it] }
+                }
+                saga.filter { it.id != movie.id }.sortedBy { normalize(it.name) }.take(12).forEach { out.putIfAbsent(it.id, it) }
+            }
+        }
+        // 2. Género
         val words = genre.split(',', '/', '|', '&').map { normalize(it.trim()) }.filter { it.length >= 3 }
             .map { GENRES[it] ?: it }.distinct()
         val cats = runCatching { categories(Section.VOD) }.getOrDefault(emptyList())
         val matching = if (words.isEmpty()) emptyList() else cats.filter { c ->
-            c.id != movie.categoryId && words.any { w -> normalize(c.name).contains(w.take(6)) }
-        }.take(3)
+            words.any { w -> normalize(c.name).contains(w.take(6)) }
+        }.take(4)
         val pool = LinkedHashMap<String, Movie>()
         for (c in matching) {
             runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
         }
-        if (pool.size < 6) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
-        pool.remove(movie.id)
-        return pool.values.shuffled(java.util.Random(movie.id.hashCode().toLong())).take(limit)
+        if (matching.isEmpty()) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        pool.values.shuffled(java.util.Random(movie.id.hashCode().toLong())).forEach { out.putIfAbsent(it.id, it) }
+        out.remove(movie.id)
+        return out.values.take(limit)
+    }
+
+    /** Comienzo del título que identifica la saga: "harry potter", "rapidos y furiosos", "matchbox". */
+    private fun sagaKey(name: String): String {
+        var n = normalize(name).replace(Regex("\\(\\d{4}\\)|\\[[^\\]]*\\]"), " ").replace(Regex("\\s+"), " ").trim()
+        val colon = n.indexOf(':')
+        n = if (colon >= 4) n.substring(0, colon) else {
+            val words = n.split(' ')
+            val keep = ArrayList<String>()
+            var significant = 0
+            for (w in words) {
+                keep += w
+                if (w !in STOP) significant++
+                if (significant == 2) break
+            }
+            keep.joinToString(" ")
+        }
+        // Sin números ni romanos al final ("2", "III", "parte 1")
+        return n.replace(Regex("(\\s+(parte|part|capitulo|chapter))?\\s+(\\d+|i{1,3}|iv|v|vi{1,3})$"), "").trim()
     }
 
     /** Películas recientes de la cuenta (para el inicio). */
@@ -148,6 +183,7 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     companion object {
         /** Texto sin tildes y en minúsculas, para buscar "accion" y encontrar "Acción". */
         private val MARKS = Regex("\\p{Mn}+")
+        private val STOP = setOf("el", "la", "los", "las", "the", "a", "an", "y", "e", "de", "del", "and", "of", "un", "una")
         /** Géneros en inglés → como suelen llamarse las categorías en español. */
         private val GENRES = mapOf(
             "action" to "accion", "comedy" to "comedia", "adventure" to "aventura", "horror" to "terror",

@@ -61,7 +61,7 @@ private const val RECENT_ID = "__recent"
 /** Video en vivo con controles (vertical u horizontal). */
 @Composable
 fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier,
-              onOption: (String) -> Unit = {}, isFavorite: Boolean = false) {
+              onOption: (String) -> Unit = {}, isFavorite: Boolean = false, repo: TvRepo? = null) {
     var controls by remember { mutableStateOf(true) }
     var touched by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(controls, touched, live.current?.id) {
@@ -92,6 +92,8 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                     modifier = Modifier.padding(start = 10.dp).weight(1f)) else Spacer(Modifier.weight(1f))
                 if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 10.dp))
             }
+            // A pantalla completa, arriba: lo que dan ahora y después (como en la TV)
+            if (fullscreen && repo != null) FullscreenEpg(ch, repo, Modifier.padding(start = 58.dp, top = 52.dp))
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoundIcon(R.drawable.ic_prev, "Canal anterior", bg = Color(0x80070A0F)) { live.zap(-1); touched = System.currentTimeMillis() }
                 val playing = live.player?.isPlaying == true || live.playingNow
@@ -267,13 +269,14 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
     val epg by produceState<List<EpgItem>?>(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
     val list = epg
     val nowMs = System.currentTimeMillis()
+    val nowItem = list?.let { repo.nowPlaying(it) }
     when {
         list == null -> CenterText("Cargando guía…")
         list.isEmpty() -> CenterText("Este canal no tiene guía")
         else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
             items(list.filter { it.end > nowMs }) { p ->
-                val isNow = nowMs in p.start until p.end
+                val isNow = p == nowItem
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
                         .then(if (isNow) Modifier.background(Jx.SurfaceHi).border(1.dp, Jx.Accent, RoundedCornerShape(14.dp)) else Modifier)
@@ -331,11 +334,11 @@ fun LiveSheets(live: LivePlayback, repo: TvRepo, sheet: String?, onDismiss: () -
                 body = now?.description.orEmpty(),
                 tech = techInfoFor(ctx, live, repo, ch), onDismiss = onDismiss)
         }
-        "guide" -> if (ch != null) androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
+        "guide" -> if (ch != null) PlayerSheet(onDismiss) {
             Text("Guía · ${ch.name}", style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp))
-            Box(Modifier.fillMaxWidth().fillMaxHeight(0.9f)) { ChannelGuideList(ch, repo) }
+            Box(Modifier.fillMaxWidth().fillMaxHeight(if (LocalSidePanels.current) 1f else 0.9f)) { ChannelGuideList(ch, repo) }
         }
-        "channels" -> androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
+        "channels" -> PlayerSheet(onDismiss) {
             val list = live.channels
             val start = list.indexOfFirst { it.id == ch?.id }.coerceAtLeast(0)
             val state = rememberLazyListState(initialFirstVisibleItemIndex = (start - 2).coerceAtLeast(0))
@@ -360,7 +363,7 @@ fun LiveFullscreenPhone(live: LivePlayback, repo: TvRepo, onBack: () -> Unit) {
     var sheet by remember { mutableStateOf<String?>(null) }
     val ch = live.current
     val fav = ch != null && repo.library.isFavorite("live", ch.id)
-    LiveVideo(live, fullscreen = true, onFullscreen = {}, onBack = onBack, modifier = Modifier.fillMaxSize(), isFavorite = fav,
+    LiveVideo(live, fullscreen = true, onFullscreen = {}, onBack = onBack, modifier = Modifier.fillMaxSize(), isFavorite = fav, repo = repo,
         onOption = { key ->
             when (key) {
                 "fav" -> ch?.let { repo.library.toggleFavorite(SavedItem("live", it.id, it.name, it.logo, categoryId = it.categoryId)) }
@@ -368,5 +371,30 @@ fun LiveFullscreenPhone(live: LivePlayback, repo: TvRepo, onBack: () -> Unit) {
                 else -> sheet = key
             }
         })
-    LiveSheets(live, repo, sheet) { sheet = null }
+    androidx.compose.runtime.CompositionLocalProvider(LocalSidePanels provides true) { LiveSheets(live, repo, sheet) { sheet = null } }
+}
+
+/** "AHORA hh–hh Título" + avance + "DESPUÉS hh Título" sobre el video. */
+@Composable
+private fun FullscreenEpg(ch: Channel, repo: TvRepo, modifier: Modifier = Modifier) {
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+    val list = epg.orEmpty()
+    val now = repo.nowPlaying(list) ?: return
+    val next = repo.nextAfter(list, now)
+    Column(modifier.width(420.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("AHORA", style = PType.Eyebrow, color = Jx.Accent)
+            Text("${clock(now.start)} – ${clock(now.end)}", style = PType.Tiny, color = Jx.TextSoft)
+            Text(now.title, style = PType.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Box(Modifier.width(300.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF))) {
+            Box(Modifier.fillMaxHeight().fillMaxWidth(now.progress()).background(Jx.Accent))
+        }
+        if (next != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("DESPUÉS", style = PType.Eyebrow, color = Jx.Muted)
+            Text(clock(next.start), style = PType.Tiny, color = Jx.TextSoft)
+            Text(next.title, style = PType.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
 }
