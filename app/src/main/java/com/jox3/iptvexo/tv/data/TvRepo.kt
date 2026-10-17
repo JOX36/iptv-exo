@@ -110,6 +110,28 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Index(ch, mv, sr) }
     }.also { built -> lock.withLock { index = built } }
 
+    /**
+     * Películas parecidas por GÉNERO, no por carpeta: se buscan las categorías cuyo
+     * nombre coincide con los géneros de la película ("Acción", "Comedia"…), en
+     * español o inglés. Si el servidor no tiene categorías por género, se usa la
+     * misma carpeta.
+     */
+    suspend fun similarMovies(movie: Movie, genre: String, limit: Int = 21): List<Movie> {
+        val words = genre.split(',', '/', '|', '&').map { normalize(it.trim()) }.filter { it.length >= 3 }
+            .map { GENRES[it] ?: it }.distinct()
+        val cats = runCatching { categories(Section.VOD) }.getOrDefault(emptyList())
+        val matching = if (words.isEmpty()) emptyList() else cats.filter { c ->
+            c.id != movie.categoryId && words.any { w -> normalize(c.name).contains(w.take(6)) }
+        }.take(3)
+        val pool = LinkedHashMap<String, Movie>()
+        for (c in matching) {
+            runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+        }
+        if (pool.size < 6) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        pool.remove(movie.id)
+        return pool.values.shuffled(java.util.Random(movie.id.hashCode().toLong())).take(limit)
+    }
+
     /** Películas recientes de la cuenta (para el inicio). */
     suspend fun latestMovies(limit: Int = 24): List<Movie> {
         val cats = categories(Section.VOD)
@@ -126,6 +148,14 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     companion object {
         /** Texto sin tildes y en minúsculas, para buscar "accion" y encontrar "Acción". */
         private val MARKS = Regex("\\p{Mn}+")
+        /** Géneros en inglés → como suelen llamarse las categorías en español. */
+        private val GENRES = mapOf(
+            "action" to "accion", "comedy" to "comedia", "adventure" to "aventura", "horror" to "terror",
+            "thriller" to "suspenso", "animation" to "animacion", "family" to "familia", "romance" to "romant",
+            "science fiction" to "ciencia", "sci-fi" to "ciencia", "ciencia ficcion" to "ciencia", "fantasy" to "fantasia",
+            "crime" to "crimen", "documentary" to "documental", "war" to "guerra", "mystery" to "misterio",
+            "history" to "historia", "music" to "musica", "kids" to "infantil", "romantica" to "romant",
+        )
         fun normalize(s: String): String =
             Normalizer.normalize(s, Normalizer.Form.NFD).replace(MARKS, "").lowercase()
     }

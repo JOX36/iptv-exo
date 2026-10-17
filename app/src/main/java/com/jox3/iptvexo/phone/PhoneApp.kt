@@ -159,7 +159,9 @@ private fun PhoneShell(
                     vod.open -> Box(Modifier.statusBarsPadding()) {
                         VodScreen(vod, repo.library, onFullscreen = { act.enterLandscape() }, onClose = { vod.close() })
                     }
-                    page is Page.MovieDetail -> PhoneMovieDetail(repo, launcher, page.movie) { pages.removeAt(pages.lastIndex) }
+                    page is Page.MovieDetail -> key(page.movie.id) {
+                        PhoneMovieDetail(repo, launcher, page.movie, onOpenMovie = ::openMovie) { pages.removeAt(pages.lastIndex) }
+                    }
                     page is Page.SeriesDetail -> PhoneSeriesDetail(repo, launcher, page.id, page.name, page.poster) { pages.removeAt(pages.lastIndex) }
                     page is Page.Settings -> Box(Modifier.statusBarsPadding()) {
                         PhoneSettings(repo, act, account, onAddAccount = onAdd, onLogout = onLogout) { pages.removeAt(pages.lastIndex) }

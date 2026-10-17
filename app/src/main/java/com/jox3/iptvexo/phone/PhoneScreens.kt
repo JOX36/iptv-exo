@@ -99,21 +99,9 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
         val d = data
         val hero = d?.hero
         item {
-            Box(Modifier.padding(horizontal = 18.dp).fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)).background(Jx.Surface)) {
-                if (hero != null) {
-                    RemoteImage(d.heroInfo?.backdrop?.ifBlank { null } ?: hero.poster, hero.name, Modifier.fillMaxSize())
-                    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF2070A0F)))))
-                    Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("NUEVO EN PELÍCULAS", style = PType.Eyebrow, color = Jx.Accent)
-                        Text(hero.name, style = PType.Hero, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            PButton("Ver ahora", icon = R.drawable.ic_play) {
-                                launcher.playMovie(hero.id, hero.name, hero.poster, d.heroInfo?.ext?.ifBlank { null } ?: hero.ext, hero.categoryId)
-                            }
-                            PButton("Detalles", primary = false) { onOpenMovie(hero) }
-                        }
-                    }
-                } else CenterText(if (d == null) "Cargando…" else "")
+            if (hero != null) HeroCarousel(repo, launcher, d.movies.take(8), onOpenMovie)
+            else Box(Modifier.padding(horizontal = 18.dp).fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)).background(Jx.Surface)) {
+                CenterText(if (d == null) "Cargando…" else "")
             }
         }
         if (resume.isNotEmpty()) item {
@@ -138,8 +126,8 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
             val chans = recents.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("Tus canales")
-                LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    itemsIndexed(chans, key = { _, c -> c.id }) { i, c -> ChannelBubble(c.name, c.logo) { onPlayChannel(chans, i) } }
+                LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    itemsIndexed(chans, key = { _, c -> c.id }) { i, c -> LiveCard(c, repo) { onPlayChannel(chans, i) } }
                 }
             }
         }
@@ -175,6 +163,7 @@ fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, o
     val lib = repo.library
     val cats by produceState<List<Category>?>(null, section) { value = runCatching { repo.categories(section) }.getOrDefault(emptyList()) }
     var selected by remember(section) { mutableStateOf<String?>(null) }
+    var catSheet by remember { mutableStateOf(false) }
     LaunchedEffect(cats) { if (selected == null) selected = cats?.firstOrNull()?.id }
     val entries by produceState<List<GridEntry>?>(null, selected) {
         val id = selected ?: return@produceState
@@ -188,9 +177,17 @@ fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, o
         val list = cats
         if (list == null) { CenterText("Cargando…"); return@Column }
         if (list.isEmpty()) { CenterText("Esta cuenta no tiene ${if (section == Section.VOD) "películas" else "series"}"); return@Column }
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val chips = androidx.compose.foundation.lazy.rememberLazyListState()
+        LazyRow(state = chips, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Todas las categorías en una lista vertical
+            item(key = "__all") { Pill("Categorías", false, icon = R.drawable.tv_ic_list) { catSheet = true } }
             items(list, key = { it.id }) { c -> Pill(c.name, c.id == selected) { selected = c.id } }
         }
+        LaunchedEffect(selected) {
+            val i = list.indexOfFirst { it.id == selected }
+            if (i >= 0) runCatching { chips.animateScrollToItem(i) }
+        }
+        if (catSheet) CategorySheet(list, selected, onPick = { selected = it.id }) { catSheet = false }
         val e = entries
         when {
             e == null -> CenterText("Cargando…")
@@ -213,7 +210,7 @@ fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, o
 // ─────────────────────────── Detalles ───────────────────────────
 
 @Composable
-fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onBack: () -> Unit) {
+fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpenMovie: (Movie) -> Unit = {}, onBack: () -> Unit) {
     val lib = repo.library
     val info by produceState<MovieInfo?>(null, movie.id) { value = runCatching { repo.api.movieInfo(movie.id) }.getOrNull() }
     val progressVersion by lib.progressVersion
@@ -221,6 +218,10 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onBac
     val canResume = pos > 0 && dur > 0 && pos.toFloat() / dur < 0.95f
     val fav = SavedItem("movie", movie.id, movie.name, movie.poster, ext = movie.ext, categoryId = movie.categoryId)
     val ext = info?.ext?.ifBlank { null } ?: movie.ext
+    val similar by produceState(emptyList<Movie>(), movie.id, info) {
+        if (info == null) return@produceState
+        value = runCatching { repo.similarMovies(movie, info?.genre.orEmpty(), 21) }.getOrDefault(emptyList())
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { DetailHeader(info?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, onBack) }
         item {
@@ -245,6 +246,18 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onBac
                 info?.plot?.takeIf { it.isNotBlank() }?.let { Text(it, style = PType.Body, color = Jx.TextSoft) }
                 val credits = listOfNotNull(info?.director?.ifBlank { null }?.let { "Dirección: $it" }, info?.cast?.ifBlank { null }?.let { "Reparto: $it" })
                 credits.forEach { Text(it, style = PType.Small, color = Jx.Muted) }
+            }
+        }
+        // Películas parecidas por género (no de la misma carpeta)
+        val sim = similar
+        if (sim.isNotEmpty()) {
+            item { SectionTitle("Películas similares", Modifier.padding(top = 22.dp, bottom = 10.dp)) }
+            items(sim.chunked(3).size) { row ->
+                Row(Modifier.padding(horizontal = 18.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val chunk = sim.chunked(3)[row]
+                    chunk.forEach { m -> PosterTile(m.name, m.poster, Modifier.weight(1f), favorite = lib.isFavorite("movie", m.id)) { onOpenMovie(m) } }
+                    repeat(3 - chunk.size) { Spacer(Modifier.weight(1f)) }
+                }
             }
         }
     }
@@ -547,3 +560,71 @@ fun PhoneLogin(accounts: AccountStore, onLogin: (Account) -> Unit, onCancel: (()
     }
 }
 
+
+/** Carrusel del inicio: varias películas recientes que pasan solas. */
+@Composable
+private fun HeroCarousel(repo: TvRepo, launcher: PlayerLauncher, movies: List<Movie>, onOpenMovie: (Movie) -> Unit) {
+    val pager = androidx.compose.foundation.pager.rememberPagerState { movies.size }
+    LaunchedEffect(pager.currentPage, pager.isScrollInProgress) {
+        if (pager.isScrollInProgress || movies.size < 2) return@LaunchedEffect
+        delay(6000)
+        runCatching { pager.animateScrollToPage((pager.currentPage + 1) % movies.size) }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.foundation.pager.HorizontalPager(
+            state = pager, contentPadding = PaddingValues(horizontal = 18.dp), pageSpacing = 12.dp,
+            modifier = Modifier.fillMaxWidth().height(230.dp),
+        ) { page ->
+            val m = movies[page]
+            val info by produceState<MovieInfo?>(null, m.id) { value = runCatching { repo.api.movieInfo(m.id) }.getOrNull() }
+            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(20.dp)).background(Jx.Surface).clickable { onOpenMovie(m) }) {
+                RemoteImage(info?.backdrop?.ifBlank { null } ?: m.poster, m.name, Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xF2070A0F)))))
+                Column(Modifier.align(Alignment.BottomStart).padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("NUEVO EN PELÍCULAS", style = PType.Eyebrow, color = Jx.Accent)
+                    Text(m.name, style = PType.Hero, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PButton("Ver ahora", icon = R.drawable.ic_play) {
+                            launcher.playMovie(m.id, m.name, m.poster, info?.ext?.ifBlank { null } ?: m.ext, m.categoryId)
+                        }
+                        PButton("Detalles", primary = false) { onOpenMovie(m) }
+                    }
+                }
+            }
+        }
+        // Puntos de posición
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            repeat(movies.size) { i ->
+                Box(Modifier.padding(horizontal = 3.dp).size(width = if (i == pager.currentPage) 18.dp else 6.dp, height = 6.dp)
+                    .clip(RoundedCornerShape(3.dp)).background(if (i == pager.currentPage) Jx.Accent else Jx.Line))
+            }
+        }
+    }
+}
+
+/** Canal reciente: logo, nombre y lo que dan ahora con su avance. */
+@Composable
+private fun LiveCard(c: Channel, repo: TvRepo, onClick: () -> Unit) {
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(c), c.id, version) { if (value.isNullOrEmpty()) value = repo.epg(c) }
+    val now = epg?.let { repo.nowPlaying(it) }
+    Column(
+        Modifier.width(250.dp).clip(RoundedCornerShape(16.dp)).background(Jx.Surface).clickable(onClick = onClick).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            RemoteImage(c.logo, c.name, Modifier.size(52.dp).clip(RoundedCornerShape(12.dp)).background(Jx.SurfaceHi),
+                scale = androidx.compose.ui.layout.ContentScale.Fit)
+            Column(Modifier.weight(1f)) {
+                Text(c.name, style = PType.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (now != null) "${clock(now.start)} – ${clock(now.end)}" else "En vivo", style = PType.Tiny, color = Jx.Muted)
+            }
+            Text("EN VIVO", style = PType.Tiny, color = Color.White,
+                modifier = Modifier.background(Jx.Live, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp))
+        }
+        Text(now?.title ?: "Sin guía", style = PType.Body, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Jx.Line)) {
+            if (now != null) Box(Modifier.fillMaxHeight().fillMaxWidth(now.progress()).background(Jx.Accent))
+        }
+    }
+}

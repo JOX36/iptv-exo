@@ -8,6 +8,8 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -284,11 +286,11 @@ fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onC
                 LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     vodOptions(vod).filter { it.first != "next" }.forEach { (key, label, icon) ->
                         item(key = key) {
-                            Pill(label, (key == "speed" && abs(vod.speed - 1f) > 0.01f) || (key == "sleep" && vod.sleepAt != 0L), icon = icon) { sheet = key }
+                            Pill(label, (key == "speed" && abs(vod.speed - 1f) > 0.01f) || (key == "sleep" && vod.sleepAt != 0L), icon = icon, glass = true) { sheet = key }
                         }
                     }
                     item(key = "fav") { Pill(if (isFav) "En favoritos" else "Favorito", isFav,
-                        icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star) { lib.toggleFavorite(cur.fav) } }
+                        icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star, glass = true) { lib.toggleFavorite(cur.fav) } }
                 }
             }
             // Sinopsis (películas y episodios)
@@ -316,7 +318,7 @@ fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onC
                 item { SectionTitle("Episodios", Modifier.padding(top = 6.dp, bottom = 8.dp)) }
                 if (seasons.size > 1) item {
                     LazyRow(contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(seasons.size) { k -> val sn = seasons[k]; Pill("Temporada $sn", sn == season) { season = sn } }
+                        items(seasons.size) { k -> val sn = seasons[k]; Pill("Temporada $sn", sn == season, glass = true) { season = sn } }
                     }
                 }
                 itemsIndexed(vod.queue, key = { _, it -> it.id }) { i, ep ->
@@ -361,7 +363,7 @@ internal fun vodOptions(vod: VodPlayback): List<Triple<String, String, Int>> = b
 @Composable
 fun OverlayPill(label: String, icon: Int, onClick: () -> Unit) {
     Row(
-        Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xCC111923)).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x66101722)).clickable(onClick = onClick).padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(icon), null, Modifier.size(16.dp), tint = Jx.TextSoft)
@@ -382,7 +384,7 @@ fun PictureSheet(mode: Int, onSet: (Int) -> Unit, onDismiss: () -> Unit) {
 /** Información: título, sinopsis/programa y datos técnicos. */
 @Composable
 fun InfoSheet(title: String, subtitle: String, body: String, tech: List<Pair<String, String>>, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
         LazyColumn(Modifier.padding(horizontal = 22.dp), contentPadding = PaddingValues(bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             item { Text(title, style = PType.H1, color = Jx.Text) }
             if (subtitle.isNotBlank()) item { Text(subtitle, style = PType.Small, color = Jx.Muted) }
@@ -436,11 +438,15 @@ fun VodFullscreenPhone(vod: VodPlayback, onBack: () -> Unit) {
     VodSheets(vod, sheet) { sheet = null }
 }
 
+/** Hojas inferiores siempre abiertas completas (no a medias): todo se ve sin arrastrar. */
+@Composable
+fun fullSheet() = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
 /** Hoja inferior con opciones (la elegida lleva ✓). */
 @Composable
 fun ChoiceSheet(title: String, options: List<Triple<String, Boolean, () -> Unit>>, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface) {
-        Column(Modifier.padding(bottom = 24.dp)) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Jx.Surface, sheetState = fullSheet()) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text(title, style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp))
             options.forEach { (label, sel, action) ->
                 Row(
