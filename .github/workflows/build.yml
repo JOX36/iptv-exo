@@ -35,6 +35,9 @@ jobs:
 
       # Ramas de prueba: APK debug. main: APK release (el que se publica).
       - name: Build APK
+        env:
+          # Token de TMDB (información de películas y series): secreto del repositorio
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
         run: |
           set -o pipefail
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then

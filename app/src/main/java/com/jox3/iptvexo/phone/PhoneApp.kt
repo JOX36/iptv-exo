@@ -108,7 +108,10 @@ private fun PhoneShell(
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
-                Lifecycle.Event.ON_PAUSE -> { live.onPause(); vod.onPause() }
+                // En la ventana flotante (PiP) la app queda "en pausa" pero el video debe seguir
+                Lifecycle.Event.ON_PAUSE -> if (!act.isPipNow()) { live.onPause(); vod.onPause() }
+                // Al cerrar la ventanita (o salir de la app) sí se detiene
+                Lifecycle.Event.ON_STOP -> { live.onPause(); vod.onPause() }
                 Lifecycle.Event.ON_RESUME -> { live.onResume(); vod.onResume() }
                 else -> Unit
             }
@@ -118,6 +121,20 @@ private fun PhoneShell(
     }
     // La guía de internet empieza a prepararse en segundo plano
     LaunchedEffect(repo) { runCatching { repo.categories(Section.LIVE) } }
+
+    // ── Ventana flotante (PiP) ──
+    val livePb = live   // (dentro del objeto, "live" es la propiedad de PipControls)
+    act.pipControls = object : PhoneActivity.PipControls {
+        override val active get() = (vod.open && vod.player != null) || livePb.current != null
+        override val playing get() = if (vod.open) vod.playing else livePb.playingNow
+        override val live get() = !vod.open && livePb.current != null
+        override fun playPause() {
+            if (vod.open) vod.togglePlay() else livePb.player?.let { if (it.isPlaying) it.pause() else it.play() }
+        }
+        override fun next() { if (!vod.open) livePb.zap(+1) }
+        override fun prev() { if (!vod.open) livePb.zap(-1) }
+    }
+    LaunchedEffect(vod.open, vod.playing, live.current?.id, live.playingNow) { act.updatePip() }
 
     // ── Chromecast ──
     val cast = remember { PhoneCast(context) }
@@ -204,7 +221,13 @@ private fun PhoneShell(
         com.jox3.iptvexo.tv.data.ServerCtx(account, accounts.all()) { c -> ServerHub.pendingOpen = c; onSwitch(c.account) }
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalCast provides cast, com.jox3.iptvexo.tv.data.LocalServers provides serverCtx) {
-    Box(Modifier.fillMaxSize().background(if (fullscreen) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
+    Box(Modifier.fillMaxSize().background(if (fullscreen || act.inPip) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
+        // En la ventana flotante solo se ve el video (sin botones)
+        if (act.inPip) {
+            if (vod.open) PlayerSurface(vod.player, Modifier.fillMaxSize(), vod.resizeMode, keepOn = vod.playing)
+            else PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow)
+            return@Box
+        }
         if (fullscreen) {
             if (vod.open) VodFullscreenPhone(vod) { act.exitLandscape() }
             else LiveFullscreenPhone(live, repo) { act.exitLandscape() }

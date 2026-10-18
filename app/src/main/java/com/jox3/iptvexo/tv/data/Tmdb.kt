@@ -19,8 +19,8 @@ import java.net.URLEncoder
  * calificación, clasificación por edad, reparto con fotos, tráiler, sinopsis en español,
  * fondo y carátulas faltantes.
  *
- * Necesita una clave gratuita de TMDB (la pone el usuario en Ajustes). Sirven las dos:
- * la "API Key" (v3, 32 caracteres) y el "token de lectura" (v4, largo).
+ * Usa el token de lectura de la app (va integrado al compilar). Acepta también una "API Key"
+ * v3 (32 caracteres) o un token v4 (largo).
  * Todo lo consultado se guarda en el equipo: cada título se pide una sola vez.
  */
 object Tmdb {
@@ -54,7 +54,9 @@ object Tmdb {
     /** Sube cuando cambia la clave: las pantallas vuelven a consultar. */
     val version = mutableIntStateOf(0)
 
-    fun key(ctx: Context): String = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("key", "").orEmpty().trim()
+    /** Token de la app (integrado al compilar desde el secreto TMDB_TOKEN). */
+    @Suppress("UNUSED_PARAMETER")
+    fun key(ctx: Context): String = com.jox3.iptvexo.BuildConfig.TMDB_TOKEN.trim()
     fun enabled(ctx: Context) = key(ctx).length >= 20
 
     fun setKey(ctx: Context, k: String) {
