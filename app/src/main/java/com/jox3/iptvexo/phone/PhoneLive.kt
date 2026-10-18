@@ -81,6 +81,9 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
     }
     val ch = live.current
     var locked by remember { mutableStateOf(false) }
+    var castSheet by remember { mutableStateOf(false) }
+    if (castSheet) CastSheet { castSheet = false }
+    val casting = LocalCast.current?.connectedTo != null
     Box(modifier.background(Color.Black)) {
         if (ch == null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -90,6 +93,12 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
             return@Box
         }
         PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow)
+        // Transmitiendo al Chromecast: en lugar del video, sus controles
+        if (casting) {
+            CastingOverlay(ch.name, live = true, onOpenSheet = { castSheet = true })
+            if (fullscreen) RoundIcon(R.drawable.ic_back, "Salir de pantalla completa", Modifier.align(Alignment.TopStart).padding(4.dp), onClick = onBack)
+            return@Box
+        }
         if (locked) { LockOverlay { locked = false; controls = true; touched = System.currentTimeMillis() }; return@Box }
         GestureLayer(onTap = { controls = !controls; touched = System.currentTimeMillis() }, onSeek = null)
         live.status?.let { st ->
@@ -116,6 +125,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                         if (live.group.isNotBlank()) Text(live.group, style = PType.Tiny, color = Jx.Muted, maxLines = 1)
                         if (repo != null) FullscreenEpg(ch, repo, Modifier.padding(top = 4.dp))
                     }
+                    CastButton { castSheet = true }
                     RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }
                 }
             } else {
@@ -123,7 +133,8 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                     Text("EN VIVO", style = PType.Tiny, color = Color.White,
                         modifier = Modifier.padding(start = 10.dp, top = 10.dp).background(Jx.Live, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
                     Spacer(Modifier.weight(1f))
-                    if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 10.dp, top = 10.dp))
+                    if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 4.dp, top = 10.dp))
+                    CastButton { castSheet = true }
                 }
             }
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
