@@ -249,6 +249,7 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
                 } else Spacer(Modifier.weight(1f))
                 if (vod.quality.isNotEmpty()) Text(vod.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 8.dp))
                 CastButton { castSheet = true }
+                PipButton()
                 if (fullscreen) RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }
             }
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -607,4 +608,13 @@ fun LockOverlay(onUnlock: () -> Unit) {
                 modifier = Modifier.background(Color(0x99070A0F), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
         }
     }
+}
+
+
+/** Botón de ventana flotante (PiP): el video sigue encima de otras apps. */
+@Composable
+fun PipButton() {
+    val act = LocalContext.current as? PhoneActivity ?: return
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
+    RoundIcon(R.drawable.ic_pip, "Ventana flotante") { act.enterPip() }
 }

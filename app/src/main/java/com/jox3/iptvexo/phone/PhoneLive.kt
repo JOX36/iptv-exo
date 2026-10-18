@@ -126,6 +126,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                         if (repo != null) FullscreenEpg(ch, repo, Modifier.padding(top = 4.dp))
                     }
                     CastButton { castSheet = true }
+                    PipButton()
                     RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }
                 }
             } else {
@@ -135,6 +136,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                     Spacer(Modifier.weight(1f))
                     if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 4.dp, top = 10.dp))
                     CastButton { castSheet = true }
+                    PipButton()
                 }
             }
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {

@@ -76,8 +76,8 @@ public class MainActivity extends AppCompatActivity {
             finish();
             return;
         }
-        // Celular: interfaz nativa nueva, salvo que el usuario haya elegido la anterior (web)
-        if (!getSharedPreferences(PREFS_UI, MODE_PRIVATE).getBoolean(KEY_CLASSIC_PHONE, false)) {
+        // Celular: siempre la interfaz nativa (la anterior, web, ya no se ofrece)
+        if (true) {
             uiReady = true;
             startActivity(new Intent(this, com.jox3.iptvexo.phone.PhoneActivity.class));
             finish();

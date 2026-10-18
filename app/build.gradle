@@ -9,6 +9,8 @@ android {
 
     defaultConfig {
         applicationId "com.jox3.iptvexo"
+        // Token de TMDB: viene del secreto TMDB_TOKEN de GitHub Actions (no se guarda en el código)
+        buildConfigField "String", "TMDB_TOKEN", "\"${(System.getenv('TMDB_TOKEN') ?: '').trim()}\""
         minSdk 21
         targetSdk 34
         // En GitHub Actions cada compilación sube el número de versión automáticamente,

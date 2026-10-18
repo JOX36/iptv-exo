@@ -612,8 +612,6 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 PButton("Eliminar esta cuenta", Modifier.fillMaxWidth(), icon = R.drawable.ic_delete, primary = false) { askDelete = true }
-                PhoneTmdbCard()
-                PButton("Usar la interfaz anterior", Modifier.fillMaxWidth(), primary = false) { act.openClassicUi() }
                 Text("JOX3 TV ${act.appVersion()}", style = PType.Small, color = Jx.Faint, modifier = Modifier.padding(top = 6.dp))
                 Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = PType.Small, color = Jx.Faint)
             }
@@ -884,37 +882,6 @@ private fun Stat(label: String, value: String, color: Color, modifier: Modifier)
 }
 
 
-/** Clave de TMDB para completar fichas, reparto, tráiler y carátulas. */
-@Composable
-private fun PhoneTmdbCard() {
-    val ctx = LocalContext.current
-    var key by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.key(ctx)) }
-    var msg by remember { mutableStateOf(if (com.jox3.iptvexo.tv.data.Tmdb.enabled(ctx)) "Activa" else "") }
-    var busy by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Jx.Surface).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Información de TMDB", style = PType.Label, color = Jx.Text)
-        Text("Calificación, reparto con fotos, tráiler y carátulas que faltan. Clave gratis en themoviedb.org → Ajustes → API.",
-            style = PType.Small, color = Jx.Muted)
-        OutlinedTextField(key, { key = it }, label = { Text("API Key o token de lectura") }, singleLine = true,
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Jx.Accent, unfocusedBorderColor = Jx.Line,
-                focusedTextColor = Jx.Text, unfocusedTextColor = Jx.Text, cursorColor = Jx.Accent, focusedLabelColor = Jx.Accent, unfocusedLabelColor = Jx.Muted),
-            shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
-        PButton(if (busy) "Probando…" else "Guardar clave", Modifier.fillMaxWidth(), primary = false) {
-            if (busy) return@PButton
-            val k = key.trim()
-            if (k.isEmpty()) { com.jox3.iptvexo.tv.data.Tmdb.setKey(ctx, ""); msg = "Quitada"; return@PButton }
-            busy = true
-            scope.launch {
-                val err = com.jox3.iptvexo.tv.data.Tmdb.test(ctx, k)
-                if (err == null) { com.jox3.iptvexo.tv.data.Tmdb.setKey(ctx, k); msg = "Activa: ya se completan fichas y carátulas" } else msg = err
-                busy = false
-            }
-        }
-        if (msg.isNotEmpty()) Text(msg, style = PType.Small, color = if (msg.startsWith("Activa")) Jx.Ok else Jx.Live)
-    }
-}
 
 
 // ─────────────────────────── Información rica (TMDB) ───────────────────────────
