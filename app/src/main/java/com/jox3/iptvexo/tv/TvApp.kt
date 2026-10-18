@@ -167,6 +167,7 @@ private fun MainShell(
         val obs = LifecycleEventObserver { _, e ->
             when (e) {
                 Lifecycle.Event.ON_PAUSE -> { live.onPause(); vod.onPause() }
+                Lifecycle.Event.ON_STOP -> GoogleTv.syncContinue(context, account, repo.library)
                 Lifecycle.Event.ON_RESUME -> { live.onResume(); vod.onResume() }
                 else -> Unit
             }
@@ -190,6 +191,44 @@ private fun MainShell(
         if (allAccounts.size > 1 && ServerHub.searchAllEnabled(context)) {
             delay(4000)
             ServerHub.ensureIndexes(allAccounts.filter { it.key != account.key })
+        }
+    }
+    // ── Inicio de Android TV / Google TV ──
+    vod.onClosed = { GoogleTv.syncContinue(context, account, repo.library) }
+    LaunchedEffect(account.key) { delay(2500); GoogleTv.syncContinue(context, account, repo.library) }
+    val favCount = repo.library.favorites.size
+    LaunchedEffect(account.key, favCount) {
+        delay(5000)
+        GoogleTv.syncFavoritesChannel(context, account, repo.library.favorites.toList()) { f ->
+            repo.cachedEpg(com.jox3.iptvexo.tv.data.Channel(f.id, f.name, f.image, f.categoryId, 0))
+                ?.let { repo.nowPlaying(it)?.title }.orEmpty()
+        }
+    }
+    // Ajuste automático de la frecuencia de la TV al video (si está activado en Ajustes)
+    LaunchedEffect(vod.frameRate, vod.open) {
+        val act = context as? android.app.Activity ?: return@LaunchedEffect
+        if (vod.open && vod.frameRate > 0f) GoogleTv.applyFrameRate(act, vod.frameRate)
+        else if (!vod.open) GoogleTv.restoreFrameRate(act)
+    }
+    // Enlace desde el inicio de la TV: película (sigue donde iba), episodio o canal
+    val link = GoogleTv.pendingLink
+    LaunchedEffect(link, account.key) {
+        val (accKey, item) = GoogleTv.parse(link) ?: run { if (link != null) GoogleTv.pendingLink = null; return@LaunchedEffect }
+        GoogleTv.pendingLink = null
+        val other = allAccounts.firstOrNull { it.key == accKey && it.key != account.key }
+        if (other != null) {
+            // Es de otro servidor: se cambia a ese y se abre allá
+            val kind = if (item.kind == "episode") "series" else item.kind
+            val id = if (item.kind == "episode") item.seriesId else item.id
+            ServerHub.pendingOpen = ServerHub.Copy(other, kind, id, item.name.substringBefore(" · "), item.image, item.ext, item.categoryId)
+            onSwitch(other)
+            return@LaunchedEffect
+        }
+        delay(300)
+        when (item.kind) {
+            "movie" -> host.player.playMovie(item.id, item.name, item.image, item.ext, item.categoryId)
+            "episode", "series" -> nav.open(Route.SeriesDetail(item.seriesId.ifBlank { item.id }, item.name.substringBefore(" · "), item.image))
+            "live" -> live.playFullscreen(listOf(com.jox3.iptvexo.tv.data.Channel(item.id, item.name, item.image, item.categoryId, 1)), 0, "Favoritos")
         }
     }
     // Se llegó aquí desde el buscador de otro servidor: abrir lo que se eligió
@@ -282,6 +321,13 @@ private fun MainShell(
     Box(Modifier.fillMaxSize().background(Jx.Bg).onFocusChanged { anyFocus = it.hasFocus }
         // Con el reproductor pequeño: ⏯ pausa o sigue, ■ lo cierra
         .onPreviewKeyEvent { ev ->
+            // Botón de búsqueda / micrófono del control: buscador con voz
+            val kc = ev.nativeKeyEvent.keyCode
+            if ((kc == android.view.KeyEvent.KEYCODE_SEARCH || kc == android.view.KeyEvent.KEYCODE_VOICE_ASSIST) &&
+                !live.fullscreen && !vod.full) {
+                if (ev.type == KeyEventType.KeyDown) { GoogleTv.voiceRequested = true; nav.open(Route.Search) }
+                return@onPreviewKeyEvent true
+            }
             if (!vod.mini || ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
             when (ev.nativeKeyEvent.keyCode) {
                 android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
