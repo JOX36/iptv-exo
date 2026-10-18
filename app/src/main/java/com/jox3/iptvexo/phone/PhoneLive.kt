@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +59,17 @@ import kotlinx.coroutines.delay
 private const val FAV_ID = "__fav"
 private const val RECENT_ID = "__recent"
 
+/**
+ * Lo último elegido en En vivo, en memoria mientras la app está abierta: al volver de
+ * pantalla completa la pantalla se arma ya con esa categoría (sin pasar por la primera)
+ * y la lista en el mismo lugar. Las preferencias lo guardan para la próxima vez.
+ */
+private object LiveUiMemory {
+    var category: Category? = null
+    var listIndex = 0
+    var listOffset = 0
+}
+
 /** Video en vivo con controles (vertical u horizontal). */
 @Composable
 fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit, onBack: () -> Unit, modifier: Modifier = Modifier,
@@ -68,6 +80,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
         if (controls) { delay(3500); controls = false }
     }
     val ch = live.current
+    var locked by remember { mutableStateOf(false) }
     Box(modifier.background(Color.Black)) {
         if (ch == null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -77,6 +90,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
             return@Box
         }
         PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow)
+        if (locked) { LockOverlay { locked = false; controls = true; touched = System.currentTimeMillis() }; return@Box }
         GestureLayer(onTap = { controls = !controls; touched = System.currentTimeMillis() }, onSeek = null)
         live.status?.let { st ->
             Text(st, style = PType.Small, color = Jx.Text, modifier = Modifier.align(Alignment.Center)
@@ -84,16 +98,34 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
         }
         if (controls) {
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99000000), Color.Transparent, Color.Transparent, Color(0xB3000000)))))
-            Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                if (fullscreen) RoundIcon(R.drawable.ic_back, "Salir de pantalla completa", onClick = onBack)
-                Text("EN VIVO", style = PType.Tiny, color = Color.White,
-                    modifier = Modifier.padding(start = 10.dp).background(Jx.Live, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
-                if (fullscreen) Text(ch.name, style = PType.Label, color = Jx.Text, maxLines = 1,
-                    modifier = Modifier.padding(start = 10.dp).weight(1f)) else Spacer(Modifier.weight(1f))
-                if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 10.dp))
+            if (fullscreen) {
+                // Arriba, como en la TV: logo y nombre del canal, su categoría y la guía (AHORA / DESPUÉS)
+                Row(Modifier.fillMaxWidth().padding(start = 4.dp, end = 4.dp, top = 6.dp), verticalAlignment = Alignment.Top) {
+                    RoundIcon(R.drawable.ic_back, "Salir de pantalla completa", onClick = onBack)
+                    RemoteImage(ch.logo, ch.name, Modifier.padding(start = 4.dp, top = 2.dp).size(width = 64.dp, height = 44.dp)
+                        .clip(RoundedCornerShape(10.dp)).background(Color(0x66101722)).padding(4.dp),
+                        scale = androidx.compose.ui.layout.ContentScale.Fit)
+                    Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(ch.name, style = PType.H2, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false))
+                            Text("EN VIVO", style = PType.Tiny, color = Color.White,
+                                modifier = Modifier.background(Jx.Live, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
+                            if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent)
+                        }
+                        if (live.group.isNotBlank()) Text(live.group, style = PType.Tiny, color = Jx.Muted, maxLines = 1)
+                        if (repo != null) FullscreenEpg(ch, repo, Modifier.padding(top = 4.dp))
+                    }
+                    RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("EN VIVO", style = PType.Tiny, color = Color.White,
+                        modifier = Modifier.padding(start = 10.dp, top = 10.dp).background(Jx.Live, RoundedCornerShape(6.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
+                    Spacer(Modifier.weight(1f))
+                    if (live.quality.isNotEmpty()) Text(live.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 10.dp, top = 10.dp))
+                }
             }
-            // A pantalla completa, arriba: lo que dan ahora y después (como en la TV)
-            if (fullscreen && repo != null) FullscreenEpg(ch, repo, Modifier.padding(start = 58.dp, top = 52.dp))
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoundIcon(R.drawable.ic_prev, "Canal anterior", bg = Color(0x80070A0F)) { live.zap(-1); touched = System.currentTimeMillis() }
                 val playing = live.player?.isPlaying == true || live.playingNow
@@ -131,15 +163,21 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
     var catSheet by remember { mutableStateOf(false) }
     val cats by produceState<List<Category>?>(null) { value = runCatching { repo.categories(Section.LIVE) }.getOrDefault(emptyList()) }
     val allCats = remember(cats) { listOf(Category(FAV_ID, "★ Favoritos"), Category(RECENT_ID, "Recientes")) + cats.orEmpty() }
-    var selected by remember { mutableStateOf<Category?>(null) }
+    var selected by remember { mutableStateOf(LiveUiMemory.category) }
     LaunchedEffect(cats) {
-        if (selected == null && cats != null) {
+        // (si la categoría recordada no existe en esta cuenta, se elige de nuevo)
+        if (cats != null && (selected == null || allCats.none { it.id == selected?.id })) {
             val saved = prefs.getString("phone_live_cat", null)
             selected = allCats.firstOrNull { it.id == saved }
                 ?: if (lib.favorites.any { it.kind == "live" }) allCats[0] else cats!!.firstOrNull() ?: allCats[0]
         }
     }
-    LaunchedEffect(selected?.id) { selected?.id?.let { prefs.edit().putString("phone_live_cat", it).apply() } }
+    LaunchedEffect(selected?.id) {
+        val c = selected ?: return@LaunchedEffect
+        if (LiveUiMemory.category?.id != c.id) { LiveUiMemory.listIndex = 0; LiveUiMemory.listOffset = 0 }
+        LiveUiMemory.category = c
+        prefs.edit().putString("phone_live_cat", c.id).apply()
+    }
     val favKey = if (selected?.id == FAV_ID) lib.favorites.size else -1
     val channels by produceState<List<Channel>?>(null, selected, favKey) {
         val c = selected ?: return@produceState
@@ -192,7 +230,19 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
             when {
                 cats == null || list == null -> CenterText("Cargando…")
                 list.isEmpty() -> CenterText(if (selected?.id == FAV_ID) "Mantén pulsado un canal para agregarlo a favoritos" else "Sin canales")
-                else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 16.dp)) {
+                else -> {
+                    val listState = rememberLazyListState(LiveUiMemory.listIndex, LiveUiMemory.listOffset)
+                    val listCat = selected?.id
+                    DisposableEffect(listState) {
+                        onDispose {
+                            // Solo si sigue siendo la misma categoría (al cambiarla, la lista nueva empieza arriba)
+                            if (LiveUiMemory.category?.id == listCat) {
+                                LiveUiMemory.listIndex = listState.firstVisibleItemIndex
+                                LiveUiMemory.listOffset = listState.firstVisibleItemScrollOffset
+                            }
+                        }
+                    }
+                    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 8.dp, bottom = 16.dp)) {
                     itemsIndexed(list, key = { _, c -> c.id }) { _, c ->
                         ChannelRow(c, repo, playing = live.current?.id == c.id, favorite = lib.isFavorite("live", c.id),
                             onClick = {
@@ -201,6 +251,7 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
                             },
                             onLongClick = { lib.toggleFavorite(SavedItem("live", c.id, c.name, c.logo, categoryId = c.categoryId)) })
                     }
+                }
                 }
             }
         } else {

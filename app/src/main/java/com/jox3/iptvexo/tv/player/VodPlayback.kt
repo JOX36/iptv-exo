@@ -102,6 +102,8 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     /** Sinopsis y datos que llegan después de abrir (p. ej. la ficha de la película). */
     val extras = androidx.compose.runtime.mutableStateMapOf<String, Pair<String, String>>()
     fun setExtras(id: String, plot: String, meta: String) { extras[id] = plot to meta }
+    /** Dirección, reparto y género de la película (para la ficha bajo el video en el celular). */
+    val credits = androidx.compose.runtime.mutableStateMapOf<String, Triple<String, String, String>>()
     fun plotOf(it: VodItem): String = extras[it.id]?.first?.ifBlank { null } ?: it.plot
     fun metaOf(it: VodItem): String = extras[it.id]?.second?.ifBlank { null } ?: it.meta
 

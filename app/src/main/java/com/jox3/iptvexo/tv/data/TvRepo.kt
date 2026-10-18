@@ -128,7 +128,8 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
                 val saga = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                     idx.movies.indices.filter { idx.movieKeys[it].startsWith(base) }.map { idx.movies[it] }
                 }
-                saga.filter { it.id != movie.id }.sortedBy { normalize(it.name) }.take(12).forEach { out.putIfAbsent(it.id, it) }
+                bestCopies(saga).filter { it.id != movie.id && titleKey(it.name) != titleKey(movie.name) }
+                    .sortedBy { normalize(it.name) }.take(12).forEach { out.putIfAbsent(it.id, it) }
             }
         }
         // 2. Género
@@ -143,10 +144,27 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
             runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
         }
         if (matching.isEmpty()) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
-        pool.values.shuffled(java.util.Random(movie.id.hashCode().toLong())).forEach { out.putIfAbsent(it.id, it) }
+        val seen = out.values.map { titleKey(it.name) }.toMutableSet().apply { add(titleKey(movie.name)) }
+        bestCopies(pool.values.toList()).shuffled(java.util.Random(movie.id.hashCode().toLong()))
+            .forEach { if (seen.add(titleKey(it.name))) out.putIfAbsent(it.id, it) }
         out.remove(movie.id)
         return out.values.take(limit)
     }
+
+    /** Título sin año ni etiquetas ([4K], (2023)…): para reconocer copias de la misma película. */
+    private fun titleKey(name: String): String =
+        normalize(name).replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("\\b(4k|uhd|fhd|hd|sd|latino|castellano|subtitulado|dual|19\\d\\d|20\\d\\d)\\b"), " ")
+            .replace(Regex("\\s+"), " ").trim()
+
+    /**
+     * Muchos servidores repiten la misma película en varias carpetas y algunas copias
+     * vienen sin carátula. De cada título se queda la copia que sí trae imagen.
+     */
+    private fun bestCopies(list: List<Movie>): List<Movie> =
+        list.groupBy { titleKey(it.name) }.values.map { copies ->
+            copies.firstOrNull { it.poster.startsWith("http") } ?: copies.first()
+        }
 
     /** Comienzo del título que identifica la saga: "harry potter", "rapidos y furiosos", "matchbox". */
     private fun sagaKey(name: String): String {

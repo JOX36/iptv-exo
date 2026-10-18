@@ -157,7 +157,8 @@ private fun PhoneShell(
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
                     vod.open -> Box(Modifier.statusBarsPadding()) {
-                        VodScreen(vod, repo.library, onFullscreen = { act.enterLandscape() }, onClose = { vod.close() })
+                        VodScreen(vod, repo.library, onFullscreen = { act.enterLandscape() }, onClose = { vod.close() }, repo = repo,
+                            onPlayMovie = { m -> launcher.playMovie(m.id, m.name, m.poster, m.ext, m.categoryId) })
                     }
                     page is Page.MovieDetail -> key(page.movie.id) {
                         PhoneMovieDetail(repo, launcher, page.movie, onOpenMovie = ::openMovie) { pages.removeAt(pages.lastIndex) }
