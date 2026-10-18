@@ -552,7 +552,7 @@ fun TrackSheet(player: ExoPlayer?, tracksVersion: Int, type: Int, onDismiss: () 
 
 /** Ficha bajo el video: carátula + año/género/duración, dirección y reparto. */
 @Composable
-private fun MovieCard(cur: VodItem, meta: String, credits: Triple<String, String, String>?) {
+private fun MovieCard(cur: com.jox3.iptvexo.tv.player.VodItem, meta: String, credits: Triple<String, String, String>?) {
     Row(
         Modifier.padding(horizontal = 18.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Jx.Surface).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
