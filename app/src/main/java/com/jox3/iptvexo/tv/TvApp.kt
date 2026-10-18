@@ -60,6 +60,10 @@ import androidx.tv.material3.Text
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.data.Account
 import com.jox3.iptvexo.tv.data.AccountStore
+import com.jox3.iptvexo.tv.data.ServerHub
+import com.jox3.iptvexo.tv.screens.ServerPanel
+import com.jox3.iptvexo.tv.screens.statusColor
+import androidx.compose.foundation.shape.CircleShape
 import com.jox3.iptvexo.tv.data.LibraryStore
 import com.jox3.iptvexo.tv.data.Movie
 import com.jox3.iptvexo.tv.data.TvRepo
@@ -133,13 +137,17 @@ fun TvApp(host: TvHost) {
     key(acc.key) {
         val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
         host.player.repo = repo
-        MainShell(repo, host, acc, onLogout = { accounts.logout(); account = null },
-            onDelete = { accounts.delete(acc); account = null })
+        MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
+            onDelete = { accounts.delete(acc); account = null },
+            onSwitch = { a -> accounts.use(a); account = a })
     }
 }
 
 @Composable
-private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit, onDelete: () -> Unit) {
+private fun MainShell(
+    repo: TvRepo, host: TvHost, account: Account, accounts: AccountStore,
+    onLogout: () -> Unit, onDelete: () -> Unit, onSwitch: (Account) -> Unit,
+) {
     val context = LocalContext.current
     val stack = remember { mutableStateListOf<Route>(Route.Home) }
     val baseFocus = remember { FocusRequester() }
@@ -172,6 +180,30 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
     }
     // La guía de internet empieza a descargarse en segundo plano desde el inicio
     LaunchedEffect(repo) { runCatching { repo.categories(com.jox3.iptvexo.tv.data.Section.LIVE) } }
+
+    // ── Varios servidores ──
+    val allAccounts = remember(account) { accounts.all() }
+    var serverPanel by remember { mutableStateOf(false) }
+    LaunchedEffect(account.key) {
+        ServerHub.refresh(allAccounts)
+        // El catálogo de los otros servidores se prepara en segundo plano para el buscador universal
+        if (allAccounts.size > 1 && ServerHub.searchAllEnabled(context)) {
+            delay(4000)
+            ServerHub.ensureIndexes(allAccounts.filter { it.key != account.key })
+        }
+    }
+    // Se llegó aquí desde el buscador de otro servidor: abrir lo que se eligió
+    LaunchedEffect(account.key) {
+        val p = ServerHub.pendingOpen ?: return@LaunchedEffect
+        if (p.account.key != account.key) return@LaunchedEffect
+        ServerHub.pendingOpen = null
+        delay(150)
+        when (p.kind) {
+            "movie" -> nav.open(Route.MovieDetail(com.jox3.iptvexo.tv.data.Movie(p.id, p.name, p.image, p.rating, p.ext, p.categoryId, 0L)))
+            "series" -> nav.open(Route.SeriesDetail(p.id, p.name, p.image))
+            "live" -> live.playFullscreen(listOf(com.jox3.iptvexo.tv.data.Channel(p.id, p.name, p.image, p.categoryId, 1)), 0, "Búsqueda")
+        }
+    }
     var wasFullscreen by remember { mutableStateOf(false) }
     LaunchedEffect(live.fullscreen) {
         if (live.fullscreen) { wasFullscreen = true; return@LaunchedEffect }
@@ -270,7 +302,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
                     key(section) {
                         when (section) {
                             Route.Home -> HomeScreen(repo, nav, host)
-                            Route.Search -> SearchScreen(repo, nav, host)
+                            Route.Search -> SearchScreen(repo, nav, host, account, allAccounts, onSwitch)
                             Route.Live -> LiveScreen(repo, host)
                             Route.Movies -> MoviesScreen(repo, nav)
                             Route.Series -> SeriesScreen(repo, nav)
@@ -281,7 +313,7 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
                     }
                 }
             }
-            if (!chrome.railHidden) Rail(section, nav, Modifier.zIndex(2f))
+            if (!chrome.railHidden) Rail(section, nav, allAccounts, account, { serverPanel = true }, Modifier.zIndex(2f))
           }
         }
 
@@ -308,6 +340,16 @@ private fun MainShell(repo: TvRepo, host: TvHost, account: Account, onLogout: ()
             }
         } else if (vod.open) {
             VodMini(vod, Modifier.align(Alignment.TopEnd).padding(end = 28.dp, top = 20.dp).zIndex(4.5f))
+        }
+
+        // Panel de servidores (desde la barra lateral)
+        if (serverPanel) {
+            Box(Modifier.fillMaxSize().zIndex(6f)) {
+                ServerPanel(allAccounts, account,
+                    onPick = { a -> serverPanel = false; onSwitch(a) },
+                    onAdd = { serverPanel = false; onLogout() },
+                    onDismiss = { serverPanel = false })
+            }
         }
 
         // Controles del reproductor en vivo a pantalla completa
@@ -343,7 +385,10 @@ private val railItems = listOf(
  * la sección actual.
  */
 @Composable
-private fun Rail(current: Route, nav: Nav, modifier: Modifier = Modifier) {
+private fun Rail(
+    current: Route, nav: Nav, accounts: List<Account>, account: Account, onServers: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var expanded by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (expanded) RailExpanded else RailCollapsed, tween(180), label = "rail")
     val currentReq = remember { FocusRequester() }
@@ -364,7 +409,10 @@ private fun Rail(current: Route, nav: Nav, modifier: Modifier = Modifier) {
             Modifier.fillMaxHeight().padding(vertical = 24.dp, horizontal = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("J3", style = Type.H1, color = Jx.Accent, modifier = Modifier.padding(start = 12.dp, bottom = 18.dp))
+            Text("J3", style = Type.H1, color = Jx.Accent, modifier = Modifier.padding(start = 12.dp, bottom = 10.dp))
+            // Servidor en uso: OK abre la lista de servidores
+            ServerRailButton(accounts, account, expanded, onServers)
+            Spacer(Modifier.height(8.dp))
             railItems.forEach { item ->
                 RailButton(item.icon, item.label, item.route == current, expanded,
                     if (item.route == current) Modifier.focusRequester(currentReq) else Modifier) { nav.open(item.route) }
@@ -400,6 +448,39 @@ private fun RailButton(
         ) {
             JxIcon(icon, 20.dp, description = label)
             if (expanded) Text(label, style = Type.Label, maxLines = 1)
+        }
+    }
+}
+
+
+/** Botón del servidor en uso (letra + punto de estado); desplegado muestra su nombre. */
+@Composable
+private fun ServerRailButton(accounts: List<Account>, account: Account, expanded: Boolean, onClick: () -> Unit) {
+    val st = ServerHub.status[account.key]
+    FocusSurface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(12.dp),
+        focusedScale = 1f,
+        container = Color.Transparent,
+        focusedContainer = Jx.Text,
+        content = Jx.TextSoft,
+        focusedContent = Jx.Bg,
+        ring = false,
+    ) {
+        Row(Modifier.fillMaxSize().padding(start = 9.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(30.dp)) {
+                Box(Modifier.size(30.dp).background(Jx.SurfaceHi, CircleShape), contentAlignment = Alignment.Center) {
+                    Text(ServerHub.letter(accounts, account), style = Type.Label, color = Jx.Accent)
+                }
+                Box(Modifier.align(Alignment.BottomEnd).size(10.dp).background(Jx.Rail, CircleShape).padding(2.dp)
+                    .background(statusColor(st), CircleShape))
+            }
+            if (expanded) Column {
+                Text(ServerHub.name(accounts, account), style = Type.Label, maxLines = 1)
+                Text(if (accounts.size > 1) "Cambiar servidor" else "Servidores", style = Type.Small, maxLines = 1)
+            }
         }
     }
 }

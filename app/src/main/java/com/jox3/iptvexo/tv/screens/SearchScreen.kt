@@ -40,6 +40,8 @@ import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.Movie
 import com.jox3.iptvexo.tv.data.Series
 import com.jox3.iptvexo.tv.data.TvRepo
+import com.jox3.iptvexo.tv.data.Account
+import com.jox3.iptvexo.tv.data.ServerHub
 import com.jox3.iptvexo.tv.ui.ChannelTile
 import com.jox3.iptvexo.tv.ui.FocusSurface
 import com.jox3.iptvexo.tv.ui.JxIcon
@@ -54,9 +56,6 @@ import kotlinx.coroutines.withContext
 
 private val KEYS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ0123456789".map { it.toString() }
 
-private data class Results(val channels: List<Channel>, val movies: List<Movie>, val series: List<Series>) {
-    val isEmpty get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty()
-}
 
 /**
  * Búsqueda con teclado en pantalla: con el control es mucho más rápido que el
@@ -64,27 +63,46 @@ private data class Results(val channels: List<Channel>, val movies: List<Movie>,
  * importar tildes ni mayúsculas.
  */
 @Composable
-fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
+fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, accounts: List<Account>, onSwitch: (Account) -> Unit) {
     val live = LocalLive.current
+    val lib = repo.library
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var query by rememberSaveable { mutableStateOf("") }
+    // Servidor elegido en el filtro (null = todos)
+    var only by rememberSaveable { mutableStateOf<String?>(null) }
+    var choose by remember { mutableStateOf<ServerHub.Hit?>(null) }
+    val multi = accounts.size > 1 && ServerHub.searchAllEnabled(ctx)
+    val others = remember(accounts, account) { accounts.filter { it.key != account.key } }
+    LaunchedEffect(multi) { if (multi) ServerHub.ensureIndexes(others) }
+    val indexVersion by ServerHub.indexVersion
     val index by produceState<TvRepo.Index?>(null) { value = repo.searchIndex() }
-    val results by produceState<Results?>(null, query, index) {
+    val results by produceState<ServerHub.Results?>(null, query, index, only, indexVersion) {
         val idx = index ?: return@produceState
         val q = TvRepo.normalize(query.trim())
         if (q.length < 2) { value = null; return@produceState }
         delay(220)   // esperar a que termine de escribir (si pulsa otra letra, esto se cancela)
-        value = withContext(Dispatchers.Default) {
-            // Los nombres ya vienen normalizados en el índice: solo se compara texto
-            fun <T> pick(list: List<T>, keys: List<String>): List<T> {
-                val out = ArrayList<T>(40)
-                for (i in keys.indices) { if (keys[i].contains(q)) { out.add(list[i]); if (out.size == 40) break } }
-                return out
+        value = ServerHub.search(query, account, idx, accounts, only, includeOthers = multi)
+    }
+    fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()
+    /** OK en un resultado: si solo está en este servidor se abre; si no, se elige de dónde. */
+    fun open(h: ServerHub.Hit, direct: () -> Unit) {
+        lib.addSearch(query)
+        if (h.copies.all { it.account.key == account.key }) direct() else choose = h
+    }
+    fun openCopy(c: ServerHub.Copy, channels: List<Channel>) {
+        choose = null
+        if (c.account.key != account.key) { ServerHub.pendingOpen = c; onSwitch(c.account); return }
+        when (c.kind) {
+            "movie" -> nav.open(Route.MovieDetail(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L)))
+            "series" -> nav.open(Route.SeriesDetail(c.id, c.name, c.image))
+            else -> {
+                val i = channels.indexOfFirst { it.id == c.id }
+                if (i >= 0) live.playFullscreen(channels, i, "Búsqueda")
+                else live.playFullscreen(listOf(Channel(c.id, c.name, c.image, c.categoryId, 1)), 0, "Búsqueda")
             }
-            Results(pick(idx.channels, idx.channelKeys), pick(idx.movies, idx.movieKeys), pick(idx.series, idx.seriesKeys))
         }
     }
     val firstKey = remember { FocusRequester() }
-    val lib = repo.library
     // Si se queda unos segundos en una búsqueda con resultados, se guarda en el historial
     LaunchedEffect(results) {
         val r = results ?: return@LaunchedEffect
@@ -124,6 +142,8 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         // ── Resultados ──
         Column(Modifier.weight(1f).fillMaxHeight()) {
             val r = results
+            // Filtro por servidor + en qué servidores se está buscando
+            if (multi) ServerFilter(accounts, account, only) { only = it }
             when {
                 index == null -> StatusBox("Preparando la búsqueda en todo el catálogo…")
                 query.trim().length < 2 -> SearchHistory(
@@ -139,32 +159,46 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost) {
                     contentPadding = PaddingValues(top = 27.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
+                    // Canales del servidor actual (para cambiar con ▲▼ dentro de los resultados)
+                    val here = r.channels.mapNotNull { h -> h.copies.firstOrNull { it.account.key == account.key } }
+                        .mapIndexed { i, c -> Channel(c.id, c.name, c.image, c.categoryId, i + 1) }
                     if (r.channels.isNotEmpty()) item(key = "ch") {
                         ShelfRow("En vivo · ${r.channels.size}") {
-                            itemsIndexed(r.channels, key = { _, c -> "c" + c.id }) { i, c ->
-                                ChannelTile(c.name, c.logo, onClick = { lib.addSearch(query); live.playFullscreen(r.channels, i, "Búsqueda") })
+                            items(r.channels, key = { "c" + it.key }) { h ->
+                                ChannelTile(h.name, h.image, badges = letters(h), onClick = {
+                                    open(h) { openCopy(h.copies.first(), here) }
+                                })
                             }
                         }
                     }
                     if (r.movies.isNotEmpty()) item(key = "mv") {
                         ShelfRow("Películas · ${r.movies.size}") {
-                            items(r.movies, key = { "m" + it.id }) { m ->
-                                PosterCard(m.name, m.poster, onClick = { lib.addSearch(query); nav.open(Route.MovieDetail(m)) }, width = 96.dp,
-                                    favorite = lib.isFavorite("movie", m.id))
+                            items(r.movies, key = { "m" + it.key }) { h ->
+                                PosterCard(h.name, h.image, onClick = { open(h) { openCopy(h.copies.first(), here) } }, width = 96.dp,
+                                    subtitle = h.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
+                                    favorite = h.copies.any { it.account.key == account.key && lib.isFavorite("movie", it.id) },
+                                    badges = letters(h))
                             }
                         }
                     }
                     if (r.series.isNotEmpty()) item(key = "sr") {
                         ShelfRow("Series · ${r.series.size}") {
-                            items(r.series, key = { "s" + it.id }) { s ->
-                                PosterCard(s.name, s.poster, onClick = { lib.addSearch(query); nav.open(Route.SeriesDetail(s.id, s.name, s.poster)) },
-                                    width = 96.dp, favorite = lib.isFavorite("series", s.id))
+                            items(r.series, key = { "s" + it.key }) { h ->
+                                PosterCard(h.name, h.image, onClick = { open(h) { openCopy(h.copies.first(), here) } }, width = 96.dp,
+                                    subtitle = h.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
+                                    favorite = h.copies.any { it.account.key == account.key && lib.isFavorite("series", it.id) },
+                                    badges = letters(h))
                             }
                         }
                     }
                 }
             }
         }
+    }
+    choose?.let { h ->
+        val here = results?.channels.orEmpty().mapNotNull { x -> x.copies.firstOrNull { it.account.key == account.key } }
+            .mapIndexed { i, c -> Channel(c.id, c.name, c.image, c.categoryId, i + 1) }
+        ServerChooser(h, accounts, account, onPick = { c -> openCopy(c, here) }, onDismiss = { choose = null })
     }
     LaunchedEffect(Unit) { delay(50); runCatching { firstKey.requestFocus() } }
 }
@@ -222,5 +256,42 @@ private fun SearchHistory(items: List<String>, onPick: (String) -> Unit, onRemov
                 }
             }
         }
+    }
+}
+
+
+/** Fila de filtro: Todos / cada servidor (letra + nombre), con aviso mientras carga su catálogo. */
+@Composable
+private fun ServerFilter(accounts: List<Account>, current: Account, only: String?, onPick: (String?) -> Unit) {
+    val loading = accounts.filter { it.key != current.key && ServerHub.loadingIndex[it.key] == true }
+    Column(Modifier.padding(start = 28.dp, end = 32.dp, top = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip("Todos", only == null) { onPick(null) }
+            accounts.forEach { a ->
+                FilterChip(ServerHub.letter(accounts, a) + " · " + ServerHub.name(accounts, a), only == a.key) { onPick(a.key) }
+            }
+        }
+        Text(
+            if (loading.isEmpty()) "Buscando en ${accounts.size} servidores"
+            else "Preparando el catálogo de " + loading.joinToString(", ") { ServerHub.letter(accounts, it) } + "… sus resultados aparecen solos",
+            style = Type.Small, color = Jx.Faint,
+        )
+    }
+}
+
+@Composable
+private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = Modifier.height(32.dp),
+        shape = RoundedCornerShape(16.dp),
+        focusedScale = 1.05f,
+        container = if (selected) Jx.Text else Jx.Surface,
+        content = if (selected) Jx.Bg else Jx.TextSoft,
+        focusedContainer = Jx.Accent,
+        focusedContent = Jx.OnAccent,
+        ring = false,
+    ) {
+        Text(label, style = Type.Small, maxLines = 1, modifier = Modifier.align(Alignment.Center).padding(horizontal = 12.dp))
     }
 }

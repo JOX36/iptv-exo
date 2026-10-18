@@ -2,6 +2,7 @@ package com.jox3.iptvexo.phone
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -143,12 +144,14 @@ fun CenterText(text: String, modifier: Modifier = Modifier) {
 
 /** Póster vertical (películas y series). */
 @Composable
-fun PosterTile(title: String, image: String, modifier: Modifier = Modifier, subtitle: String = "", favorite: Boolean = false, onClick: () -> Unit) {
+fun PosterTile(title: String, image: String, modifier: Modifier = Modifier, subtitle: String = "", favorite: Boolean = false,
+               badges: List<String> = emptyList(), onClick: () -> Unit) {
     Column(modifier.clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp))) {
             RemoteImage(image, title, Modifier.fillMaxSize())
             if (favorite) Icon(painterResource(com.jox3.iptvexo.R.drawable.tv_ic_star_filled), "Favorito",
                 Modifier.align(Alignment.TopEnd).padding(6.dp).size(16.dp), tint = Jx.Gold)
+            BadgeRow(badges, Modifier.align(Alignment.BottomStart).padding(5.dp))
         }
         Text(title, style = PType.Small, color = Jx.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
         if (subtitle.isNotBlank()) Text(subtitle, style = PType.Tiny, color = Jx.Faint, maxLines = 1)
@@ -220,6 +223,19 @@ fun CategorySheet(cats: List<com.jox3.iptvexo.tv.data.Category>, selectedId: Str
                     }
                 }
             }
+        }
+    }
+}
+
+
+/** Letras de los servidores donde está un título (buscador universal). */
+@Composable
+fun BadgeRow(letters: List<String>, modifier: Modifier = Modifier) {
+    if (letters.isEmpty()) return
+    Row(modifier.padding(top = 2.dp), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        letters.forEach { l ->
+            Text(l, style = PType.Tiny, color = Jx.Text, modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xE6070A0F))
+                .border(1.dp, Jx.Accent, RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp))
         }
     }
 }

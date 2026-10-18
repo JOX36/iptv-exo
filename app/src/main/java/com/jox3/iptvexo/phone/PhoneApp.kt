@@ -45,6 +45,7 @@ import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.PlayerLauncher
 import com.jox3.iptvexo.tv.data.Account
 import com.jox3.iptvexo.tv.data.AccountStore
+import com.jox3.iptvexo.tv.data.ServerHub
 import com.jox3.iptvexo.tv.data.LibraryStore
 import com.jox3.iptvexo.tv.data.Movie
 import com.jox3.iptvexo.tv.data.SavedItem
@@ -68,6 +69,7 @@ private sealed interface Page {
     data class MovieDetail(val movie: Movie) : Page
     data class SeriesDetail(val id: String, val name: String, val poster: String) : Page
     data object Settings : Page
+    data object Servers : Page
 }
 
 @Composable
@@ -167,6 +169,27 @@ private fun PhoneShell(
         live.play(c, list, "")
     }
 
+    // ── Varios servidores ──
+    LaunchedEffect(account.key) {
+        val all = accounts.all()
+        ServerHub.refresh(all)
+        if (all.size > 1 && ServerHub.searchAllEnabled(context)) {
+            kotlinx.coroutines.delay(4000)
+            ServerHub.ensureIndexes(all.filter { it.key != account.key })
+        }
+    }
+    // Se llegó aquí desde el buscador de otro servidor: abrir lo que se eligió
+    LaunchedEffect(account.key) {
+        val p = ServerHub.pendingOpen ?: return@LaunchedEffect
+        if (p.account.key != account.key) return@LaunchedEffect
+        ServerHub.pendingOpen = null
+        when (p.kind) {
+            "movie" -> openMovie(Movie(p.id, p.name, p.image, p.rating, p.ext, p.categoryId, 0L))
+            "series" -> openSeries(p.id, p.name, p.image)
+            "live" -> playChannel(listOf(com.jox3.iptvexo.tv.data.Channel(p.id, p.name, p.image, p.categoryId, 1)), 0)
+        }
+    }
+
     BackHandler {
         when {
             fullscreen -> act.exitLandscape()
@@ -196,20 +219,27 @@ private fun PhoneShell(
                         PhoneMovieDetail(repo, launcher, page.movie, onOpenMovie = ::openMovie) { pages.removeAt(pages.lastIndex) }
                     }
                     page is Page.SeriesDetail -> PhoneSeriesDetail(repo, launcher, page.id, page.name, page.poster) { pages.removeAt(pages.lastIndex) }
+                    page is Page.Servers -> Box(Modifier.statusBarsPadding()) {
+                        PhoneServers(accounts, account, onSwitch = onSwitch, onAdd = onAdd,
+                            onDeleted = { a -> if (a.key == account.key) onLogout() }) { pages.removeAt(pages.lastIndex) }
+                    }
                     page is Page.Settings -> Box(Modifier.statusBarsPadding()) {
-                        PhoneSettings(repo, act, account, onAddAccount = onAdd, onLogout = onLogout) { pages.removeAt(pages.lastIndex) }
+                        PhoneSettings(repo, act, account, onAddAccount = onAdd, onLogout = onLogout,
+                            onServers = { pages.add(Page.Servers) }) { pages.removeAt(pages.lastIndex) }
                     }
                     tab == Tab.Live -> Box(Modifier.statusBarsPadding()) {
                         PhoneLiveScreen(repo, live, onFullscreen = { act.enterLandscape() })
                     }
                     else -> Column(Modifier.statusBarsPadding()) {
-                        Header(accounts, account, onSwitch, onAdd, onSettings = { pages.add(Page.Settings) })
+                        Header(accounts, account, onSwitch, onAdd, onSettings = { pages.add(Page.Settings) },
+                            onServers = { pages.add(Page.Servers) })
                         Box(Modifier.weight(1f)) {
                             when (tab) {
                                 Tab.Home -> PhoneHome(repo, launcher, ::openMovie, ::openSeries, ::playChannel)
                                 Tab.Movies -> PhoneCatalog(repo, Section.VOD, ::openMovie, ::openSeries)
                                 Tab.Series -> PhoneCatalog(repo, Section.SERIES, ::openMovie, ::openSeries)
-                                Tab.Search -> PhoneSearch(repo, ::openMovie, ::openSeries, ::playChannel)
+                                Tab.Search -> PhoneSearch(repo, ::openMovie, ::openSeries, ::playChannel,
+                                    account = account, accounts = accounts.all(), onSwitch = onSwitch)
                                 Tab.Live -> Unit
                             }
                         }
@@ -223,7 +253,8 @@ private fun PhoneShell(
 }
 
 @Composable
-private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account) -> Unit, onAdd: () -> Unit, onSettings: () -> Unit) {
+private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account) -> Unit, onAdd: () -> Unit, onSettings: () -> Unit,
+                   onServers: () -> Unit) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("J3", style = PType.H1, color = Jx.Accent)
@@ -249,7 +280,8 @@ private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account)
                         onClick = { menu = false; if (a.key != account.key) onSwitch(a) },
                     )
                 }
-                DropdownMenuItem(text = { Text("+ Agregar cuenta", style = PType.Label, color = Jx.Accent) }, onClick = { menu = false; onAdd() })
+                DropdownMenuItem(text = { Text("Mis servidores", style = PType.Label, color = Jx.Text) }, onClick = { menu = false; onServers() })
+                DropdownMenuItem(text = { Text("+ Agregar servidor", style = PType.Label, color = Jx.Accent) }, onClick = { menu = false; onAdd() })
             }
         }
         Spacer(Modifier.weight(1f))
