@@ -27,6 +27,7 @@ class PlayerLauncher {
             val info = runCatching { r.api.movieInfo(id) }.getOrNull() ?: return@launch
             player.setExtras(id, info.plot, listOfNotNull(info.year.ifBlank { null }, info.genre.ifBlank { null },
                 info.duration.ifBlank { null }, info.rating.ifBlank { null }?.let { "★ $it" }).joinToString(" · "))
+            player.credits[id] = Triple(info.director, info.cast, info.genre)
         }
     }
 

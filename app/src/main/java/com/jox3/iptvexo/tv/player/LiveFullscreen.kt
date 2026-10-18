@@ -167,6 +167,9 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     val optReqs = remember { Opt.values().associateWith { FocusRequester() } }
     val panelReq = remember { FocusRequester() }
     var pendingPanelFocus by remember { mutableStateOf(false) }
+    // El panel de la opción solo se abre al elegirla (OK o ▲). Con OK en el video
+    // aparecen primero la información del canal y los botones, sin panel.
+    var panelOpen by remember { mutableStateOf(false) }
     val lib = repo.library
     val index = live.channels.indexOfFirst { it.id == ch.id }
 
@@ -185,7 +188,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     }
 
     fun hideAll() {
-        bars = false; option = null; inPanel = false
+        bars = false; option = null; inPanel = false; panelOpen = false
         runCatching { rootReq.requestFocus() }
         focusRootTick++
     }
@@ -193,7 +196,8 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     /** Atrás, de adentro hacia afuera: panel → opciones → información → volver a la guía. */
     fun goBack() {
         when {
-            inPanel && option != null -> focusOptTick++
+            inPanel && option != null -> { panelOpen = false; focusOptTick++ }
+            panelOpen && option != null -> panelOpen = false
             option != null || bars -> hideAll()
             else -> onExit()
         }
@@ -201,6 +205,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     fun openOptions(focus: Opt, enterPanel: Boolean = false) {
         bars = true
         option = focus
+        panelOpen = enterPanel
         pendingPanelFocus = enterPanel
         // El foco se mueve en el siguiente cuadro, cuando la barra ya existe
     }
@@ -229,7 +234,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     LaunchedEffect(bars, option, pendingPanelFocus) {
         val o = option ?: return@LaunchedEffect
         if (!bars) return@LaunchedEffect
-        delay(30)
+        delay(50)
         if (pendingPanelFocus) {
             pendingPanelFocus = false
             runCatching { panelReq.requestFocus() }
@@ -284,7 +289,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                 }
             }
     ) {
-        if (bars && option != Opt.Info) {
+        if (bars && !(panelOpen && option == Opt.Info)) {
             // ── Arriba: canal + guía (con Información abierta, el panel ya trae todo) ──
             Column(
                 Modifier.fillMaxWidth()
@@ -312,7 +317,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
 
         // ── Panel de la opción enfocada (translúcido, encima del video) ──
         val o = option
-        if (bars && o != null && o.hasPanel) {
+        if (bars && o != null && o.hasPanel && panelOpen) {
             Box(
                 (if (o == Opt.Info)
                     // Información: ocupa toda la altura (de arriba hasta la barra de opciones)
@@ -350,6 +355,14 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
             val isFav = lib.isFavorite("live", ch.id)
             Column(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    // ▲ sobre un botón con panel lo abre y entra en él (si el panel aún no está abierto)
+                    .onPreviewKeyEvent { ev ->
+                        val k = ev.nativeKeyEvent.keyCode
+                        if (k == AndroidKey.KEYCODE_DPAD_UP && !panelOpen && option?.hasPanel == true) {
+                            if (ev.type == KeyEventType.KeyDown) { panelOpen = true; pendingPanelFocus = true }
+                            true
+                        } else false
+                    }
                     .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xCC000000))))
                     .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -378,13 +391,15 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 when (opt) {
                                     Opt.Favorite -> lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
                                     Opt.Reload -> live.reload()
-                                    else -> runCatching { panelReq.requestFocus() }   // OK entra al panel
+                                    // OK abre el panel y entra en él
+                                    else -> { panelOpen = true; pendingPanelFocus = true }
                                 }
                             },
                         )
                     }
                 }
-                Text("◀▶ opciones   ▲ u OK: entrar   Atrás: ocultar", style = Type.Small, color = Jx.Muted)
+                Text(if (panelOpen) "◀▶ opciones   ▲: entrar al panel   Atrás: cerrar" else "◀▶ elegir   OK o ▲: abrir   Atrás: ocultar",
+                style = Type.Small, color = Jx.Muted)
             }
         }
 

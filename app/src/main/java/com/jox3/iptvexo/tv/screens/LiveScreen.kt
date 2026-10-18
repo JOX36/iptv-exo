@@ -293,7 +293,7 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
 
         // ── Vista previa + guía ──
         Column(Modifier.weight(1f).fillMaxHeight().padding(top = 27.dp, end = 32.dp, start = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Hueco de la vista previa: el video lo dibuja la capa de video encima
             Box(
                 Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(Jx.Surface)
@@ -369,21 +369,22 @@ private fun ChannelGuide(ch: Channel, repo: TvRepo) {
     }
     val list = epg.orEmpty()
     val now = repo.nowPlaying(list)
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(ch.name, style = Type.Label, color = Jx.Muted)
+    // Compacta para que quepa entera bajo la vista previa (incluido "A continuación")
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(ch.name, style = Type.Small, color = Jx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (now == null) {
             Text(if (epg == null) "Cargando guía…" else "Sin guía para este canal", style = Type.Body, color = Jx.Faint)
             return@Column
         }
         Text("AHORA · ${hhmm(now.start)} – ${hhmm(now.end)}", style = Type.Eyebrow, color = Jx.Accent)
-        Text(now.title, style = Type.H1, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        ThinProgress(now.progress(), Modifier.fillMaxWidth().padding(vertical = 4.dp), height = 3.dp)
+        Text(now.title, style = Type.H2, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        ThinProgress(now.progress(), Modifier.fillMaxWidth().padding(vertical = 2.dp), height = 3.dp)
         if (now.description.isNotBlank()) {
-            Text(now.description, style = Type.Body, color = Jx.TextSoft, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(now.description, style = Type.Small, color = Jx.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         val next = list.filter { it.start >= now.end }.take(2)
         if (next.isNotEmpty()) {
-            Text("A CONTINUACIÓN", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(top = 8.dp))
+            Text("A CONTINUACIÓN", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(top = 4.dp))
             next.forEach { n ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(hhmm(n.start), style = Type.Label, color = Jx.Muted, modifier = Modifier.width(64.dp))

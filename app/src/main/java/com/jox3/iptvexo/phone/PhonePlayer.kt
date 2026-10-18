@@ -66,6 +66,8 @@ import com.jox3.iptvexo.tv.player.trackLabel
 import com.jox3.iptvexo.tv.ui.Jx
 import com.jox3.iptvexo.tv.ui.RemoteImage
 import kotlinx.coroutines.delay
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.produceState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -214,8 +216,10 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
         if (controls && vod.playing) { delay(3500); controls = false }
     }
     val cur = vod.item
+    var locked by remember { mutableStateOf(false) }
     Box(modifier.background(Color.Black)) {
         PlayerSurface(vod.player, Modifier.fillMaxSize(), vod.resizeMode, keepOn = vod.playing)
+        if (locked) { LockOverlay { locked = false; controls = true; touched = System.currentTimeMillis() }; return@Box }
         GestureLayer(
             onTap = { controls = !controls; touched = System.currentTimeMillis() },
             onSeek = if (fullscreen) { ms -> vod.seekBy(ms) } else null,
@@ -233,6 +237,7 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
                     if (cur.subtitle.isNotBlank()) Text(cur.title, style = PType.Tiny, color = Jx.TextSoft, maxLines = 1)
                 } else Spacer(Modifier.weight(1f))
                 if (vod.quality.isNotEmpty()) Text(vod.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 8.dp))
+                if (fullscreen) RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }
             }
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
                 RoundIcon(R.drawable.ic_rew10, "Atrasar 10 segundos", bg = Color(0x80070A0F)) { vod.seekBy(-10_000); touched = System.currentTimeMillis() }
@@ -262,7 +267,8 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
  * siguiente episodio y la lista de episodios. Al girar el celular → pantalla completa.
  */
 @Composable
-fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onClose: () -> Unit) {
+fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onClose: () -> Unit,
+              repo: com.jox3.iptvexo.tv.data.TvRepo? = null, onPlayMovie: (com.jox3.iptvexo.tv.data.Movie) -> Unit = {}) {
     val cur = vod.item ?: return
     var sheet by remember { mutableStateOf<String?>(null) }
     val isMovie = cur.season == 0 && vod.queue.size == 1
@@ -298,6 +304,30 @@ fun VodScreen(vod: VodPlayback, lib: LibraryStore, onFullscreen: () -> Unit, onC
             item {
                 Text(plot.ifBlank { if (isMovie) "Cargando sinopsis…" else "" }, style = PType.Body, color = Jx.TextSoft,
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp))
+            }
+            // Película: carátula con la ficha (dirección, reparto) y "Más como esta" en el espacio libre
+            if (isMovie) {
+                val cr = vod.credits[cur.id]
+                item { MovieCard(cur, vod.metaOf(cur), cr) }
+                if (repo != null) item {
+                    val base = remember(cur.id) {
+                        com.jox3.iptvexo.tv.data.Movie(cur.id, cur.title, cur.image, "", cur.resume.ext, cur.resume.categoryId, 0L)
+                    }
+                    val genre = cr?.third.orEmpty()
+                    val similar by produceState(emptyList<com.jox3.iptvexo.tv.data.Movie>(), cur.id, cr != null) {
+                        if (cr == null) return@produceState
+                        value = runCatching { repo.similarMovies(base, genre, 12) }.getOrDefault(emptyList())
+                    }
+                    if (similar.isNotEmpty()) Column {
+                        SectionTitle("Más como esta", Modifier.padding(top = 18.dp, bottom = 10.dp))
+                        similar.chunked(3).forEach { row ->
+                            Row(Modifier.padding(horizontal = 18.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                row.forEach { m -> PosterTile(m.name, m.poster, Modifier.weight(1f), favorite = lib.isFavorite("movie", m.id)) { onPlayMovie(m) } }
+                                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
             }
             val next = vod.queue.getOrNull(vod.index + 1)
             if (next != null) item {
@@ -517,4 +547,52 @@ fun TrackSheet(player: ExoPlayer?, tracksVersion: Int, type: Int, onDismiss: () 
         if (isEmpty()) add(Triple(if (type == C.TRACK_TYPE_AUDIO) "Audio principal" else "Sin subtítulos", true) {})
     }
     ChoiceSheet(if (type == C.TRACK_TYPE_AUDIO) "Audio" else "Subtítulos", options, onDismiss)
+}
+
+
+/** Ficha bajo el video: carátula + año/género/duración, dirección y reparto. */
+@Composable
+private fun MovieCard(cur: VodItem, meta: String, credits: Triple<String, String, String>?) {
+    Row(
+        Modifier.padding(horizontal = 18.dp, vertical = 4.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Jx.Surface).padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        RemoteImage(cur.image, cur.title, Modifier.width(96.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(cur.title, style = PType.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (meta.isNotBlank()) Text(meta, style = PType.Small, color = Jx.Muted)
+            val (director, cast, _) = credits ?: Triple("", "", "")
+            if (director.isNotBlank()) Credit("Dirección", director)
+            if (cast.isNotBlank()) Credit("Reparto", cast)
+            if (credits == null) Text("Cargando ficha…", style = PType.Small, color = Jx.Faint)
+        }
+    }
+}
+
+@Composable
+private fun Credit(label: String, value: String) {
+    Column {
+        Text(label.uppercase(), style = PType.Eyebrow, color = Jx.Faint)
+        Text(value, style = PType.Small, color = Jx.TextSoft, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/**
+ * Pantalla bloqueada: los toques no hacen nada (ni pausan ni cambian de canal) y
+ * Atrás no sale. Un toque muestra el candado; tocarlo desbloquea.
+ */
+@Composable
+fun LockOverlay(onUnlock: () -> Unit) {
+    var show by remember { mutableStateOf(true) }
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(show, tick) { if (show) { delay(2500); show = false } }
+    BackHandler { show = true; tick++ }
+    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { show = true; tick++ } }) {
+        if (show) Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            RoundIcon(R.drawable.ic_lock, "Desbloquear pantalla", size = 64.dp, bg = Color(0xCC070A0F), iconSize = 28.dp, onClick = onUnlock)
+            Text("Pantalla bloqueada · toca el candado para desbloquear", style = PType.Small, color = Jx.TextSoft,
+                modifier = Modifier.background(Color(0x99070A0F), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 4.dp))
+        }
+    }
 }
