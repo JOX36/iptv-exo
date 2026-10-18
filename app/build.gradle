@@ -80,6 +80,8 @@ dependencies {
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
     // Pantalla de inicio oficial (Android 12+, compatible hacia atrás)
     implementation 'androidx.core:core-splashscreen:1.0.1'
+    // Android TV: "Seguir viendo" y canal propio en la pantalla de inicio
+    implementation 'androidx.tvprovider:tvprovider:1.0.0'
 
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
 

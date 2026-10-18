@@ -72,9 +72,18 @@
         <activity
             android:name=".tv.TvActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|smallestScreenSize|uiMode"
-            android:exported="false"
+            android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.Tv" />
+            android:theme="@style/Theme.Tv">
+            <!-- "Seguir viendo" y el canal JOX3 del inicio de la TV abren aquí (jox3://open?...) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jox3" android:host="open" />
+            </intent-filter>
+        </activity>
 
         <!-- Reproductor nativo (ExoPlayer) - EVITA EL ERROR CORS -->
         <!-- supportsPictureInPicture: requerido para que enterPictureInPictureMode no crashee -->

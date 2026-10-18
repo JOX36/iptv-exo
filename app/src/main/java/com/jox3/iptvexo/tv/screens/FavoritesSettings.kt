@@ -145,6 +145,14 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
                 Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused) confirmDelete = false },
                 icon = R.drawable.ic_delete)
             if (confirmDelete) Text("Se borra del equipo con sus favoritos e historial.", style = Type.Small, color = Jx.Live)
+            // Ajuste automático de la frecuencia de la TV (películas y series)
+            val sctx = androidx.compose.ui.platform.LocalContext.current
+            var afr by remember { mutableStateOf(com.jox3.iptvexo.tv.GoogleTv.afrEnabled(sctx)) }
+            ActionButton("Ajustar la TV al video: " + if (afr) "Sí" else "No", {
+                afr = !afr; com.jox3.iptvexo.tv.GoogleTv.setAfr(sctx, afr)
+            }, Modifier.fillMaxWidth())
+            Text("Cambia la frecuencia de la TV (24, 25, 50, 60 Hz) a la de cada película para que se vea fluida. " +
+                "Al empezar, la pantalla puede quedar negra un segundo.", style = Type.Small, color = Jx.Faint)
             TmdbCard()
             Text("JOX3 TV ${host.appVersion()}", style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(top = 8.dp))
             Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = Type.Small, color = Jx.Faint)

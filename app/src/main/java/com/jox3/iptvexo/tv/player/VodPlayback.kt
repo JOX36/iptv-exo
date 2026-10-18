@@ -73,6 +73,8 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     var status by mutableStateOf<String?>(null); private set
     var failed by mutableStateOf(false); private set
     var position by mutableLongStateOf(0L); private set
+    /** Cuadros por segundo del video actual (0 = aún no se sabe). */
+    var frameRate by androidx.compose.runtime.mutableFloatStateOf(0f); private set
     var duration by mutableLongStateOf(0L); private set
     var buffered by mutableLongStateOf(0L); private set
     var playing by mutableStateOf(false); private set
@@ -134,8 +136,13 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         mini = false
         status = null; failed = false; ended = false; playing = false
         sleepAt = 0L; sleepFired = false
+        frameRate = 0f
         lib.refreshProgress()
+        onClosed()
     }
+
+    /** Lo pone la interfaz de TV: actualizar "Seguir viendo" en la pantalla de inicio. */
+    var onClosed: () -> Unit = {}
 
     fun next() {
         if (!hasNext) return
@@ -336,6 +343,10 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
             }
         }
 
-        override fun onTracksChanged(tracks: Tracks) { tracksVersion++ }
+        override fun onTracksChanged(tracks: Tracks) {
+            tracksVersion++
+            // Cuadros por segundo del video (para el ajuste automático de la TV)
+            exo?.videoFormat?.frameRate?.takeIf { it > 1f }?.let { frameRate = it }
+        }
     }
 }

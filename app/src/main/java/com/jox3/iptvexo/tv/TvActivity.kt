@@ -44,8 +44,16 @@ class TvActivity : ComponentActivity(), TvHost {
         updater = Updater(this)
         updater.checkOnStartup()
 
+        GoogleTv.pendingLink = intent?.data
         setContent { JoxTheme { TvApp(this) } }
         showLastCrash()
+    }
+
+    /** Ya abierta: un toque en "Seguir viendo" o en el canal JOX3 del inicio de la TV. */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.let { GoogleTv.pendingLink = it }
     }
 
     /** Si la app se cerró por un error, mostrar qué pasó (una sola vez). */

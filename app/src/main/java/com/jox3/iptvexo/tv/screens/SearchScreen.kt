@@ -103,6 +103,26 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
         }
     }
     val firstKey = remember { FocusRequester() }
+    // ── Búsqueda por voz (reconocedor de Google del equipo) ──
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { res ->
+        val said = res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (!said.isNullOrBlank()) query = said.lowercase()
+    }
+    fun listen() {
+        val i = android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE, java.util.Locale.getDefault().toLanguageTag().ifBlank { "es-CO" })
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Di qué quieres ver")
+        try { voice.launch(i) } catch (e: Exception) {
+            android.widget.Toast.makeText(ctx, "Este equipo no tiene búsqueda por voz", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+    // Se llegó con el botón de búsqueda del control: abrir el micrófono
+    LaunchedEffect(Unit) {
+        if (com.jox3.iptvexo.tv.GoogleTv.voiceRequested) { com.jox3.iptvexo.tv.GoogleTv.voiceRequested = false; delay(250); listen() }
+    }
     // Si se queda unos segundos en una búsqueda con resultados, se guarda en el historial
     LaunchedEffect(results) {
         val r = results ?: return@LaunchedEffect
@@ -133,6 +153,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                Key("Voz", Modifier.weight(1f)) { listen() }
                 Key("Espacio", Modifier.weight(1f)) { if (query.isNotEmpty() && !query.endsWith(" ")) query += " " }
                 Key("Borrar", Modifier.weight(1f)) { query = query.dropLast(1) }
                 Key("Limpiar", Modifier.weight(1f)) { query = "" }
