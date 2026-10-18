@@ -151,12 +151,6 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         return out.values.take(limit)
     }
 
-    /** Título sin año ni etiquetas ([4K], (2023)…): para reconocer copias de la misma película. */
-    private fun titleKey(name: String): String =
-        normalize(name).replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("[^a-z0-9]+"), " ")
-            .replace(Regex("\\b(4k|uhd|fhd|hd|sd|latino|castellano|subtitulado|dual|19\\d\\d|20\\d\\d)\\b"), " ")
-            .replace(Regex("\\s+"), " ").trim()
-
     /**
      * Muchos servidores repiten la misma película en varias carpetas y algunas copias
      * vienen sin carátula. De cada título se queda la copia que sí trae imagen.
@@ -199,6 +193,12 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     }
 
     companion object {
+        /** Título sin año ni etiquetas ([4K], (2023)…): para reconocer copias de la misma película. */
+        fun titleKey(name: String): String =
+            normalize(name).replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("[^a-z0-9]+"), " ")
+                .replace(Regex("\\b(4k|uhd|fhd|hd|sd|latino|castellano|subtitulado|dual|19\\d\\d|20\\d\\d)\\b"), " ")
+                .replace(Regex("\\s+"), " ").trim()
+
         /** Texto sin tildes y en minúsculas, para buscar "accion" y encontrar "Acción". */
         private val MARKS = Regex("\\p{Mn}+")
         private val STOP = setOf("el", "la", "los", "las", "the", "a", "an", "y", "e", "de", "del", "and", "of", "un", "una")

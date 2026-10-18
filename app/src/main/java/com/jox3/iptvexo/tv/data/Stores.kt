@@ -45,6 +45,7 @@ class AccountStore(context: Context) {
     /** Elimina la cuenta del equipo junto con sus favoritos, recientes e historial. */
     fun delete(acc: Account) {
         remove(acc)
+        ServerHub.forget(acc)
         val lib = app.getSharedPreferences("tv_library", Context.MODE_PRIVATE)
         val ns = acc.key.hashCode().toString() + "."
         val ed = lib.edit()

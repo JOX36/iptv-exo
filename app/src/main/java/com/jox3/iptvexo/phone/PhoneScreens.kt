@@ -1,6 +1,7 @@
 package com.jox3.iptvexo.phone
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.PlayerLauncher
 import com.jox3.iptvexo.tv.data.Account
+import com.jox3.iptvexo.tv.data.ServerHub
+import androidx.compose.foundation.shape.CircleShape
 import com.jox3.iptvexo.tv.data.AccountStore
 import com.jox3.iptvexo.tv.data.Category
 import com.jox3.iptvexo.tv.data.Channel
@@ -388,30 +391,79 @@ private class SearchResults(val channels: List<Channel>, val movies: List<Movie>
 }
 
 @Composable
-fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (String, String, String) -> Unit, onPlayChannel: (List<Channel>, Int) -> Unit) {
+fun PhoneSearch(
+    repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (String, String, String) -> Unit, onPlayChannel: (List<Channel>, Int) -> Unit,
+    account: Account? = null, accounts: List<Account> = emptyList(), onSwitch: (Account) -> Unit = {},
+) {
     val lib = repo.library
+    val ctx = LocalContext.current
     var query by remember { mutableStateOf("") }
+    var only by remember { mutableStateOf<String?>(null) }
+    var choose by remember { mutableStateOf<ServerHub.Hit?>(null) }
+    val multi = account != null && accounts.size > 1 && ServerHub.searchAllEnabled(ctx)
+    LaunchedEffect(multi) { if (multi) ServerHub.ensureIndexes(accounts.filter { it.key != account?.key }) }
+    val indexVersion by ServerHub.indexVersion
     val index by produceState<TvRepo.Index?>(null) { value = runCatching { repo.searchIndex() }.getOrNull() }
-    val results by produceState<SearchResults?>(null, query, index) {
+    val me = account ?: Account("", "", "")
+    val results by produceState<ServerHub.Results?>(null, query, index, only, indexVersion) {
         val idx = index ?: return@produceState
         val q = TvRepo.normalize(query.trim())
         if (q.length < 2) { value = null; return@produceState }
         delay(200)
-        value = withContext(Dispatchers.Default) {
-            fun <T> pick(list: List<T>, keys: List<String>): List<T> {
-                val out = ArrayList<T>(40)
-                for (i in keys.indices) { if (keys[i].contains(q)) { out.add(list[i]); if (out.size == 40) break } }
-                return out
-            }
-            SearchResults(pick(idx.channels, idx.channelKeys), pick(idx.movies, idx.movieKeys), pick(idx.series, idx.seriesKeys))
-        }
+        value = ServerHub.search(query, me, idx, if (multi) accounts else listOf(me), only, includeOthers = multi)
     }
     LaunchedEffect(results) { val r = results ?: return@LaunchedEffect; if (!r.isEmpty) { delay(4000); lib.addSearch(query) } }
+    fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()
+    val here = results?.channels.orEmpty().mapNotNull { h -> h.copies.firstOrNull { it.account.key == me.key } }
+        .mapIndexed { i, c -> Channel(c.id, c.name, c.image, c.categoryId, i + 1) }
+    fun openCopy(c: ServerHub.Copy) {
+        choose = null
+        lib.addSearch(query)
+        if (c.account.key != me.key) { ServerHub.pendingOpen = c; onSwitch(c.account); return }
+        when (c.kind) {
+            "movie" -> onOpenMovie(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L))
+            "series" -> onOpenSeries(c.id, c.name, c.image)
+            else -> {
+                val i = here.indexOfFirst { it.id == c.id }
+                if (i >= 0) onPlayChannel(here, i) else onPlayChannel(listOf(Channel(c.id, c.name, c.image, c.categoryId, 1)), 0)
+            }
+        }
+    }
+    /** Si solo está en este servidor se abre; si no, se elige de cuál. */
+    fun open(h: ServerHub.Hit) { if (h.copies.all { it.account.key == me.key }) openCopy(h.copies.first()) else choose = h }
+
+    choose?.let { h ->
+        PlayerSheet({ choose = null }) {
+            Text(h.name, style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 4.dp))
+            Text("¿De qué servidor lo quieres ver?", style = PType.Small, color = Jx.Muted, modifier = Modifier.padding(horizontal = 22.dp))
+            LaunchedEffect(Unit) { ServerHub.refresh(h.servers) }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                h.copies.distinctBy { it.account.key }.forEachIndexed { i, c ->
+                    val st = ServerHub.status[c.account.key]
+                    val cur = c.account.key == me.key
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(if (i == 0) Jx.Text else Jx.Surface)
+                            .clickable { openCopy(c) }.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        val fg = if (i == 0) Jx.Bg else Jx.Text
+                        Column(Modifier.weight(1f)) {
+                            Text("${ServerHub.letter(accounts, c.account)} · ${ServerHub.name(accounts, c.account)}" +
+                                (if (c.tag.isNotBlank()) " · ${c.tag}" else ""), style = PType.Label, color = fg, maxLines = 1)
+                            Text((if (cur) "Servidor actual · " else "Cambia a este servidor · ") + com.jox3.iptvexo.tv.screens.statusText(st),
+                                style = PType.Tiny, color = if (i == 0) Jx.Line else Jx.Muted, maxLines = 1)
+                        }
+                        Box(Modifier.size(9.dp).clip(CircleShape).background(com.jox3.iptvexo.tv.screens.statusColor(st)))
+                    }
+                }
+            }
+        }
+    }
 
     Column(Modifier.fillMaxSize().imePadding()) {
         OutlinedTextField(
             value = query, onValueChange = { query = it },
-            placeholder = { Text("Canales, películas y series", style = PType.Body) },
+            placeholder = { Text(if (multi) "Buscar en todos tus servidores" else "Canales, películas y series", style = PType.Body) },
             singleLine = true, textStyle = PType.Body,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             shape = RoundedCornerShape(14.dp),
@@ -419,6 +471,15 @@ fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (Strin
                 focusedTextColor = Jx.Text, unfocusedTextColor = Jx.Text, cursorColor = Jx.Accent),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         )
+        if (multi) {
+            LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { Pill("Todos · ${accounts.size}", only == null) { only = null } }
+                items(accounts, key = { it.key }) { a -> Pill(ServerHub.letter(accounts, a) + " · " + ServerHub.name(accounts, a), only == a.key) { only = a.key } }
+            }
+            val loading = accounts.filter { it.key != me.key && ServerHub.loadingIndex[it.key] == true }
+            if (loading.isNotEmpty()) Text("Preparando el catálogo de " + loading.joinToString(", ") { ServerHub.letter(accounts, it) } + "…",
+                style = PType.Tiny, color = Jx.Faint, modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp))
+        }
         val r = results
         when {
             index == null -> CenterText("Preparando la búsqueda en todo el catálogo…")
@@ -440,12 +501,17 @@ fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (Strin
             }
             r == null -> CenterText("Buscando…")
             r.isEmpty -> CenterText("Sin resultados para “${query.trim()}”")
-            else -> LazyColumn(contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            else -> LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 if (r.channels.isNotEmpty()) item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SectionTitle("En vivo · ${r.channels.size}")
                         LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            itemsIndexed(r.channels, key = { _, c -> c.id }) { i, c -> ChannelBubble(c.name, c.logo) { lib.addSearch(query); onPlayChannel(r.channels, i) } }
+                            items(r.channels, key = { it.key }) { h ->
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    ChannelBubble(h.name, h.image) { open(h) }
+                                    BadgeRow(letters(h))
+                                }
+                            }
                         }
                     }
                 }
@@ -453,7 +519,10 @@ fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (Strin
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SectionTitle("Películas · ${r.movies.size}")
                         LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(r.movies, key = { it.id }) { m -> PosterTile(m.name, m.poster, Modifier.width(108.dp)) { lib.addSearch(query); onOpenMovie(m) } }
+                            items(r.movies, key = { it.key }) { h ->
+                                PosterTile(h.name, h.image, Modifier.width(108.dp), subtitle = h.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
+                                    badges = letters(h)) { open(h) }
+                            }
                         }
                     }
                 }
@@ -461,7 +530,10 @@ fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (Strin
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SectionTitle("Series · ${r.series.size}")
                         LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            items(r.series, key = { it.id }) { s -> PosterTile(s.name, s.poster, Modifier.width(108.dp)) { lib.addSearch(query); onOpenSeries(s.id, s.name, s.poster) } }
+                            items(r.series, key = { it.key }) { h ->
+                                PosterTile(h.name, h.image, Modifier.width(108.dp), subtitle = h.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
+                                    badges = letters(h)) { open(h) }
+                            }
                         }
                     }
                 }
@@ -473,7 +545,8 @@ fun PhoneSearch(repo: TvRepo, onOpenMovie: (Movie) -> Unit, onOpenSeries: (Strin
 // ─────────────────────────── Ajustes ───────────────────────────
 
 @Composable
-fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccount: () -> Unit, onLogout: () -> Unit, onBack: () -> Unit) {
+fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccount: () -> Unit, onLogout: () -> Unit,
+                  onServers: () -> Unit = {}, onBack: () -> Unit) {
     var askDelete by remember { mutableStateOf(false) }
     if (askDelete) DeleteAccountDialog(account, onConfirm = { askDelete = false; onLogout() }, onDismiss = { askDelete = false })
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
@@ -511,7 +584,8 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
         item {
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
-                PButton("Agregar otra cuenta", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onAddAccount)
+                PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
+                PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 PButton("Eliminar esta cuenta", Modifier.fillMaxWidth(), icon = R.drawable.ic_delete, primary = false) { askDelete = true }
                 PButton("Usar la interfaz anterior", Modifier.fillMaxWidth(), primary = false) { act.openClassicUi() }
                 Text("JOX3 TV ${act.appVersion()}", style = PType.Small, color = Jx.Faint, modifier = Modifier.padding(top = 6.dp))
@@ -687,5 +761,98 @@ private fun LiveCard(c: Channel, repo: TvRepo, onClick: () -> Unit) {
         Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Jx.Line)) {
             if (now != null) Box(Modifier.fillMaxHeight().fillMaxWidth(now.progress()).background(Jx.Accent))
         }
+    }
+}
+
+// ─────────────────────────── Mis servidores ───────────────────────────
+
+/**
+ * Todos los servidores (cuentas guardadas) con su estado: días para vencer, qué tan
+ * rápido responde y conexiones. Tocar uno cambia a ese servidor; la papelera lo borra.
+ */
+@Composable
+fun PhoneServers(accounts: AccountStore, current: Account, onSwitch: (Account) -> Unit, onAdd: () -> Unit,
+                 onDeleted: (Account) -> Unit, onBack: () -> Unit) {
+    val ctx = LocalContext.current
+    var all by remember { mutableStateOf(accounts.all()) }
+    var searchAll by remember { mutableStateOf(ServerHub.searchAllEnabled(ctx)) }
+    var toDelete by remember { mutableStateOf<Account?>(null) }
+    LaunchedEffect(Unit) { ServerHub.refresh(all, force = true) }
+    toDelete?.let { a ->
+        DeleteAccountDialog(a, onConfirm = {
+            accounts.delete(a); all = accounts.all(); toDelete = null; onDeleted(a)
+        }, onDismiss = { toDelete = null })
+    }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                RoundIcon(R.drawable.ic_back, "Volver", onClick = onBack)
+                Text("Mis servidores", style = PType.H1, color = Jx.Text, modifier = Modifier.weight(1f))
+                RoundIcon(R.drawable.ic_refresh, "Actualizar estado", tint = Jx.TextSoft) { ServerHub.refresh(all, force = true) }
+            }
+        }
+        items(all, key = { it.key }) { acc ->
+            val st = ServerHub.status[acc.key]
+            val isCur = acc.key == current.key
+            val days = st?.daysLeft
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Jx.Surface)
+                    .border(1.5.dp, if (isCur) Jx.Accent else Jx.Line, RoundedCornerShape(16.dp))
+                    .clickable { if (!isCur) onSwitch(acc) }.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Box(Modifier.size(30.dp).clip(CircleShape).background(if (isCur) Jx.Accent else Jx.SurfaceHi), contentAlignment = Alignment.Center) {
+                        Text(ServerHub.letter(all, acc), style = PType.Label, color = if (isCur) Jx.Bg else Jx.Text)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(ServerHub.name(all, acc), style = PType.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.size(8.dp).clip(CircleShape).background(com.jox3.iptvexo.tv.screens.statusColor(st)))
+                            Text(when { isCur -> "EN USO"; st == null -> "Consultando…"; !st.ok -> "NO RESPONDE"; st.level == 1 -> "REVISAR"; else -> "ACTIVO" },
+                                style = PType.Tiny, color = if (isCur) Jx.Accent else Jx.Muted)
+                        }
+                    }
+                    RoundIcon(R.drawable.ic_delete, "Eliminar servidor", tint = Jx.Muted) { toDelete = acc }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Stat("Vence", when { days == null -> if (st?.ok == true) "Sin fecha" else "—"; days == 0L -> "Hoy"; else -> "$days días" },
+                        if (days != null && days <= 5) Jx.Gold else Jx.Text, Modifier.weight(1f))
+                    Stat("Respuesta", st?.takeIf { it.ok }?.let { "${it.pingMs} ms" } ?: "—",
+                        if ((st?.pingMs ?: 0) > 1500) Jx.Gold else Jx.Text, Modifier.weight(1f))
+                    Stat("Conexiones", st?.info?.let { "${it.activeCons} / ${it.maxCons}" } ?: "—", Jx.Text, Modifier.weight(1f))
+                }
+                if (!isCur) Text("Toca para cambiar a este servidor", style = PType.Tiny, color = Jx.Faint)
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).border(1.5.dp, Jx.Line, RoundedCornerShape(16.dp))
+                .clickable(onClick = onAdd).padding(16.dp), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("+", style = PType.H2, color = Jx.Accent)
+                Text("Agregar servidor", style = PType.Label, color = Jx.Accent)
+            }
+        }
+        if (all.size > 1) item {
+            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Jx.Surface)
+                .clickable { searchAll = !searchAll; ServerHub.setSearchAll(ctx, searchAll) }.padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Buscar en todos los servidores", style = PType.Label, color = Jx.Text)
+                    Text("El buscador muestra en cuál está cada título", style = PType.Tiny, color = Jx.Muted)
+                }
+                androidx.compose.material3.Switch(checked = searchAll, onCheckedChange = { searchAll = it; ServerHub.setSearchAll(ctx, it) },
+                    colors = androidx.compose.material3.SwitchDefaults.colors(checkedTrackColor = Jx.Accent, checkedThumbColor = Jx.Bg))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Stat(label: String, value: String, color: Color, modifier: Modifier) {
+    Column(modifier.clip(RoundedCornerShape(10.dp)).background(Jx.SurfaceHi).padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = PType.Tiny, color = Jx.Muted)
+        Text(value, style = PType.Label, color = color, maxLines = 1)
     }
 }

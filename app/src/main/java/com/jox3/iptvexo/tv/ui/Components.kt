@@ -156,6 +156,7 @@ fun PosterCard(
     subtitle: String = "",
     onLongClick: (() -> Unit)? = null,
     favorite: Boolean = false,
+    badges: List<String> = emptyList(),
 ) {
     var focused by remember { mutableStateOf(false) }
     Column(modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -177,6 +178,7 @@ fun PosterCard(
                     contentAlignment = Alignment.Center,
                 ) { JxIcon(com.jox3.iptvexo.R.drawable.tv_ic_star_filled, 12.dp, Jx.Gold) }
             }
+            ServerBadges(badges, Modifier.align(Alignment.BottomStart).padding(5.dp))
         }
         Text(
             title, style = Type.Small, color = if (focused) Jx.Text else Jx.Muted,
@@ -228,7 +230,8 @@ fun LandscapeCard(
 
 /** Canal en filas del inicio: logo cuadrado + nombre. */
 @Composable
-fun ChannelTile(name: String, logo: String, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null) {
+fun ChannelTile(name: String, logo: String, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
+                badges: List<String> = emptyList()) {
     var focused by remember { mutableStateOf(false) }
     Column(modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(
@@ -239,6 +242,7 @@ fun ChannelTile(name: String, logo: String, onClick: () -> Unit, modifier: Modif
             container = Jx.Surface,
         ) {
             RemoteImage(logo, name, Modifier.fillMaxSize().padding(12.dp), scale = ContentScale.Fit)
+            ServerBadges(badges, Modifier.align(Alignment.BottomStart).padding(4.dp))
         }
         Text(name, style = Type.Small, color = if (focused) Jx.Text else Jx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
@@ -342,6 +346,21 @@ fun StatusBox(text: String, modifier: Modifier = Modifier, onRetry: (() -> Unit)
         if (onRetry != null) {
             Spacer(Modifier.height(16.dp))
             ActionButton("Reintentar", onRetry, icon = com.jox3.iptvexo.R.drawable.tv_ic_restart)
+        }
+    }
+}
+
+
+/** Sellos con la letra de cada servidor donde está un título (buscador universal). */
+@Composable
+fun ServerBadges(letters: List<String>, modifier: Modifier = Modifier) {
+    if (letters.isEmpty()) return
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        letters.forEach { l ->
+            Box(Modifier.background(Color(0xE6070A0F), RoundedCornerShape(5.dp)).border(1.dp, Jx.Accent, RoundedCornerShape(5.dp))
+                .padding(horizontal = 5.dp, vertical = 1.dp)) {
+                Text(l, style = Type.Small, color = Jx.Text)
+            }
         }
     }
 }
