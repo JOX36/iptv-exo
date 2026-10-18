@@ -117,6 +117,37 @@ private fun PhoneShell(
     // La guía de internet empieza a prepararse en segundo plano
     LaunchedEffect(repo) { runCatching { repo.categories(Section.LIVE) } }
 
+    // ── Chromecast ──
+    val cast = remember { PhoneCast(context) }
+    DisposableEffect(cast) {
+        cast.onDisconnected = { pos ->
+            // Al cortar, se sigue en el celular (películas y series, en el minuto del TV)
+            live.player?.volume = 1f; vod.player?.volume = 1f
+            if (vod.open) vod.player?.let { p -> if (pos > 0) p.seekTo(pos); p.play() }
+            else live.player?.play()
+        }
+        cast.start()
+        onDispose { cast.release() }
+    }
+    val castingTo = cast.connectedTo
+    // Lo que se ve (canal, película o episodio) se manda al Chromecast; al cambiar de canal o episodio, también
+    LaunchedEffect(castingTo, live.current?.id, vod.item?.id, vod.open) {
+        if (castingTo == null) return@LaunchedEffect
+        val item = vod.item
+        val ch = live.current
+        when {
+            vod.open && item != null -> cast.load(CastMedia(item.url, item.subtitle.takeIf { it.isNotBlank() && it != "Película" }
+                ?.let { "${item.title} · $it" } ?: item.title, item.image, live = false, startMs = vod.position))
+            ch != null -> cast.load(CastMedia(repo.api.liveUrl(ch.id), ch.name, ch.logo, live = true))
+        }
+    }
+    // Mientras se transmite, el celular no suena ni reproduce (evita el audio doble)
+    LaunchedEffect(castingTo, live.playingNow, vod.playing) {
+        if (castingTo == null) return@LaunchedEffect
+        live.player?.let { it.volume = 0f; it.pause() }
+        vod.player?.let { it.volume = 0f; it.pause() }
+    }
+
     var tab by remember { mutableStateOf(Tab.Home) }
     val pages = remember { mutableStateListOf<Page>() }
     // Fuera de En vivo el canal se corta (salvo que se esté viendo a pantalla completa)
@@ -146,6 +177,7 @@ private fun PhoneShell(
         }
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalCast provides cast) {
     Box(Modifier.fillMaxSize().background(if (fullscreen) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
         if (fullscreen) {
             if (vod.open) VodFullscreenPhone(vod) { act.exitLandscape() }
@@ -186,6 +218,7 @@ private fun PhoneShell(
             }
             if (!vod.open) BottomBar(tab) { t -> pages.clear(); tab = t }
         }
+    }
     }
 }
 

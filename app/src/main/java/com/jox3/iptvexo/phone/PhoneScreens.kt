@@ -32,6 +32,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -156,15 +158,40 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
 
 // ─────────────────────────── Películas / Series ───────────────────────────
 
+/**
+ * Categoría elegida y posición de la cuadrícula en Películas y en Series. Esta pantalla
+ * se cierra al abrir una ficha o el reproductor; al volver se arma igual que estaba.
+ * La categoría también queda en preferencias para la próxima vez que se abra la app.
+ */
+private object CatalogMemory {
+    class Spot(var catId: String? = null, var index: Int = 0, var offset: Int = 0)
+    val spots = HashMap<Section, Spot>()
+    fun of(s: Section) = spots.getOrPut(s) { Spot() }
+}
+
 private class GridEntry(val id: String, val name: String, val poster: String, val rating: String, val kind: String, val open: () -> Unit)
 
 @Composable
 fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, onOpenSeries: (String, String, String) -> Unit) {
     val lib = repo.library
     val cats by produceState<List<Category>?>(null, section) { value = runCatching { repo.categories(section) }.getOrDefault(emptyList()) }
-    var selected by remember(section) { mutableStateOf<String?>(null) }
+    val ctx = LocalContext.current
+    val prefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
+    val prefKey = if (section == Section.VOD) "phone_vod_cat" else "phone_series_cat"
+    val spot = remember(section) { CatalogMemory.of(section) }
+    var selected by remember(section) { mutableStateOf(spot.catId ?: prefs.getString(prefKey, null)) }
     var catSheet by remember { mutableStateOf(false) }
-    LaunchedEffect(cats) { if (selected == null) selected = cats?.firstOrNull()?.id }
+    LaunchedEffect(cats) {
+        val list = cats ?: return@LaunchedEffect
+        // Si la categoría recordada no existe (otra cuenta), se usa la primera
+        if (selected == null || list.none { it.id == selected }) selected = list.firstOrNull()?.id
+    }
+    LaunchedEffect(selected) {
+        val id = selected ?: return@LaunchedEffect
+        if (spot.catId != id) { spot.index = 0; spot.offset = 0 }
+        spot.catId = id
+        prefs.edit().putString(prefKey, id).apply()
+    }
     val entries by produceState<List<GridEntry>?>(null, selected) {
         val id = selected ?: return@produceState
         value = null
@@ -192,8 +219,15 @@ fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, o
         when {
             e == null -> CenterText("Cargando…")
             e.isEmpty() -> CenterText("Categoría vacía")
-            else -> LazyVerticalGrid(
+            else -> {
+              val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState(spot.index, spot.offset)
+              val gridCat = selected
+              DisposableEffect(gridState) {
+                  onDispose { if (spot.catId == gridCat) { spot.index = gridState.firstVisibleItemIndex; spot.offset = gridState.firstVisibleItemScrollOffset } }
+              }
+              LazyVerticalGrid(
                 columns = GridCells.Adaptive(108.dp),
+                state = gridState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -202,6 +236,7 @@ fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, o
                     PosterTile(g.name, g.poster, subtitle = g.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
                         favorite = lib.isFavorite(g.kind, g.id), onClick = g.open)
                 }
+              }
             }
         }
     }

@@ -217,8 +217,19 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
     }
     val cur = vod.item
     var locked by remember { mutableStateOf(false) }
+    var castSheet by remember { mutableStateOf(false) }
+    if (castSheet) CastSheet { castSheet = false }
+    val casting = LocalCast.current?.connectedTo != null
     Box(modifier.background(Color.Black)) {
         PlayerSurface(vod.player, Modifier.fillMaxSize(), vod.resizeMode, keepOn = vod.playing)
+        // Transmitiendo al Chromecast: en lugar del video, sus controles
+        if (casting && cur != null) {
+            CastingOverlay(listOf(cur.title, cur.subtitle.takeIf { it != "Película" }.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+                live = false, onOpenSheet = { castSheet = true })
+            RoundIcon(if (fullscreen) R.drawable.ic_back else R.drawable.ic_chevron_down, if (fullscreen) "Salir de pantalla completa" else "Cerrar",
+                Modifier.align(Alignment.TopStart).padding(4.dp), onClick = onBack)
+            return@Box
+        }
         if (locked) { LockOverlay { locked = false; controls = true; touched = System.currentTimeMillis() }; return@Box }
         GestureLayer(
             onTap = { controls = !controls; touched = System.currentTimeMillis() },
@@ -237,6 +248,7 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
                     if (cur.subtitle.isNotBlank()) Text(cur.title, style = PType.Tiny, color = Jx.TextSoft, maxLines = 1)
                 } else Spacer(Modifier.weight(1f))
                 if (vod.quality.isNotEmpty()) Text(vod.quality, style = PType.Tiny, color = Jx.Accent, modifier = Modifier.padding(end = 8.dp))
+                CastButton { castSheet = true }
                 if (fullscreen) RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }
             }
             Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(36.dp), verticalAlignment = Alignment.CenterVertically) {
