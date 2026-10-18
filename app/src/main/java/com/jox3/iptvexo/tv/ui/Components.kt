@@ -114,17 +114,30 @@ fun RemoteImage(
     modifier: Modifier = Modifier,
     scale: ContentScale = ContentScale.Crop,
     showInitials: Boolean = true,
+    /** Carátula de película o serie: si falta o no carga, se busca en TMDB (si hay clave). */
+    tmdbFallback: Boolean = false,
 ) {
     var loaded by remember(url) { mutableStateOf(false) }
+    var failed by remember(url) { mutableStateOf(false) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val tmdbVersion by com.jox3.iptvexo.tv.data.Tmdb.version
+    val alt by androidx.compose.runtime.produceState("", url, failed, tmdbVersion) {
+        if (tmdbFallback && (url.isBlank() || failed) && com.jox3.iptvexo.tv.data.Tmdb.enabled(ctx)) {
+            kotlinx.coroutines.delay(250)   // al desplazar rápido no se consultan las que solo pasan
+            value = com.jox3.iptvexo.tv.data.Tmdb.posterFor(ctx, title)
+        }
+    }
+    val shown = if ((url.isBlank() || failed) && alt.isNotBlank()) alt else url
     Box(modifier.background(Jx.tone(title)), contentAlignment = Alignment.Center) {
         if (showInitials && !loaded) Initials(title)
-        if (url.isNotBlank()) {
+        if (shown.isNotBlank()) {
             AsyncImage(
-                model = url,
+                model = shown,
                 contentDescription = null,
                 contentScale = scale,
                 modifier = Modifier.fillMaxSize(),
                 onSuccess = { loaded = true },
+                onError = { if (shown == url) failed = true },
             )
         }
     }
@@ -170,7 +183,7 @@ fun PosterCard(
             focusedScale = 1.08f,
             container = Jx.Surface,
         ) {
-            RemoteImage(image, title, Modifier.fillMaxSize())
+            RemoteImage(image, title, Modifier.fillMaxSize(), tmdbFallback = true)
             if (favorite) {
                 Box(
                     Modifier.align(Alignment.TopEnd).padding(6.dp).size(20.dp)

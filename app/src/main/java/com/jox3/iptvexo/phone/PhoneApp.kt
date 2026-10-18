@@ -200,7 +200,10 @@ private fun PhoneShell(
         }
     }
 
-    androidx.compose.runtime.CompositionLocalProvider(LocalCast provides cast) {
+    val serverCtx = remember(account) {
+        com.jox3.iptvexo.tv.data.ServerCtx(account, accounts.all()) { c -> ServerHub.pendingOpen = c; onSwitch(c.account) }
+    }
+    androidx.compose.runtime.CompositionLocalProvider(LocalCast provides cast, com.jox3.iptvexo.tv.data.LocalServers provides serverCtx) {
     Box(Modifier.fillMaxSize().background(if (fullscreen) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
         if (fullscreen) {
             if (vod.open) VodFullscreenPhone(vod) { act.exitLandscape() }

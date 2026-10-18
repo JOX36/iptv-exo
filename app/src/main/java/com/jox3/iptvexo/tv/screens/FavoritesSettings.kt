@@ -16,6 +16,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.verticalScroll
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.focus.onFocusChanged
@@ -131,7 +134,8 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
                 }
             }
         }
-        Column(Modifier.width(320.dp).padding(top = 52.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.width(320.dp).fillMaxHeight().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(top = 52.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionButton("Buscar actualizaciones", host::checkUpdates, Modifier.fillMaxWidth().focusRequester(firstReq),
                 icon = R.drawable.tv_ic_update)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
@@ -141,6 +145,7 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
                 Modifier.fillMaxWidth().onFocusChanged { if (!it.isFocused) confirmDelete = false },
                 icon = R.drawable.ic_delete)
             if (confirmDelete) Text("Se borra del equipo con sus favoritos e historial.", style = Type.Small, color = Jx.Live)
+            TmdbCard()
             Text("JOX3 TV ${host.appVersion()}", style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(top = 8.dp))
             Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = Type.Small, color = Jx.Faint)
         }
@@ -161,5 +166,38 @@ private fun Line(label: String, value: String, color: androidx.compose.ui.graphi
     Row(Modifier.fillMaxWidth()) {
         Text(label, style = Type.Label, color = Jx.Muted, modifier = Modifier.weight(1f))
         Text(value, style = Type.Label, color = color)
+    }
+}
+
+
+/**
+ * Clave de TMDB: con ella la app completa calificación, reparto con fotos, tráiler,
+ * sinopsis y carátulas que el servidor no trae.
+ */
+@Composable
+private fun TmdbCard() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var key by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.key(ctx)) }
+    var msg by remember { mutableStateOf(if (com.jox3.iptvexo.tv.data.Tmdb.enabled(ctx)) "Activa" else "") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    Column(Modifier.fillMaxWidth().padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("INFORMACIÓN DE TMDB", style = Type.Eyebrow, color = Jx.Muted)
+        com.jox3.iptvexo.tv.ui.TvTextField("Clave de TMDB", key, { key = it }, Modifier.fillMaxWidth(),
+            placeholder = "API Key o token de lectura")
+        ActionButton(if (busy) "Probando…" else "Guardar clave", {
+            if (busy) return@ActionButton
+            val k = key.trim()
+            if (k.isEmpty()) { com.jox3.iptvexo.tv.data.Tmdb.setKey(ctx, ""); msg = "Quitada"; return@ActionButton }
+            busy = true
+            scope.launch {
+                val err = com.jox3.iptvexo.tv.data.Tmdb.test(ctx, k)
+                if (err == null) { com.jox3.iptvexo.tv.data.Tmdb.setKey(ctx, k); msg = "Activa: ya se completan fichas y carátulas" }
+                else msg = err
+                busy = false
+            }
+        }, Modifier.fillMaxWidth())
+        Text(msg.ifEmpty { "Gratis en themoviedb.org → Ajustes → API" }, style = Type.Small,
+            color = if (msg.startsWith("Activa")) Jx.Ok else Jx.Faint)
     }
 }

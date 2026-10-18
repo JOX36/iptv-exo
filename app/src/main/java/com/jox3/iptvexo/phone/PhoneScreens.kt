@@ -2,6 +2,8 @@ package com.jox3.iptvexo.phone
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -260,13 +262,18 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpe
         if (info == null) return@produceState
         value = runCatching { repo.similarMovies(movie, info?.genre.orEmpty(), 21) }.getOrDefault(emptyList())
     }
+    val tm = com.jox3.iptvexo.tv.ui.rememberTmdb("movie", movie.name)
+    val others = com.jox3.iptvexo.tv.ui.rememberOtherCopies("movie", movie.name, movie.id, repo)
+    val ctx = LocalContext.current
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { DetailHeader(info?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, onBack) }
+        item { DetailHeader(info?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, onBack) }
         item {
             Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(movie.name, style = PType.Hero, color = Jx.Text)
-                val meta = listOfNotNull(info?.year?.ifBlank { null }, info?.genre?.ifBlank { null }, info?.duration?.ifBlank { null },
-                    (info?.rating ?: movie.rating).ifBlank { null }?.let { "★ $it" }).joinToString(" · ")
+                PhoneRating(tm, info?.rating?.ifBlank { null } ?: movie.rating)
+                val meta = listOfNotNull(info?.year?.ifBlank { null } ?: tm?.year?.ifBlank { null },
+                    info?.genre?.ifBlank { null } ?: tm?.genres?.ifBlank { null },
+                    info?.duration?.ifBlank { null } ?: tm?.runtimeMin?.takeIf { it > 0 }?.let { "${it / 60} h ${it % 60} min" }).joinToString(" · ")
                 if (meta.isNotEmpty()) Text(meta, style = PType.Small, color = Jx.Muted)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (canResume) PButton("Continuar · ${fmtTime(pos)}", Modifier.weight(1f), icon = R.drawable.ic_play, progress = pos.toFloat() / dur) {
@@ -281,11 +288,18 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpe
                 if (canResume) PButton("Desde el inicio", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_restart, primary = false) {
                     lib.clearProgress(movie.id); launcher.playMovie(movie.id, movie.name, movie.poster, ext, movie.categoryId)
                 }
-                info?.plot?.takeIf { it.isNotBlank() }?.let { Text(it, style = PType.Body, color = Jx.TextSoft) }
-                val credits = listOfNotNull(info?.director?.ifBlank { null }?.let { "Dirección: $it" }, info?.cast?.ifBlank { null }?.let { "Reparto: $it" })
-                credits.forEach { Text(it, style = PType.Small, color = Jx.Muted) }
+                if (!tm?.trailerKey.isNullOrBlank()) PButton("Ver tráiler", Modifier.fillMaxWidth(), icon = R.drawable.ic_play, primary = false) {
+                    com.jox3.iptvexo.tv.data.Tmdb.openTrailer(ctx, tm!!.trailerKey)
+                }
+                AvailableIn(others) { c -> onOpenMovie(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L)) }
+                (info?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null })?.let { Text(it, style = PType.Body, color = Jx.TextSoft) }
+                if (tm?.cast.isNullOrEmpty()) {
+                    val credits = listOfNotNull(info?.director?.ifBlank { null }?.let { "Dirección: $it" }, info?.cast?.ifBlank { null }?.let { "Reparto: $it" })
+                    credits.forEach { Text(it, style = PType.Small, color = Jx.Muted) }
+                } else tm!!.director.takeIf { it.isNotBlank() }?.let { Text("Dirección: $it", style = PType.Small, color = Jx.Muted) }
             }
         }
+        if (!tm?.cast.isNullOrEmpty()) item { PhoneCastRow(tm!!.cast) }
         // Películas parecidas por género (no de la misma carpeta)
         val sim = similar
         if (sim.isNotEmpty()) {
@@ -314,17 +328,21 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
         all.mapNotNull { e -> val (p, d) = lib.positionOf(e.id); if (p > 0 && d > 0 && p.toFloat() / d < 0.95f) e to p.toFloat() / d else null }.lastOrNull()
     }
     var season by remember(data) { mutableStateOf(resume?.first?.season ?: seasons.keys.firstOrNull() ?: 1) }
+    val tm = com.jox3.iptvexo.tv.ui.rememberTmdb("series", name)
+    val others = com.jox3.iptvexo.tv.ui.rememberOtherCopies("series", name, seriesId, repo)
+    val ctx = LocalContext.current
     val title = data?.name?.ifBlank { null } ?: name
-    val cover = data?.poster?.ifBlank { null } ?: poster
+    val cover = data?.poster?.ifBlank { null } ?: poster.ifBlank { null } ?: tm?.poster.orEmpty()
     val isFav = lib.isFavorite("series", seriesId)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { DetailHeader(data?.backdrop?.ifBlank { null } ?: cover, title, onBack) }
+        item { DetailHeader(data?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: cover, title, onBack) }
         item {
             Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(title, style = PType.Hero, color = Jx.Text)
-                val meta = listOfNotNull(data?.year?.ifBlank { null }, data?.genre?.ifBlank { null },
-                    seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 temporada" else "$it temporadas" },
-                    data?.rating?.ifBlank { null }?.let { "★ $it" }).joinToString(" · ")
+                PhoneRating(tm, data?.rating.orEmpty())
+                val meta = listOfNotNull(data?.year?.ifBlank { null } ?: tm?.year?.ifBlank { null },
+                    data?.genre?.ifBlank { null } ?: tm?.genres?.ifBlank { null },
+                    seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 temporada" else "$it temporadas" }).joinToString(" · ")
                 if (meta.isNotEmpty()) Text(meta, style = PType.Small, color = Jx.Muted)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (resume != null) PButton("Continuar T${resume.first.season} · E${resume.first.num}", Modifier.weight(1f),
@@ -336,9 +354,16 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
                     RoundIcon(if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star, if (isFav) "En favoritos" else "Agregar a favoritos",
                         size = 48.dp, bg = Jx.SurfaceHi, tint = if (isFav) Jx.Gold else Jx.Text) { lib.toggleFavorite(SavedItem("series", seriesId, title, cover)) }
                 }
-                data?.plot?.takeIf { it.isNotBlank() }?.let { Text(it, style = PType.Body, color = Jx.TextSoft, maxLines = 5, overflow = TextOverflow.Ellipsis) }
+                if (!tm?.trailerKey.isNullOrBlank()) PButton("Ver tráiler", Modifier.fillMaxWidth(), icon = R.drawable.ic_play, primary = false) {
+                    com.jox3.iptvexo.tv.data.Tmdb.openTrailer(ctx, tm!!.trailerKey)
+                }
+                AvailableIn(others.filter { it.account.key != com.jox3.iptvexo.tv.data.LocalServers.current?.account?.key })
+                (data?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null })?.let {
+                    Text(it, style = PType.Body, color = Jx.TextSoft, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
+        if (!tm?.cast.isNullOrEmpty()) item { PhoneCastRow(tm!!.cast) }
         when {
             info == null -> item { CenterText("Cargando episodios…", Modifier.height(160.dp)) }
             data == null -> item { CenterText("No se pudo cargar la serie", Modifier.height(160.dp)) }
@@ -587,6 +612,7 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 PButton("Eliminar esta cuenta", Modifier.fillMaxWidth(), icon = R.drawable.ic_delete, primary = false) { askDelete = true }
+                PhoneTmdbCard()
                 PButton("Usar la interfaz anterior", Modifier.fillMaxWidth(), primary = false) { act.openClassicUi() }
                 Text("JOX3 TV ${act.appVersion()}", style = PType.Small, color = Jx.Faint, modifier = Modifier.padding(top = 6.dp))
                 Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = PType.Small, color = Jx.Faint)
@@ -854,5 +880,98 @@ private fun Stat(label: String, value: String, color: Color, modifier: Modifier)
     Column(modifier.clip(RoundedCornerShape(10.dp)).background(Jx.SurfaceHi).padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, style = PType.Tiny, color = Jx.Muted)
         Text(value, style = PType.Label, color = color, maxLines = 1)
+    }
+}
+
+
+/** Clave de TMDB para completar fichas, reparto, tráiler y carátulas. */
+@Composable
+private fun PhoneTmdbCard() {
+    val ctx = LocalContext.current
+    var key by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.key(ctx)) }
+    var msg by remember { mutableStateOf(if (com.jox3.iptvexo.tv.data.Tmdb.enabled(ctx)) "Activa" else "") }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Jx.Surface).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Información de TMDB", style = PType.Label, color = Jx.Text)
+        Text("Calificación, reparto con fotos, tráiler y carátulas que faltan. Clave gratis en themoviedb.org → Ajustes → API.",
+            style = PType.Small, color = Jx.Muted)
+        OutlinedTextField(key, { key = it }, label = { Text("API Key o token de lectura") }, singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Jx.Accent, unfocusedBorderColor = Jx.Line,
+                focusedTextColor = Jx.Text, unfocusedTextColor = Jx.Text, cursorColor = Jx.Accent, focusedLabelColor = Jx.Accent, unfocusedLabelColor = Jx.Muted),
+            shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth())
+        PButton(if (busy) "Probando…" else "Guardar clave", Modifier.fillMaxWidth(), primary = false) {
+            if (busy) return@PButton
+            val k = key.trim()
+            if (k.isEmpty()) { com.jox3.iptvexo.tv.data.Tmdb.setKey(ctx, ""); msg = "Quitada"; return@PButton }
+            busy = true
+            scope.launch {
+                val err = com.jox3.iptvexo.tv.data.Tmdb.test(ctx, k)
+                if (err == null) { com.jox3.iptvexo.tv.data.Tmdb.setKey(ctx, k); msg = "Activa: ya se completan fichas y carátulas" } else msg = err
+                busy = false
+            }
+        }
+        if (msg.isNotEmpty()) Text(msg, style = PType.Small, color = if (msg.startsWith("Activa")) Jx.Ok else Jx.Live)
+    }
+}
+
+
+// ─────────────────────────── Información rica (TMDB) ───────────────────────────
+
+@Composable
+fun PhoneRating(info: com.jox3.iptvexo.tv.data.Tmdb.Info?, fallback: String = "") {
+    val rating = info?.ratingText?.ifBlank { null } ?: fallback.ifBlank { null }
+    val cert = info?.certification.orEmpty()
+    if (rating == null && cert.isBlank()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (rating != null) Text("★ $rating", style = PType.Label, color = Color(0xFF070A0F),
+            modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(Color(0xFFF5C518)).padding(horizontal = 7.dp, vertical = 1.dp))
+        if (cert.isNotBlank()) Text(cert, style = PType.Small, color = Jx.TextSoft,
+            modifier = Modifier.border(1.dp, Jx.Muted, RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp))
+        if (info != null && info.votes > 0) Text("TMDB", style = PType.Tiny, color = Jx.Faint)
+    }
+}
+
+/** Reparto con fotos, deslizable de lado. */
+@Composable
+fun PhoneCastRow(cast: List<com.jox3.iptvexo.tv.data.Tmdb.Person>) {
+    Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle("Reparto")
+        LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(cast, key = { it.name + it.role }) { p ->
+                Column(Modifier.width(72.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    RemoteImage(p.photo, p.name, Modifier.size(64.dp).clip(CircleShape))
+                    Text(p.name, style = PType.Tiny, color = Jx.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    if (p.role.isNotBlank()) Text(p.role, style = PType.Tiny, color = Jx.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+/** "También en": otros servidores (o la misma película en otra calidad aquí). Tocar uno la abre allá. */
+@Composable
+fun AvailableIn(others: List<com.jox3.iptvexo.tv.data.ServerHub.Copy>, onHere: (com.jox3.iptvexo.tv.data.ServerHub.Copy) -> Unit = {}) {
+    val sc = com.jox3.iptvexo.tv.data.LocalServers.current ?: return
+    if (others.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("TAMBIÉN DISPONIBLE EN", style = PType.Eyebrow, color = Jx.Muted)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+            others.forEach { c ->
+                val here = c.account.key == sc.account.key
+                val st = ServerHub.status[c.account.key]
+                Row(Modifier.clip(RoundedCornerShape(12.dp)).background(Jx.Surface)
+                    .clickable { if (here) onHere(c) else sc.switchTo(c) }.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(com.jox3.iptvexo.tv.screens.statusColor(st)))
+                    Column {
+                        Text(if (here) "Este servidor" else "Servidor " + ServerHub.letter(sc.all, c.account), style = PType.Label, color = Jx.Text)
+                        Text(c.tag.ifBlank { ServerHub.name(sc.all, c.account) }, style = PType.Tiny, color = Jx.Muted, maxLines = 1)
+                    }
+                }
+            }
+        }
     }
 }

@@ -207,6 +207,29 @@ object ServerHub {
         Results(hits(ch, "live", 40), hits(mv, "movie", 50), hits(sr, "series", 50))
     }
 
+    /**
+     * Dónde más está este mismo título (mismo nombre limpio), sin contar [currentId] del
+     * servidor actual. Para "Disponible en" de las fichas.
+     */
+    suspend fun copiesOf(kind: String, name: String, current: Account, currentIndex: TvRepo.Index?, all: List<Account>): List<Copy> =
+        withContext(Dispatchers.Default) {
+            val key = TvRepo.titleKey(name)
+            if (key.isBlank()) return@withContext emptyList()
+            val out = ArrayList<Copy>()
+            val sources = buildList {
+                if (currentIndex != null) add(current to currentIndex)
+                all.filter { it.key != current.key }.forEach { a -> synchronized(indexes) { indexes[a.key] }?.let { add(a to it) } }
+            }
+            for ((acc, idx) in sources) {
+                if (kind == "movie") idx.movies.forEach { m ->
+                    if (TvRepo.titleKey(m.name) == key) out += Copy(acc, "movie", m.id, m.name, m.poster, m.ext, m.categoryId, m.rating, tagOf(m.name))
+                } else idx.series.forEach { sr ->
+                    if (TvRepo.titleKey(sr.name) == key) out += Copy(acc, "series", sr.id, sr.name, sr.poster, "", sr.categoryId, sr.rating, tagOf(sr.name))
+                }
+            }
+            out
+        }
+
     /** Etiqueta corta de calidad o idioma sacada del nombre ("[4K]", "Latino"…). */
     fun tagOf(name: String): String {
         val n = TvRepo.normalize(name)
@@ -225,3 +248,9 @@ object ServerHub {
         return parts.joinToString(" · ")
     }
 }
+
+
+/** El servidor en uso, todos los servidores y cómo cambiar a otro (lo ponen la TV y el celular). */
+data class ServerCtx(val account: Account, val all: List<Account>, val switchTo: (ServerHub.Copy) -> Unit)
+
+val LocalServers = androidx.compose.runtime.staticCompositionLocalOf<ServerCtx?> { null }

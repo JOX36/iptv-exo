@@ -58,6 +58,14 @@ import com.jox3.iptvexo.tv.ui.RemoteImage
 import com.jox3.iptvexo.tv.ui.Safe
 import com.jox3.iptvexo.tv.ui.ThinProgress
 import com.jox3.iptvexo.tv.ui.Type
+import com.jox3.iptvexo.tv.ui.rememberTmdb
+import com.jox3.iptvexo.tv.ui.rememberOtherCopies
+import com.jox3.iptvexo.tv.ui.RatingBadges
+import com.jox3.iptvexo.tv.ui.CastRow
+import com.jox3.iptvexo.tv.data.Tmdb
+import com.jox3.iptvexo.tv.data.ServerHub
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 private fun fmtTime(ms: Long): String {
     val s = ms / 1000
@@ -83,35 +91,49 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
     val ext = info?.ext?.ifBlank { null } ?: movie.ext
     val isFav = lib.isFavorite("movie", movie.id)
     val favItem = SavedItem("movie", movie.id, movie.name, movie.poster, ext = movie.ext, categoryId = movie.categoryId)
+    // TMDB completa calificación, reparto con fotos, tráiler y lo que falte
+    val tm = rememberTmdb("movie", movie.name)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val others = rememberOtherCopies("movie", movie.name, movie.id, repo)
+    val servers = com.jox3.iptvexo.tv.data.LocalServers.current
 
     Box(Modifier.fillMaxSize()) {
         val i = info
-        RemoteImage(i?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, Modifier.fillMaxSize(), showInitials = false)
+        RemoteImage(i?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, Modifier.fillMaxSize(), showInitials = false)
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
             0f to Jx.Bg, 0.4f to Jx.Bg.copy(alpha = 0.94f), 0.75f to Jx.Bg.copy(alpha = 0.35f), 1f to Jx.Bg.copy(alpha = 0.1f))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 0.75f to Jx.Bg)))
 
-        Column(Modifier.fillMaxSize().padding(top = 40.dp)) {
-            Column(Modifier.padding(start = Safe.H).width(470.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Se desplaza sola al bajar con el control (reparto, más servidores, sugerencias)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 40.dp, bottom = 24.dp)) {
+            Column(Modifier.padding(start = Safe.H).width(500.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(movie.name, style = Type.Hero, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                RatingBadges(tm, i?.rating?.ifBlank { null } ?: movie.rating)
                 val meta = listOfNotNull(
-                    (i?.rating?.ifBlank { null } ?: movie.rating.ifBlank { null })?.let { "★ $it" },
-                    i?.year?.ifBlank { null }, i?.duration?.ifBlank { null }, i?.genre?.ifBlank { null },
+                    i?.year?.ifBlank { null } ?: tm?.year?.ifBlank { null },
+                    i?.duration?.ifBlank { null } ?: tm?.runtimeMin?.takeIf { it > 0 }?.let { "${it / 60} h ${it % 60} min" },
+                    i?.genre?.ifBlank { null } ?: tm?.genres?.ifBlank { null },
                 ).joinToString("  ·  ")
                 if (meta.isNotEmpty()) Text(meta, style = Type.Label, color = Jx.TextSoft)
+                val plot = i?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null }
                 Text(
                     when {
-                        info == null -> "Cargando información…"
-                        i?.plot.isNullOrBlank() -> "Sin sinopsis disponible."
-                        else -> i!!.plot
+                        info == null && plot == null -> "Cargando información…"
+                        plot == null -> "Sin sinopsis disponible."
+                        else -> plot
                     },
-                    style = Type.Body, color = Jx.TextSoft, maxLines = 5, overflow = TextOverflow.Ellipsis,
+                    style = Type.Body, color = Jx.TextSoft, maxLines = if (tm?.cast.isNullOrEmpty()) 5 else 4, overflow = TextOverflow.Ellipsis,
                 )
-                val credits = listOfNotNull(
-                    i?.director?.ifBlank { null }?.let { "Dirección: $it" },
-                    i?.cast?.ifBlank { null }?.let { "Reparto: $it" },
-                ).joinToString("  ·  ")
-                if (credits.isNotEmpty()) Text(credits, style = Type.Small, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (!tm?.cast.isNullOrEmpty()) {
+                    CastRow(tm!!.cast)
+                    tm.director.takeIf { it.isNotBlank() }?.let { Text("Dirección: $it", style = Type.Small, color = Jx.Muted, maxLines = 1) }
+                } else {
+                    val credits = listOfNotNull(
+                        i?.director?.ifBlank { null }?.let { "Dirección: $it" },
+                        i?.cast?.ifBlank { null }?.let { "Reparto: $it" },
+                    ).joinToString("  ·  ")
+                    if (credits.isNotEmpty()) Text(credits, style = Type.Small, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
 
                 Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (canResume) {
@@ -130,6 +152,22 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
                     }
                     ActionButton(if (isFav) "En favoritos" else "Favorito", { lib.toggleFavorite(favItem) },
                         icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
+                    if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { Tmdb.openTrailer(ctx, tm!!.trailerKey) }, icon = R.drawable.tv_ic_play)
+                }
+                // Disponible también en otros servidores (o en otra calidad en este)
+                if (others.isNotEmpty() && servers != null) {
+                    Text("TAMBIÉN DISPONIBLE EN", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(top = 4.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        others.take(4).forEach { c ->
+                            val here = c.account.key == servers.account.key
+                            val label = (if (here) "Aquí" else "Servidor " + ServerHub.letter(servers.all, c.account)) +
+                                (if (c.tag.isNotBlank()) " · ${c.tag}" else "")
+                            ActionButton(label, {
+                                if (here) nav.open(Route.MovieDetail(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L)))
+                                else servers.switchTo(c)
+                            })
+                        }
+                    }
                 }
             }
 
@@ -166,7 +204,11 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
     val data = result?.getOrNull()
     val seasons = data?.seasons.orEmpty()
     val allEpisodes = remember(data) { seasons.values.flatten() }
-    val cover = data?.poster?.ifBlank { null } ?: poster
+    val tm = rememberTmdb("series", name)
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val others = rememberOtherCopies("series", name, seriesId, repo)
+    val servers = com.jox3.iptvexo.tv.data.LocalServers.current
+    val cover = data?.poster?.ifBlank { null } ?: poster.ifBlank { null } ?: tm?.poster.orEmpty()
     val title = data?.name?.ifBlank { null } ?: name
 
     // Último episodio empezado → temporada y botón "Continuar"
@@ -187,7 +229,7 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
     Box(Modifier.fillMaxSize()) {
         // Fondo tenue a la izquierda
         Box(Modifier.width(420.dp).fillMaxHeight()) {
-            RemoteImage(data?.backdrop?.ifBlank { null } ?: cover, title, Modifier.fillMaxSize(), showInitials = false)
+            RemoteImage(data?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: cover, title, Modifier.fillMaxSize(), showInitials = false)
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0f to Jx.Bg.copy(alpha = 0.35f), 0.55f to Jx.Bg.copy(alpha = 0.88f), 1f to Jx.Bg)))
             Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0.8f to Color.Transparent, 1f to Jx.Bg)))
         }
@@ -197,15 +239,18 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
             Column(Modifier.width(380.dp).fillMaxHeight().padding(start = Safe.H, bottom = 32.dp, end = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Bottom)) {
                 Text(title, style = Type.Hero, color = Jx.Text, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                RatingBadges(tm, data?.rating.orEmpty())
                 val meta = listOfNotNull(
-                    data?.rating?.ifBlank { null }?.let { "★ $it" }, data?.year?.ifBlank { null },
+                    data?.year?.ifBlank { null } ?: tm?.year?.ifBlank { null },
                     seasons.size.takeIf { it > 0 }?.let { if (it == 1) "1 temporada" else "$it temporadas" },
-                    data?.genre?.ifBlank { null },
+                    data?.genre?.ifBlank { null } ?: tm?.genres?.ifBlank { null },
                 ).joinToString("  ·  ")
                 if (meta.isNotEmpty()) Text(meta, style = Type.Label, color = Jx.TextSoft, maxLines = 2)
-                if (!data?.plot.isNullOrBlank()) {
-                    Text(data!!.plot, style = Type.Body, color = Jx.TextSoft, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                val plot = data?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null }
+                if (plot != null) {
+                    Text(plot, style = Type.Body, color = Jx.TextSoft, maxLines = if (tm?.cast.isNullOrEmpty()) 6 else 4, overflow = TextOverflow.Ellipsis)
                 }
+                if (!tm?.cast.isNullOrEmpty()) CastRow(tm!!.cast, max = 4, photo = 40.dp)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(top = 6.dp)) {
                     if (resume != null) {
                         val (ep, frac) = resume
@@ -216,6 +261,16 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     ActionButton(if (isFav) "En favoritos" else "Favorito", {
                         lib.toggleFavorite(SavedItem("series", seriesId, title, cover))
                     }, icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
+                    if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { Tmdb.openTrailer(ctx, tm!!.trailerKey) })
+                }
+                // También en otros servidores
+                if (others.isNotEmpty() && servers != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        others.filter { it.account.key != servers.account.key }.take(3).forEach { c ->
+                            ActionButton("Ver en " + ServerHub.letter(servers.all, c.account) + (if (c.tag.isNotBlank()) " · ${c.tag}" else ""),
+                                { servers.switchTo(c) })
+                        }
+                    }
                 }
             }
 
