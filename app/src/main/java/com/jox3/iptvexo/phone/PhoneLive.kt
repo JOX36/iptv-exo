@@ -175,13 +175,19 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
     val cats by produceState<List<Category>?>(null) { value = runCatching { repo.categories(Section.LIVE) }.getOrDefault(emptyList()) }
     val allCats = remember(cats) { listOf(Category(FAV_ID, "★ Favoritos"), Category(RECENT_ID, "Recientes")) + cats.orEmpty() }
     var selected by remember { mutableStateOf(LiveUiMemory.category) }
-    LaunchedEffect(cats) {
-        // (si la categoría recordada no existe en esta cuenta, se elige de nuevo)
-        if (cats != null && (selected == null || allCats.none { it.id == selected?.id })) {
-            val saved = prefs.getString("phone_live_cat", null)
-            selected = allCats.firstOrNull { it.id == saved }
-                ?: if (lib.favorites.any { it.kind == "live" }) allCats[0] else cats!!.firstOrNull() ?: allCats[0]
-        }
+    // Ojo: se usa la lista de ESTA composición (loaded/all), no se vuelve a leer `cats` dentro del
+    // efecto. Antes se mezclaban: la lista nueva con la copia vieja (vacía) de allCats, la categoría
+    // recordada "no existía" y se saltaba a la primera al volver de pantalla completa.
+    val loaded = cats
+    LaunchedEffect(loaded) {
+        if (loaded == null) return@LaunchedEffect
+        val all = listOf(Category(FAV_ID, "★ Favoritos"), Category(RECENT_ID, "Recientes")) + loaded
+        val cur = selected
+        // Solo se elige otra si la recordada de verdad no existe en esta cuenta
+        if (cur != null && all.any { it.id == cur.id }) return@LaunchedEffect
+        val saved = prefs.getString("phone_live_cat", null)
+        selected = all.firstOrNull { it.id == saved }
+            ?: if (lib.favorites.any { it.kind == "live" }) all[0] else loaded.firstOrNull() ?: all[0]
     }
     LaunchedEffect(selected?.id) {
         val c = selected ?: return@LaunchedEffect
@@ -233,7 +239,7 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
                 item(key = "__all") { Pill("Categorías", false, icon = R.drawable.tv_ic_list) { catSheet = true } }
                 items(allCats, key = { it.id }) { c -> Pill(c.name, c.id == selected?.id) { selected = c } }
             }
-            LaunchedEffect(cats, selected?.id) {
+            LaunchedEffect(allCats, selected?.id) {
                 val i = allCats.indexOfFirst { it.id == selected?.id }
                 if (i > 0) runCatching { chipState.scrollToItem((i - 1).coerceAtLeast(0)) }
             }
