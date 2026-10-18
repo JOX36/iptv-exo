@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
@@ -263,10 +264,12 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpe
         value = runCatching { repo.similarMovies(movie, info?.genre.orEmpty(), 21) }.getOrDefault(emptyList())
     }
     val tm = com.jox3.iptvexo.tv.ui.rememberTmdb("movie", movie.name)
+    var trailerOpen by remember { mutableStateOf(false) }
+    if (trailerOpen && tm != null) PhoneTrailerDialog(tm.trailerKey) { trailerOpen = false }
     val others = com.jox3.iptvexo.tv.ui.rememberOtherCopies("movie", movie.name, movie.id, repo)
     val ctx = LocalContext.current
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { DetailHeader(info?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, onBack) }
+        item { DetailHeader(info?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, onBack, tm) }
         item {
             Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(movie.name, style = PType.Hero, color = Jx.Text)
@@ -289,7 +292,7 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpe
                     lib.clearProgress(movie.id); launcher.playMovie(movie.id, movie.name, movie.poster, ext, movie.categoryId)
                 }
                 if (!tm?.trailerKey.isNullOrBlank()) PButton("Ver tráiler", Modifier.fillMaxWidth(), icon = R.drawable.ic_play, primary = false) {
-                    com.jox3.iptvexo.tv.data.Tmdb.openTrailer(ctx, tm!!.trailerKey)
+                    trailerOpen = true
                 }
                 AvailableIn(others) { c -> onOpenMovie(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L)) }
                 (info?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null })?.let { Text(it, style = PType.Body, color = Jx.TextSoft) }
@@ -329,13 +332,15 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
     }
     var season by remember(data) { mutableStateOf(resume?.first?.season ?: seasons.keys.firstOrNull() ?: 1) }
     val tm = com.jox3.iptvexo.tv.ui.rememberTmdb("series", name)
+    var trailerOpen by remember { mutableStateOf(false) }
+    if (trailerOpen && tm != null) PhoneTrailerDialog(tm.trailerKey) { trailerOpen = false }
     val others = com.jox3.iptvexo.tv.ui.rememberOtherCopies("series", name, seriesId, repo)
     val ctx = LocalContext.current
     val title = data?.name?.ifBlank { null } ?: name
     val cover = data?.poster?.ifBlank { null } ?: poster.ifBlank { null } ?: tm?.poster.orEmpty()
     val isFav = lib.isFavorite("series", seriesId)
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
-        item { DetailHeader(data?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: cover, title, onBack) }
+        item { DetailHeader(data?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: cover, title, onBack, tm) }
         item {
             Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(title, style = PType.Hero, color = Jx.Text)
@@ -355,7 +360,7 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
                         size = 48.dp, bg = Jx.SurfaceHi, tint = if (isFav) Jx.Gold else Jx.Text) { lib.toggleFavorite(SavedItem("series", seriesId, title, cover)) }
                 }
                 if (!tm?.trailerKey.isNullOrBlank()) PButton("Ver tráiler", Modifier.fillMaxWidth(), icon = R.drawable.ic_play, primary = false) {
-                    com.jox3.iptvexo.tv.data.Tmdb.openTrailer(ctx, tm!!.trailerKey)
+                    trailerOpen = true
                 }
                 AvailableIn(others.filter { it.account.key != com.jox3.iptvexo.tv.data.LocalServers.current?.account?.key })
                 (data?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null })?.let {
@@ -401,9 +406,23 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
 }
 
 @Composable
-private fun DetailHeader(image: String, title: String, onBack: () -> Unit) {
+private fun DetailHeader(image: String, title: String, onBack: () -> Unit, tm: com.jox3.iptvexo.tv.data.Tmdb.Info? = null) {
+    val ctx = LocalContext.current
     Box(Modifier.fillMaxWidth().height(260.dp)) {
         RemoteImage(image, title, Modifier.fillMaxSize())
+        // Tráiler de fondo sin sonido: solo oficiales y solo con WiFi (no gasta datos)
+        val bgKey = tm?.trailerKey?.takeIf {
+            it.isNotBlank() && tm.trailerOfficial && com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(ctx) &&
+                com.jox3.iptvexo.tv.data.Tmdb.onUnmeteredNetwork(ctx)
+        }
+        var bgStart by remember(bgKey) { mutableStateOf(false) }
+        var bgShow by remember(bgKey) { mutableStateOf(false) }
+        var bgFailed by remember(bgKey) { mutableStateOf(false) }
+        LaunchedEffect(bgKey) { if (bgKey != null) { delay(2000); bgStart = true } }
+        val a by androidx.compose.animation.core.animateFloatAsState(if (bgShow) 1f else 0f,
+            androidx.compose.animation.core.tween(800), label = "bgTrailer")
+        if (bgKey != null && bgStart && !bgFailed) com.jox3.iptvexo.tv.ui.TrailerPlayer(bgKey, muted = true,
+            modifier = Modifier.fillMaxSize().graphicsLayer { alpha = a }, onPlaying = { bgShow = true }, onError = { bgFailed = true })
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x66070A0F), Color.Transparent, Jx.Bg))))
         RoundIcon(R.drawable.ic_back, "Volver", Modifier.statusBarsPadding().padding(10.dp), bg = Color(0x8C070A0F), onClick = onBack)
     }
@@ -611,6 +630,11 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
+                val sctx = LocalContext.current
+                var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }
+                PButton("Tráiler de fondo: " + (if (bgTrailer) "Sí (solo con WiFi)" else "No"), Modifier.fillMaxWidth(), primary = false) {
+                    bgTrailer = !bgTrailer; com.jox3.iptvexo.tv.data.Tmdb.setBackgroundTrailers(sctx, bgTrailer)
+                }
                 PButton("Eliminar esta cuenta", Modifier.fillMaxWidth(), icon = R.drawable.ic_delete, primary = false) { askDelete = true }
                 Text("JOX3 TV ${act.appVersion()}", style = PType.Small, color = Jx.Faint, modifier = Modifier.padding(top = 6.dp))
                 Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = PType.Small, color = Jx.Faint)
@@ -939,6 +963,23 @@ fun AvailableIn(others: List<com.jox3.iptvexo.tv.data.ServerHub.Copy>, onHere: (
                     }
                 }
             }
+        }
+    }
+}
+
+
+/** Tráiler con sonido dentro de la app (controles de YouTube con el dedo). */
+@Composable
+private fun PhoneTrailerDialog(key: String, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black)) {
+            com.jox3.iptvexo.tv.ui.TrailerPlayer(key, muted = false, touchControls = true,
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).align(Alignment.Center),
+                onEnded = onDismiss,
+                onError = { onDismiss(); com.jox3.iptvexo.tv.data.Tmdb.openTrailer(ctx, key) })
+            RoundIcon(R.drawable.ic_close, "Cerrar tráiler", Modifier.statusBarsPadding().padding(10.dp), bg = Color(0x8C070A0F), onClick = onDismiss)
         }
     }
 }
