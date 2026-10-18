@@ -148,7 +148,7 @@ fun PosterTile(title: String, image: String, modifier: Modifier = Modifier, subt
                badges: List<String> = emptyList(), onClick: () -> Unit) {
     Column(modifier.clickable(onClick = onClick), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp))) {
-            RemoteImage(image, title, Modifier.fillMaxSize())
+            RemoteImage(image, title, Modifier.fillMaxSize(), tmdbFallback = true)
             if (favorite) Icon(painterResource(com.jox3.iptvexo.R.drawable.tv_ic_star_filled), "Favorito",
                 Modifier.align(Alignment.TopEnd).padding(6.dp).size(16.dp), tint = Jx.Gold)
             BadgeRow(badges, Modifier.align(Alignment.BottomStart).padding(5.dp))

@@ -274,7 +274,11 @@ private fun MainShell(
     }
 
     val chrome = remember { ShellChrome() }
-    CompositionLocalProvider(LocalLive provides live, LocalShellChrome provides chrome) {
+    val serverCtx = remember(account, allAccounts) {
+        com.jox3.iptvexo.tv.data.ServerCtx(account, allAccounts) { c -> ServerHub.pendingOpen = c; onSwitch(c.account) }
+    }
+    CompositionLocalProvider(LocalLive provides live, LocalShellChrome provides chrome,
+        com.jox3.iptvexo.tv.data.LocalServers provides serverCtx) {
     Box(Modifier.fillMaxSize().background(Jx.Bg).onFocusChanged { anyFocus = it.hasFocus }
         // Con el reproductor pequeño: ⏯ pausa o sigue, ■ lo cierra
         .onPreviewKeyEvent { ev ->
