@@ -50,6 +50,8 @@ public final class Updater {
 
     private static final String REPO = "JOX36/iptv-exo";
     private static final String LATEST_URL = "https://api.github.com/repos/" + REPO + "/releases/latest";
+    /** Archivo que publica cada versión: se descarga directo (sin el límite de la API de GitHub). */
+    private static final String LATEST_JSON = "https://github.com/" + REPO + "/releases/latest/download/latest.json";
     private static final long CHECK_EVERY_MS = 12L * 60 * 60 * 1000;
     private static final String PREFS = "updater";
 
@@ -102,33 +104,53 @@ public final class Updater {
         busy = true;
         NetClient.IO.execute(() -> {
             try {
-                Request req = new Request.Builder()
-                        .url(LATEST_URL)
-                        .header("Accept", "application/vnd.github+json")
-                        .header("User-Agent", "JOX3-TV-Updater")
-                        .build();
-                JSONObject rel;
-                try (Response resp = NetClient.api().newCall(req).execute()) {
-                    if (resp.code() == 404) throw new IllegalStateException("Aún no hay versiones publicadas");
-                    if (!resp.isSuccessful() || resp.body() == null) throw new IllegalStateException("HTTP " + resp.code());
-                    rel = new JSONObject(resp.body().string());
-                }
-                prefs.edit().putLong("last_check", System.currentTimeMillis()).apply();
-
-                String version = rel.optString("tag_name", "").replaceFirst("^[vV]", "");
-                String apkUrl = null;
+                String version = null, apkUrl = null, rawNotes = "";
                 long size = 0;
-                JSONArray assets = rel.optJSONArray("assets");
-                if (assets != null) {
-                    for (int i = 0; i < assets.length(); i++) {
-                        JSONObject a = assets.getJSONObject(i);
-                        if (a.optString("name", "").toLowerCase().endsWith(".apk")) {
-                            apkUrl = a.optString("browser_download_url", null);
-                            size = a.optLong("size", 0);
-                            break;
+                // 1) latest.json de la última versión (descarga directa, sin límite de consultas)
+                try {
+                    Request req = new Request.Builder().url(LATEST_JSON)
+                            .header("User-Agent", "JOX3-TV-Updater").header("Cache-Control", "no-cache").build();
+                    try (Response resp = NetClient.api().newCall(req).execute()) {
+                        if (resp.isSuccessful() && resp.body() != null) {
+                            JSONObject j = new JSONObject(resp.body().string());
+                            version = j.optString("version", "").replaceFirst("^[vV]", "");
+                            apkUrl = j.optString("apk", null);
+                            size = j.optLong("size", 0);
+                            rawNotes = j.optString("notes", "");
                         }
                     }
+                } catch (Exception ignored) { }
+                // 2) Si aún no existe (versiones viejas), la API de GitHub como antes
+                if (version == null || version.isEmpty() || apkUrl == null || apkUrl.isEmpty()) {
+                    Request req = new Request.Builder()
+                            .url(LATEST_URL)
+                            .header("Accept", "application/vnd.github+json")
+                            .header("User-Agent", "JOX3-TV-Updater")
+                            .build();
+                    JSONObject rel;
+                    try (Response resp = NetClient.api().newCall(req).execute()) {
+                        if (resp.code() == 404) throw new IllegalStateException("Aún no hay versiones publicadas");
+                        if (resp.code() == 403 || resp.code() == 429)
+                            throw new IllegalStateException("GitHub está limitando las consultas, intenta en un rato");
+                        if (!resp.isSuccessful() || resp.body() == null) throw new IllegalStateException("HTTP " + resp.code());
+                        rel = new JSONObject(resp.body().string());
+                    }
+                    version = rel.optString("tag_name", "").replaceFirst("^[vV]", "");
+                    apkUrl = null;
+                    JSONArray assets = rel.optJSONArray("assets");
+                    if (assets != null) {
+                        for (int i = 0; i < assets.length(); i++) {
+                            JSONObject a = assets.getJSONObject(i);
+                            if (a.optString("name", "").toLowerCase().endsWith(".apk")) {
+                                apkUrl = a.optString("browser_download_url", null);
+                                size = a.optLong("size", 0);
+                                break;
+                            }
+                        }
+                    }
+                    rawNotes = rel.optString("body", "");
                 }
+                prefs.edit().putLong("last_check", System.currentTimeMillis()).apply();
                 String installed = installedVersion();
                 boolean newer = apkUrl != null && buildNumber(version) > buildNumber(installed);
                 if (!newer) {
@@ -138,9 +160,10 @@ public final class Updater {
                 if (!manual && version.equals(prefs.getString("skip_version", ""))) return;
 
                 final String fUrl = apkUrl;
+                final String fVersion = version;
                 final long fSize = size;
-                final String notes = cleanNotes(rel.optString("body", ""));
-                main.post(() -> showUpdateDialog(version, installed, fUrl, fSize, notes));
+                final String notes = cleanNotes(rawNotes);
+                main.post(() -> showUpdateDialog(fVersion, installed, fUrl, fSize, notes));
             } catch (Exception e) {
                 if (manual) main.post(() -> toast("No se pudo revisar: " + e.getMessage()));
             } finally {
