@@ -36,7 +36,7 @@ class TvActivity : ComponentActivity(), TvHost {
                 .okHttpClient(NetClient.api())
                 .crossfade(180)
                 .respectCacheHeaders(false)
-                .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.20).build() }
+                .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.12).build() }
                 .diskCache { DiskCache.Builder().directory(cacheDir.resolve("images")).maxSizeBytes(150L * 1024 * 1024).build() }
                 .build()
         )

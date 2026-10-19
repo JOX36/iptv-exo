@@ -102,13 +102,18 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
 
     private var index: Index? = null
 
-    suspend fun searchIndex(): Index = lock.withLock { index } ?: coroutineScope {
-        val c = async { runCatching { api.channels() }.getOrDefault(emptyList()) }
-        val m = async { runCatching { api.movies() }.getOrDefault(emptyList()) }
-        val s = async { runCatching { api.series() }.getOrDefault(emptyList()) }
-        val (ch, mv, sr) = Triple(c.await(), m.await(), s.await())
-        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Index(ch, mv, sr) }
-    }.also { built -> lock.withLock { index = built } }
+    private val indexLock = kotlinx.coroutines.sync.Mutex()
+
+    /** Catálogo completo para buscar. Se arma una sola vez y de a una lista (menos memoria). */
+    suspend fun searchIndex(): Index = lock.withLock { index } ?: indexLock.withLock {
+        lock.withLock { index } ?: run {
+            val ch = runCatching { api.channels() }.getOrDefault(emptyList())
+            val mv = runCatching { api.movies() }.getOrDefault(emptyList())
+            val sr = runCatching { api.series() }.getOrDefault(emptyList())
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Index(ch, mv, sr) }
+                .also { built -> lock.withLock { index = built } }
+        }
+    }
 
     /**
      * Recomendaciones para una película:
