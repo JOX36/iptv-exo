@@ -29,6 +29,9 @@ class App : Application() {
                 val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
                 File(filesDir, CRASH_FILE).writeText("Versión $version · $stamp · hilo ${thread.name}\n${trace.take(8000)}")
                 if (trace.contains("ffmpeg", ignoreCase = true)) PlayerSafety.disableFfmpeg(this)
+                // Un cierre con error de Java (p. ej. memoria llena) NO es el fallo silencioso de
+                // FFmpeg: se borra la marca de "arrancando" para no apagar el audio avanzado por error.
+                else PlayerSafety.clearStarting(this)
             } catch (t: Throwable) { }
             previous?.uncaughtException(thread, error)
         }
@@ -95,6 +98,12 @@ object PlayerSafety {
     fun disableFfmpeg(ctx: Context) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(KEY_FFMPEG_OFF, true).putString(KEY_OFF_VERSION, version(ctx)).commit()
+    }
+
+    /** Quita la marca de arranque sin culpar a FFmpeg (el cierre fue por otra causa). */
+    @JvmStatic
+    fun clearStarting(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_STARTING, false).commit()
     }
 
     /** Volver a intentar con FFmpeg. */

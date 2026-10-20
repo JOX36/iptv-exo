@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -121,23 +122,35 @@ object ServerHub {
 
     // ── Catálogos y búsqueda ──
 
-    /** Descarga en segundo plano el catálogo de los otros servidores (una vez por sesión). */
+    /** Cola: los catálogos se descargan de a UNO (antes iban todos a la vez y llenaban la memoria). */
+    private val queueLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * Equipo con poca memoria para la app (la mayoría de TV Box: 256 MB o menos). Ahí los
+     * catálogos de los otros servidores no se preparan solos al abrir: solo al buscar.
+     */
+    fun lowMemory(ctx: Context): Boolean = runCatching {
+        val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        am.isLowRamDevice || am.memoryClass <= 256
+    }.getOrDefault(true)
+
+    /** Descarga en segundo plano el catálogo de los otros servidores (una vez por sesión, de a uno). */
     fun ensureIndexes(others: List<Account>) {
         others.forEach { acc ->
             if (hasIndex(acc) || loadingIndex[acc.key] == true) return@forEach
             loadingIndex[acc.key] = true
             scope.launch {
-                val api = XtreamApi(acc)
-                val built = runCatching {
-                    val c = async { runCatching { api.channels() }.getOrDefault(emptyList()) }
-                    val m = async { runCatching { api.movies() }.getOrDefault(emptyList()) }
-                    val s = async { runCatching { api.series() }.getOrDefault(emptyList()) }
-                    val (ch, mv, sr) = listOf(c, m, s).awaitAll().let { Triple(it[0], it[1], it[2]) }
-                    @Suppress("UNCHECKED_CAST")
-                    withContext(Dispatchers.Default) {
-                        TvRepo.Index(ch as List<Channel>, mv as List<Movie>, sr as List<Series>)
-                    }
-                }.getOrNull()
+                val built = queueLock.withLock {
+                    if (hasIndex(acc)) return@withLock null
+                    val api = XtreamApi(acc)
+                    runCatching {
+                        // Uno detrás de otro: así nunca hay dos listas grandes llegando a la vez
+                        val ch = runCatching { api.channels() }.getOrDefault(emptyList())
+                        val mv = runCatching { api.movies() }.getOrDefault(emptyList())
+                        val sr = runCatching { api.series() }.getOrDefault(emptyList())
+                        withContext(Dispatchers.Default) { TvRepo.Index(ch, mv, sr) }
+                    }.getOrNull()
+                }
                 synchronized(indexes) { if (built != null) indexes[acc.key] = built }
                 withContext(Dispatchers.Main) {
                     loadingIndex[acc.key] = false
