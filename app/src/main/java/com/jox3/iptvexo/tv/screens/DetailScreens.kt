@@ -62,10 +62,6 @@ import com.jox3.iptvexo.tv.ui.rememberTmdb
 import com.jox3.iptvexo.tv.ui.rememberOtherCopies
 import com.jox3.iptvexo.tv.ui.RatingBadges
 import com.jox3.iptvexo.tv.ui.CastRow
-import com.jox3.iptvexo.tv.ui.TrailerPlayer
-import com.jox3.iptvexo.tv.ui.TvTrailerFullscreen
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.zIndex
 import com.jox3.iptvexo.tv.data.Tmdb
 import com.jox3.iptvexo.tv.data.ServerHub
 import androidx.compose.foundation.verticalScroll
@@ -98,26 +94,12 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
     // TMDB completa calificación, reparto con fotos, tráiler y lo que falte
     val tm = rememberTmdb("movie", movie.name)
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var trailerFull by remember { mutableStateOf(false) }
     val others = rememberOtherCopies("movie", movie.name, movie.id, repo)
     val servers = com.jox3.iptvexo.tv.data.LocalServers.current
 
     Box(Modifier.fillMaxSize()) {
         val i = info
         RemoteImage(i?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, Modifier.fillMaxSize(), showInitials = false)
-        // Tráiler de fondo sin sonido (estilo Netflix): solo oficiales, a los 2,5 s, con fundido
-        val bgKey = tm?.trailerKey?.takeIf { it.isNotBlank() && tm.trailerOfficial && Tmdb.backgroundTrailers(ctx) }
-        val vodOpen = host.player.vod?.open == true
-        var bgStart by remember(bgKey) { mutableStateOf(false) }
-        var bgShow by remember(bgKey) { mutableStateOf(false) }
-        var bgFailed by remember(bgKey) { mutableStateOf(false) }
-        LaunchedEffect(bgKey) { if (bgKey != null) { kotlinx.coroutines.delay(2500); bgStart = true } }
-        val bgAlpha by androidx.compose.animation.core.animateFloatAsState(if (bgShow) 1f else 0f,
-            androidx.compose.animation.core.tween(900), label = "bgTrailer")
-        if (bgKey != null && bgStart && !bgFailed && !trailerFull && !vodOpen) {
-            TrailerPlayer(bgKey, muted = true, modifier = Modifier.fillMaxSize().alpha(bgAlpha),
-                onPlaying = { bgShow = true }, onError = { bgFailed = true })
-        }
         Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
             0f to Jx.Bg, 0.4f to Jx.Bg.copy(alpha = 0.94f), 0.75f to Jx.Bg.copy(alpha = 0.35f), 1f to Jx.Bg.copy(alpha = 0.1f))))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.45f to Color.Transparent, 0.75f to Jx.Bg)))
@@ -170,7 +152,7 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
                     }
                     ActionButton(if (isFav) "En favoritos" else "Favorito", { lib.toggleFavorite(favItem) },
                         icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
-                    if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { trailerFull = true }, icon = R.drawable.tv_ic_play)
+                    if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { Tmdb.openTrailer(ctx, tm!!.trailerKey) }, icon = R.drawable.tv_ic_play)
                 }
                 // Disponible también en otros servidores (o en otra calidad en este)
                 if (others.isNotEmpty() && servers != null) {
@@ -206,13 +188,6 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
             }
         }
     }
-    // Tráiler a pantalla completa con sonido, dentro de la app
-    if (trailerFull && tm != null) {
-        Box(Modifier.fillMaxSize().zIndex(10f)) {
-            TvTrailerFullscreen(tm.trailerKey, movie.name) { trailerFull = false }
-        }
-    }
-    LaunchedEffect(trailerFull) { if (!trailerFull) runCatching { playReq.requestFocus() } }
     LaunchedEffect(movie.id, canResume) { runCatching { playReq.requestFocus() } }
 }
 
@@ -231,7 +206,6 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
     val allEpisodes = remember(data) { seasons.values.flatten() }
     val tm = rememberTmdb("series", name)
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var trailerFull by remember { mutableStateOf(false) }
     val others = rememberOtherCopies("series", name, seriesId, repo)
     val servers = com.jox3.iptvexo.tv.data.LocalServers.current
     val cover = data?.poster?.ifBlank { null } ?: poster.ifBlank { null } ?: tm?.poster.orEmpty()
@@ -287,7 +261,7 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     ActionButton(if (isFav) "En favoritos" else "Favorito", {
                         lib.toggleFavorite(SavedItem("series", seriesId, title, cover))
                     }, icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
-                    if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { trailerFull = true })
+                    if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { Tmdb.openTrailer(ctx, tm!!.trailerKey) })
                 }
                 // También en otros servidores
                 if (others.isNotEmpty() && servers != null) {
@@ -338,11 +312,6 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     }
                 }
             }
-        }
-    }
-    if (trailerFull && tm != null) {
-        Box(Modifier.fillMaxSize().zIndex(10f)) {
-            TvTrailerFullscreen(tm.trailerKey, title) { trailerFull = false }
         }
     }
     LaunchedEffect(data, season) { if (data != null) runCatching { mainReq.requestFocus() } }

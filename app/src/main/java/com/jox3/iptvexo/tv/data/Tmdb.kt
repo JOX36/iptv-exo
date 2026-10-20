@@ -41,8 +41,6 @@ object Tmdb {
         val cast: List<Person>,
         val director: String,
         val trailerKey: String,     // YouTube
-        /** El tráiler es oficial del estudio (casi nunca trae anuncios): solo esos van de fondo. */
-        val trailerOfficial: Boolean = false,
     ) {
         val ratingText: String get() = if (votes > 0 && rating > 0f) String.format(java.util.Locale("es"), "%.1f", rating) else ""
     }
@@ -184,15 +182,8 @@ object Tmdb {
         // Tráiler: el oficial en español si hay; si no, el primero de YouTube
         val vids = o.optJSONObject("videos")?.optJSONArray("results") ?: JSONArray()
         val list = (0 until vids.length()).mapNotNull { vids.optJSONObject(it) }.filter { it.optString("site") == "YouTube" }
-        // Orden: oficial en español → oficial en inglés → cualquier oficial → no oficial en español → el primero.
-        // Los oficiales los suben los estudios: casi nunca tienen anuncios.
-        fun isTrailer(v: JSONObject) = v.optString("type") == "Trailer" || v.optString("type") == "Teaser"
-        val off = list.filter { it.optBoolean("official") && isTrailer(it) }
-        val pick = off.firstOrNull { it.optString("iso_639_1") == "es" && it.optString("type") == "Trailer" }
-            ?: off.firstOrNull { it.optString("iso_639_1") == "en" && it.optString("type") == "Trailer" }
-            ?: off.firstOrNull()
-        val trailerObj = pick ?: list.firstOrNull { isTrailer(it) && it.optString("iso_639_1") == "es" } ?: list.firstOrNull { isTrailer(it) } ?: list.firstOrNull()
-        val trailer = trailerObj?.optString("key").orEmpty()
+        val trailer = (list.firstOrNull { it.optString("type") == "Trailer" && it.optString("iso_639_1") == "es" }
+            ?: list.firstOrNull { it.optString("type") == "Trailer" } ?: list.firstOrNull())?.optString("key").orEmpty()
         val genres = (o.optJSONArray("genres") ?: JSONArray()).let { a -> (0 until a.length()).joinToString(", ") { a.optJSONObject(it)?.optString("name").orEmpty() } }
         val date = if (type == "movie") o.optString("release_date") else o.optString("first_air_date")
         val runtime = if (type == "movie") o.optInt("runtime")
@@ -212,7 +203,6 @@ object Tmdb {
             cast = cast,
             director = director,
             trailerKey = trailer,
-            trailerOfficial = pick != null,
         )
     }
 
@@ -250,17 +240,6 @@ object Tmdb {
         .replace(Regex("\\s+"), " ").trim().trimEnd('-', ':', '.').trim()
 
     private fun yearOf(name: String): String = Regex("\\b(19[2-9]\\d|20[0-4]\\d)\\b").findAll(name).lastOrNull()?.value.orEmpty()
-
-    // ── Tráiler de fondo (ajuste) ──
-    fun backgroundTrailers(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("bg_trailer", true)
-    fun setBackgroundTrailers(ctx: Context, on: Boolean) =
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean("bg_trailer", on).apply()
-
-    /** En el celular, de fondo solo con WiFi (no gasta datos). En la TV siempre. */
-    fun onUnmeteredNetwork(ctx: Context): Boolean = runCatching {
-        val cm: android.net.ConnectivityManager = ctx.getSystemService(android.net.ConnectivityManager::class.java)
-        cm.isActiveNetworkMetered.not()
-    }.getOrDefault(false)
 
     /** Abre el tráiler en la app de YouTube (o en el navegador si no está). */
     fun openTrailer(ctx: Context, key: String) {

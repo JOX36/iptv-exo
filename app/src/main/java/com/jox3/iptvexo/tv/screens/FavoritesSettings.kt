@@ -153,11 +153,6 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             }, Modifier.fillMaxWidth())
             Text("Cambia la frecuencia de la TV (24, 25, 50, 60 Hz) a la de cada película para que se vea fluida. " +
                 "Al empezar, la pantalla puede quedar negra un segundo.", style = Type.Small, color = Jx.Faint)
-            var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }
-            ActionButton("Tráiler de fondo: " + if (bgTrailer) "Sí" else "No", {
-                bgTrailer = !bgTrailer; com.jox3.iptvexo.tv.data.Tmdb.setBackgroundTrailers(sctx, bgTrailer)
-            }, Modifier.fillMaxWidth())
-            Text("En la ficha de las películas, el tráiler oficial se ve sin sonido detrás del título.", style = Type.Small, color = Jx.Faint)
             Text("JOX3 TV ${host.appVersion()}", style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(top = 8.dp))
             Text("Las versiones nuevas se instalan solas: la app avisa al abrirse.", style = Type.Small, color = Jx.Faint)
         }
