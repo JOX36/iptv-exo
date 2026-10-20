@@ -188,7 +188,7 @@ private fun MainShell(
     LaunchedEffect(account.key) {
         ServerHub.refresh(allAccounts)
         // El catálogo de los otros servidores se prepara en segundo plano para el buscador universal
-        if (allAccounts.size > 1 && ServerHub.searchAllEnabled(context)) {
+        if (allAccounts.size > 1 && ServerHub.searchAllEnabled(context) && !ServerHub.lowMemory(context)) {
             delay(4000)
             ServerHub.ensureIndexes(allAccounts.filter { it.key != account.key })
         }

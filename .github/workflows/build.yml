@@ -80,7 +80,13 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES=$(printf '%s\n' "$HEAD_MSG" | grep -viE '^(merge pull request|co-authored-by|claude-session)' | sed '/^\s*$/d')
           fi
-          gh release create "v$VERSION" "JOX3-TV-$VERSION.apk" \
+          # latest.json: lo que la app lee para saber si hay versión nueva. Se descarga de
+          # releases/latest/download/ (sin el límite de 60 consultas por hora de la API).
+          export VERSION NOTES
+          export APK_URL="https://github.com/${{ github.repository }}/releases/download/v$VERSION/JOX3-TV-$VERSION.apk"
+          export APK_SIZE=$(stat -c %s "JOX3-TV-$VERSION.apk")
+          python3 -c 'import json,os; json.dump({"version":os.environ["VERSION"],"apk":os.environ["APK_URL"],"size":int(os.environ["APK_SIZE"]),"notes":os.environ.get("NOTES") or "Mejoras y correcciones."}, open("latest.json","w"), ensure_ascii=False)'
+          gh release create "v$VERSION" "JOX3-TV-$VERSION.apk" latest.json \
             --title "JOX3 TV $VERSION" \
             --notes "${NOTES:-Mejoras y correcciones.}" \
             --target "${{ github.sha }}"

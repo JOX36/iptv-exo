@@ -190,7 +190,7 @@ private fun PhoneShell(
     LaunchedEffect(account.key) {
         val all = accounts.all()
         ServerHub.refresh(all)
-        if (all.size > 1 && ServerHub.searchAllEnabled(context)) {
+        if (all.size > 1 && ServerHub.searchAllEnabled(context) && !ServerHub.lowMemory(context)) {
             kotlinx.coroutines.delay(4000)
             ServerHub.ensureIndexes(all.filter { it.key != account.key })
         }

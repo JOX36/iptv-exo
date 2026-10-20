@@ -44,6 +44,51 @@ class XtreamApi(val account: Account) {
         return if (text.startsWith("[")) JSONArray(text) else JSONArray()
     }
 
+    /**
+     * Lista grande (canales, películas, series) leída POR PARTES mientras llega: nunca se
+     * guarda el texto completo en memoria (con catálogos de decenas de MB, eso llenaba la
+     * memoria de los TV Box y la app se cerraba). De cada elemento solo se guardan [keys].
+     */
+    private suspend fun <T> streamList(url: String, keys: Set<String>, make: (Map<String, String>, Int) -> T?): List<T> =
+        withContext(Dispatchers.IO) {
+            val req = Request.Builder().url(url)
+                .header("User-Agent", NetClient.API_USER_AGENT)
+                .header("Accept", "application/json, */*")
+                .build()
+            NetClient.api().newCall(req).execute().use { r ->
+                if (!r.isSuccessful) throw IOException("El servidor respondió HTTP ${r.code}")
+                val body = r.body ?: throw IOException("Respuesta vacía del servidor")
+                val out = ArrayList<T>()
+                android.util.JsonReader(java.io.InputStreamReader(body.byteStream(), Charsets.UTF_8)).use { jr ->
+                    jr.isLenient = true
+                    if (jr.peek() != android.util.JsonToken.BEGIN_ARRAY) { jr.skipValue(); return@use }
+                    jr.beginArray()
+                    var i = 0
+                    val fields = HashMap<String, String>(keys.size * 2)
+                    while (jr.hasNext()) {
+                        if (jr.peek() != android.util.JsonToken.BEGIN_OBJECT) { jr.skipValue(); continue }
+                        fields.clear()
+                        jr.beginObject()
+                        while (jr.hasNext()) {
+                            val name = jr.nextName()
+                            if (name !in keys) { jr.skipValue(); continue }
+                            when (jr.peek()) {
+                                android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> fields[name] = jr.nextString()
+                                android.util.JsonToken.BOOLEAN -> fields[name] = jr.nextBoolean().toString()
+                                android.util.JsonToken.NULL -> { jr.nextNull(); fields[name] = "" }
+                                else -> jr.skipValue()
+                            }
+                        }
+                        jr.endObject()
+                        make(fields, i)?.let { out.add(it) }
+                        i++
+                    }
+                    jr.endArray()
+                }
+                out
+            }
+        }
+
     // ── URLs de reproducción ──
     fun liveUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.m3u8"
     fun movieUrl(id: String, ext: String) = "$host/movie/${account.user}/${account.pass}/$id.${ext.ifBlank { "mp4" }}"
@@ -72,53 +117,50 @@ class XtreamApi(val account: Account) {
         }
     }
 
-    suspend fun channels(categoryId: String? = null): List<Channel> = withContext(Dispatchers.Default) {
+    suspend fun channels(categoryId: String? = null): List<Channel> {
         val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
-        val arr = array(apiUrl("get_live_streams", extra))
-        return@withContext (0 until arr.length()).mapNotNull { i ->
-            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        return streamList(apiUrl("get_live_streams", extra), CH_KEYS) { o, i ->
+            val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Channel(
-                id = o.optString("stream_id"),
-                name = o.optString("name", "?").trim(),
-                logo = o.optString("stream_icon", ""),
-                categoryId = o.optString("category_id", ""),
-                num = o.optInt("num", i + 1),
-                epgId = o.optString("epg_channel_id", "").takeUnless { it == "null" }.orEmpty(),
+                id = id,
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                logo = o["stream_icon"].orEmpty(),
+                categoryId = o["category_id"].orEmpty(),
+                num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
+                epgId = o["epg_channel_id"].orEmpty().takeUnless { it == "null" }.orEmpty(),
             )
         }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
     }
 
-    suspend fun movies(categoryId: String? = null): List<Movie> = withContext(Dispatchers.Default) {
+    suspend fun movies(categoryId: String? = null): List<Movie> {
         val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
-        val arr = array(apiUrl("get_vod_streams", extra))
-        return@withContext (0 until arr.length()).mapNotNull { i ->
-            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        return streamList(apiUrl("get_vod_streams", extra), MOVIE_KEYS) { o, _ ->
+            val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Movie(
-                id = o.optString("stream_id"),
-                name = o.optString("name", "?").trim(),
-                poster = o.optString("stream_icon", ""),
-                rating = o.optString("rating", "").takeUnless { it == "0" || it == "null" }.orEmpty(),
-                ext = o.optString("container_extension", "mp4"),
-                categoryId = o.optString("category_id", ""),
-                added = o.optString("added", "0").toLongOrNull() ?: 0L,
+                id = id,
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                poster = o["stream_icon"].orEmpty(),
+                rating = o["rating"].orEmpty().takeUnless { it == "0" || it == "null" }.orEmpty(),
+                ext = o["container_extension"]?.ifBlank { null } ?: "mp4",
+                categoryId = o["category_id"].orEmpty(),
+                added = o["added"]?.toLongOrNull() ?: 0L,
             )
-        }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
+        }.distinctBy { it.id }
     }
 
-    suspend fun series(categoryId: String? = null): List<Series> = withContext(Dispatchers.Default) {
+    suspend fun series(categoryId: String? = null): List<Series> {
         val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
-        val arr = array(apiUrl("get_series", extra))
-        return@withContext (0 until arr.length()).mapNotNull { i ->
-            val o = arr.optJSONObject(i) ?: return@mapNotNull null
+        return streamList(apiUrl("get_series", extra), SERIES_KEYS) { o, _ ->
+            val id = o["series_id"].orEmpty().ifBlank { return@streamList null }
             Series(
-                id = o.optString("series_id"),
-                name = o.optString("name", "?").trim(),
-                poster = o.optString("cover", ""),
-                rating = o.optString("rating", "").takeUnless { it == "0" || it == "null" }.orEmpty(),
-                categoryId = o.optString("category_id", ""),
-                updated = o.optString("last_modified", "0").toLongOrNull() ?: 0L,
+                id = id,
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                poster = o["cover"].orEmpty(),
+                rating = o["rating"].orEmpty().takeUnless { it == "0" || it == "null" }.orEmpty(),
+                categoryId = o["category_id"].orEmpty(),
+                updated = o["last_modified"]?.toLongOrNull() ?: 0L,
             )
-        }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
+        }.distinctBy { it.id }
     }
 
     suspend fun movieInfo(id: String): MovieInfo = withContext(Dispatchers.Default) {
@@ -218,6 +260,9 @@ class XtreamApi(val account: Account) {
     }
 
     companion object {
+        private val CH_KEYS = setOf("stream_id", "name", "stream_icon", "category_id", "num", "epg_channel_id")
+        private val MOVIE_KEYS = setOf("stream_id", "name", "stream_icon", "rating", "container_extension", "category_id", "added")
+        private val SERIES_KEYS = setOf("series_id", "name", "cover", "rating", "category_id", "last_modified")
         /**
          * Acepta lo que el usuario pegue en "Servidor": un host normal, una URL
          * get.php?username=..&password=.. o un enlace /live/usuario/clave/...
@@ -245,4 +290,5 @@ class XtreamApi(val account: Account) {
             return Account(host, user, pass)
         }
     }
+
 }
