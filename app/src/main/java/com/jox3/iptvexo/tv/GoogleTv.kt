@@ -51,8 +51,25 @@ object GoogleTv {
     /** Se pulsó el botón de búsqueda del control: el buscador abre el micrófono. */
     var voiceRequested = false
 
+    /**
+     * TV o TV Box: modo TV del sistema O función "leanback" (muchos TV Box no reportan el
+     * modo TV; antes por eso no se publicaba nada en el inicio). Igual que MainActivity.
+     */
     fun isTv(ctx: Context): Boolean =
-        (ctx.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+        (ctx.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
+            ctx.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK)
+
+    /** Nombre de la app de inicio del equipo (Google TV, Android TV Home, otra…). */
+    fun homeLauncher(ctx: Context): String = runCatching {
+        val i = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_HOME)
+        val ri = ctx.packageManager.resolveActivity(i, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY) ?: return@runCatching "Desconocido"
+        val label = ri.loadLabel(ctx.packageManager).toString()
+        "$label (${ri.activityInfo.packageName})"
+    }.getOrDefault("Desconocido")
+
+    /** Qué se publicó en el inicio de la TV (o por qué no): se muestra en Ajustes. */
+    var continueStatus by mutableStateOf("Aún no se ha publicado nada")
+    var channelStatus by mutableStateOf("")
 
     private fun supported(ctx: Context) = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && isTv(ctx)
 
@@ -87,7 +104,8 @@ object GoogleTv {
     /** Pone en "Seguir viendo" del sistema lo que está a medias en la app (y quita lo terminado). */
     @SuppressLint("RestrictedApi")
     fun syncContinue(ctx: Context, acc: Account, lib: LibraryStore) {
-        if (!supported(ctx)) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) { continueStatus = "Tu equipo tiene Android 7 o anterior: no lo admite"; return }
+        if (!isTv(ctx)) { continueStatus = "Este equipo no es una TV"; return }
         val app = ctx.applicationContext
         val items = runCatching { lib.continueWatching() }.getOrDefault(emptyList()).take(10)
         scope.launch {
@@ -95,7 +113,12 @@ object GoogleTv {
                 val cr = app.contentResolver
                 // Lo que ya está publicado por esta app: internalProviderId → id de la fila
                 val existing = HashMap<String, Long>()
-                cr.query(TvContractCompat.WatchNextPrograms.CONTENT_URI, WatchNextProgram.PROJECTION, null, null, null)?.use { c ->
+                val cursor = cr.query(TvContractCompat.WatchNextPrograms.CONTENT_URI, WatchNextProgram.PROJECTION, null, null, null)
+                if (cursor == null) {
+                    continueStatus = "Tu TV Box no tiene la pantalla de inicio de Android TV (usa otro inicio): no se puede mostrar"
+                    return@runCatching
+                }
+                cursor.use { c ->
                     while (c.moveToNext()) {
                         val p = WatchNextProgram.fromCursor(c)
                         p.internalProviderId?.let { existing[it] = p.id }
@@ -127,6 +150,10 @@ object GoogleTv {
                 existing.filterKeys { it !in keep }.values.forEach { id ->
                     cr.delete(TvContractCompat.buildWatchNextProgramUri(id), null, null)
                 }
+                continueStatus = if (items.isEmpty()) "Seguir viendo: no hay películas ni episodios a medias"
+                    else "Seguir viendo: ${items.size} ${if (items.size == 1) "título publicado" else "títulos publicados"}"
+            }.onFailure { e ->
+                continueStatus = "Seguir viendo: no se pudo publicar (${e.javaClass.simpleName}: ${e.message?.take(80)})"
             }
         }
     }
@@ -136,6 +163,7 @@ object GoogleTv {
     /** Canal propio en el inicio de Android TV con tus canales favoritos (y lo que dan ahora). */
     fun syncFavoritesChannel(ctx: Context, acc: Account, favorites: List<SavedItem>, nowTitle: (SavedItem) -> String) {
         if (!supported(ctx)) return
+        if (favorites.none { it.kind == "live" }) channelStatus = "Canal JOX3: agrega canales a Favoritos para que aparezca"
         val app = ctx.applicationContext
         val live = favorites.filter { it.kind == "live" }.take(20)
         scope.launch {
@@ -176,6 +204,9 @@ object GoogleTv {
                     if (f.image.startsWith("http")) p.setPosterArtUri(Uri.parse(f.image)).setLogoUri(Uri.parse(f.image))
                     helper.publishPreviewProgram(p.build())
                 }
+                if (live.isNotEmpty()) channelStatus = "Canal JOX3: ${live.size} canales favoritos (solo en el inicio clásico de Android TV)"
+            }.onFailure { e ->
+                channelStatus = "Canal JOX3: no se pudo publicar (${e.javaClass.simpleName})"
             }
         }
     }
