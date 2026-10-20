@@ -153,6 +153,16 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             }, Modifier.fillMaxWidth())
             Text("Cambia la frecuencia de la TV (24, 25, 50, 60 Hz) a la de cada película para que se vea fluida. " +
                 "Al empezar, la pantalla puede quedar negra un segundo.", style = Type.Small, color = Jx.Faint)
+            // Diagnóstico: qué se publicó en la pantalla de inicio de la TV
+            Text("INICIO DE LA TV", style = Type.Eyebrow, color = Jx.Muted, modifier = Modifier.padding(top = 6.dp))
+            Text("Inicio del equipo: " + com.jox3.iptvexo.tv.GoogleTv.homeLauncher(sctx), style = Type.Small, color = Jx.TextSoft)
+            Text(com.jox3.iptvexo.tv.GoogleTv.continueStatus, style = Type.Small, color = Jx.TextSoft)
+            if (com.jox3.iptvexo.tv.GoogleTv.channelStatus.isNotBlank())
+                Text(com.jox3.iptvexo.tv.GoogleTv.channelStatus, style = Type.Small, color = Jx.TextSoft)
+            ActionButton("Publicar en el inicio ahora", {
+                com.jox3.iptvexo.tv.GoogleTv.syncContinue(sctx, account, repo.library)
+                com.jox3.iptvexo.tv.GoogleTv.syncFavoritesChannel(sctx, account, repo.library.favorites.toList()) { "" }
+            }, Modifier.fillMaxWidth())
             var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }
             ActionButton("Tráiler de fondo: " + if (bgTrailer) "Sí" else "No", {
                 bgTrailer = !bgTrailer; com.jox3.iptvexo.tv.data.Tmdb.setBackgroundTrailers(sctx, bgTrailer)
