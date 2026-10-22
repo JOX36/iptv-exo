@@ -20,6 +20,10 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
     private val lock = Mutex()
     private val categories = HashMap<Section, List<Category>>()
     private val channels = HashMap<String, List<Channel>>()
+    private val movies = HashMap<String, List<Movie>>()
+    private val series = HashMap<String, List<Series>>()
+    private val movieInfos = HashMap<String, MovieInfo>()
+    private val seriesInfos = HashMap<String, SeriesInfo>()
     private val epg = HashMap<String, Pair<Long, List<EpgItem>>>()
     /** Como mucho 3 peticiones de guía a la vez, para no saturar el servidor. */
     private val epgPermits = Semaphore(3)
@@ -33,9 +37,31 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
     suspend fun channels(catId: String): List<Channel> =
         lock.withLock { channels[catId] } ?: api.channels(catId).also { lock.withLock { channels[catId] = it } }
 
+    suspend fun movies(catId: String): List<Movie> =
+        lock.withLock { movies[catId] } ?: api.movies(catId).also { lock.withLock { movies[catId] = it } }
+
+    suspend fun series(catId: String): List<Series> =
+        lock.withLock { series[catId] } ?: api.series(catId).also { lock.withLock { series[catId] = it } }
+
+    suspend fun movieInfo(id: String): MovieInfo =
+        lock.withLock { movieInfos[id] } ?: api.movieInfo(id).also { lock.withLock { movieInfos[id] = it } }
+
+    /** La ficha de serie se vuelve a pedir si pasaron más de 30 min (por si salieron episodios nuevos). */
+    private val seriesInfoAt = HashMap<String, Long>()
+    suspend fun seriesInfo(id: String): SeriesInfo {
+        lock.withLock {
+            val at = seriesInfoAt[id] ?: 0
+            if (System.currentTimeMillis() - at < 30 * 60_000) seriesInfos[id]?.let { return it }
+        }
+        return api.seriesInfo(id).also { lock.withLock { seriesInfos[id] = it; seriesInfoAt[id] = System.currentTimeMillis() } }
+    }
+
     /** Vuelve a pedir todo al servidor (botón "Actualizar"). */
     suspend fun clear() {
-        lock.withLock { categories.clear(); channels.clear() }
+        lock.withLock {
+            categories.clear(); channels.clear(); movies.clear(); series.clear()
+            movieInfos.clear(); seriesInfos.clear(); seriesInfoAt.clear()
+        }
         synchronized(epg) { epg.clear() }
     }
 

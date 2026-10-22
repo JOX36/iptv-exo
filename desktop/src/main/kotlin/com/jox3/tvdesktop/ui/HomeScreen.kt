@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jox3.tvdesktop.data.Account
 import com.jox3.tvdesktop.data.LibraryStore
+import com.jox3.tvdesktop.data.Section
 import com.jox3.tvdesktop.data.ServerInfo
 import com.jox3.tvdesktop.data.TvRepo
 import com.jox3.tvdesktop.data.XtreamApi
@@ -86,8 +87,24 @@ fun HomeScreen(
     var showAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
+    /** Empieza una película o episodio: deja el canal en vivo y ocupa toda la ventana. */
+    fun startVod(session: VodSession, startMs: Long) {
+        live.playVod(session, startMs)
+        live.mode = ViewMode.FULL
+    }
+
+    /** Sale de la película o episodio: guarda dónde quedó y vuelve a su ficha. */
+    fun exitVod() {
+        control?.setFullscreen(false); control?.switchMini(false)
+        live.stop()
+    }
+
     fun toggleFull() {
-        if (live.current == null) { live.flash("Elige un canal primero"); return }
+        if (!live.hasMedia) { live.flash("Elige un canal primero"); return }
+        if (live.vod != null && live.mode == ViewMode.FULL) {
+            // Película: alterna entre pantalla completa real y ventana, sin salir del video
+            control?.let { it.setFullscreen(!it.fullscreen) }; return
+        }
         if (live.mode == ViewMode.FULL) {
             control?.setFullscreen(false); live.mode = ViewMode.EMBEDDED; live.panel = com.jox3.tvdesktop.ui.Panel.NONE
         } else {
@@ -95,11 +112,15 @@ fun HomeScreen(
         }
     }
     fun toggleMini() {
-        if (live.current == null) { live.flash("Elige un canal primero"); return }
-        if (live.mode == ViewMode.MINI) { control?.switchMini(false); live.mode = ViewMode.EMBEDDED }
+        if (!live.hasMedia) { live.flash("Elige un canal primero"); return }
+        if (live.mode == ViewMode.MINI) {
+            control?.switchMini(false)
+            live.mode = if (live.vod != null) ViewMode.FULL else ViewMode.EMBEDDED
+        }
         else { control?.setFullscreen(false); live.panel = com.jox3.tvdesktop.ui.Panel.NONE; live.mode = ViewMode.MINI; control?.switchMini(true) }
     }
     fun leaveVideoMode() {
+        if (live.vod != null) { exitVod(); return }
         when (live.mode) {
             ViewMode.MINI -> toggleMini()
             ViewMode.FULL -> toggleFull()
@@ -118,6 +139,13 @@ fun HomeScreen(
             live.flash("Apagado automático: reproducción detenida")
         }
     }
+
+    // Película o episodio: se guarda dónde va cada 5 s (para "continuar viendo")
+    LaunchedEffect(live.vod) {
+        if (live.vod == null) return@LaunchedEffect
+        while (true) { delay(5000); if (player.state == PlayState.Playing) live.saveVodProgress() }
+    }
+    LaunchedEffect(player.state) { if (player.state == PlayState.Ended) live.saveVodProgress() }
 
     // Número de canal tecleado: se cambia 1,5 s después del último dígito
     var numberJob by remember { mutableStateOf<Job?>(null) }
@@ -138,7 +166,8 @@ fun HomeScreen(
         KeyRouter.handler = handler@{ ev ->
             if (ev.type != KeyEventType.KeyDown || ev.isCtrlPressed || ev.isAltPressed) return@handler false
             if (Typing.active && ev.key != Key.Escape) return@handler false
-            val active = live.current != null
+            val active = live.hasMedia
+            val isVod = live.vod != null
             when (ev.key) {
                 Key.Escape -> when {
                     live.panel != com.jox3.tvdesktop.ui.Panel.NONE -> live.panel = com.jox3.tvdesktop.ui.Panel.NONE
@@ -149,10 +178,13 @@ fun HomeScreen(
                 Key.Spacebar, Key.K -> if (active) player.togglePause() else return@handler false
                 Key.F, Key.F11 -> toggleFull()
                 Key.T -> toggleMini()
-                Key.DirectionUp, Key.PageUp -> if (active) live.step(-1) else return@handler false
-                Key.DirectionDown, Key.PageDown -> if (active) live.step(1) else return@handler false
-                Key.DirectionLeft -> if (active && !player.isLive) player.seekBy(-10_000) else return@handler false
-                Key.DirectionRight -> if (active && !player.isLive) player.seekBy(10_000) else return@handler false
+                // En vivo ↑↓ cambian de canal; en películas ↑↓ es el volumen y ←→ adelanta o atrasa 10 s
+                Key.DirectionUp, Key.PageUp -> if (isVod) live.changeVolume(5) else if (active) live.step(-1) else return@handler false
+                Key.DirectionDown, Key.PageDown -> if (isVod) live.changeVolume(-5) else if (active) live.step(1) else return@handler false
+                Key.DirectionLeft -> if (isVod) live.seekBy(-10_000) else return@handler false
+                Key.DirectionRight -> if (isVod) live.seekBy(10_000) else return@handler false
+                Key.V -> if (isVod) live.cycleSpeed() else return@handler false
+                Key.N -> if (isVod && live.vod?.next != null) live.vod?.next?.invoke() else return@handler false
                 Key.Plus, Key.Equals, Key.NumPadAdd -> live.changeVolume(5)
                 Key.Minus, Key.NumPadSubtract -> live.changeVolume(-5)
                 Key.M -> live.toggleMute()
@@ -163,11 +195,12 @@ fun HomeScreen(
                     if (live.mode != ViewMode.FULL) toggleFull()
                     live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.INFO) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.INFO
                 } else return@handler false
-                Key.C -> if (active && live.mode == ViewMode.FULL) {
+                Key.C -> if (active && !isVod && live.mode == ViewMode.FULL) {
                     live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.CHANNELS) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.CHANNELS
                 } else return@handler false
                 else -> {
                     val digit = digitOf(ev.key) ?: return@handler false
+                    if (isVod) return@handler false
                     typeDigit(digit)
                 }
             }
@@ -176,8 +209,8 @@ fun HomeScreen(
         onDispose { KeyRouter.handler = null }
     }
 
-    if (live.mode != ViewMode.EMBEDDED) {
-        PlayerView(live, Modifier.fillMaxSize(), ::toggleFull, ::toggleMini)
+    if (live.mode != ViewMode.EMBEDDED || live.vod != null) {
+        PlayerView(live, Modifier.fillMaxSize(), ::toggleFull, ::toggleMini, ::exitVod)
         return
     }
 
@@ -191,7 +224,7 @@ fun HomeScreen(
                 Brand(iconSize = 30.dp, textSize = 20)
                 Spacer(Modifier.width(30.dp))
                 Tab.entries.forEach { t ->
-                    TabButton(t.label, selected = tab == t, soon = t != Tab.LIVE) { tab = t }
+                    TabButton(t.label, selected = tab == t) { tab = t }
                     Spacer(Modifier.width(6.dp))
                 }
                 Spacer(Modifier.weight(1f))
@@ -205,7 +238,8 @@ fun HomeScreen(
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
                     Tab.LIVE -> LiveScreen(live, ::toggleFull, ::toggleMini)
-                    Tab.MOVIES, Tab.SERIES -> Status("${tab.label} llega en la próxima versión de JOX3 TV para PC.")
+                    Tab.MOVIES -> VodScreen(live, Section.VOD, onPlay = ::startVod)
+                    Tab.SERIES -> VodScreen(live, Section.SERIES, onPlay = ::startVod)
                 }
             }
         }

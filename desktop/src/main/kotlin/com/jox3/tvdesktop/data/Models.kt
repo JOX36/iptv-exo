@@ -59,3 +59,57 @@ data class SavedItem(
     val categoryId: String = "",
     val ts: Long = 0,
 )
+
+data class Movie(
+    val id: String,
+    val name: String,
+    val poster: String,
+    val rating: String,
+    val ext: String,
+    val categoryId: String,
+    val added: Long,
+)
+
+data class Series(
+    val id: String,
+    val name: String,
+    val poster: String,
+    val rating: String,
+    val categoryId: String,
+    val updated: Long,
+)
+
+data class MovieInfo(
+    val plot: String,
+    val genre: String,
+    val director: String,
+    val cast: String,
+    val duration: String,
+    val year: String,
+    val rating: String,
+    val backdrop: String,
+    val poster: String,
+    val ext: String,
+)
+
+data class Episode(
+    val id: String,
+    val season: Int,
+    val num: Int,
+    val title: String,
+    val plot: String,
+    val image: String,
+    val duration: String,
+    val ext: String,
+)
+
+data class SeriesInfo(
+    val name: String,
+    val plot: String,
+    val genre: String,
+    val year: String,
+    val rating: String,
+    val backdrop: String,
+    val poster: String,
+    val seasons: Map<Int, List<Episode>>,
+)

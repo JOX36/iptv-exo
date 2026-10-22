@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -81,44 +82,61 @@ private val hiddenCursor: PointerIcon by lazy {
  * El reproductor en vivo con sus controles. Se usa en los tres modos:
  * vista previa (controles mínimos), ventana completa y mini reproductor.
  *
- * Mouse: mover = mostrar controles · doble clic = pantalla completa · rueda = volumen.
+ * Clic = mostrar u ocultar la información y los controles (se ocultan solos a los 6 s) ·
+ * doble clic = pantalla completa · rueda = volumen.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-fun PlayerView(live: LiveController, modifier: Modifier = Modifier, onToggleFull: () -> Unit, onToggleMini: () -> Unit) {
+fun PlayerView(
+    live: LiveController, modifier: Modifier = Modifier,
+    onToggleFull: () -> Unit, onToggleMini: () -> Unit, onExitVod: () -> Unit = {},
+) {
     val player = live.player
-    val ch = live.current
     var lastMove by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var lastPos by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { delay(500); now = System.currentTimeMillis() } }
+    LaunchedEffect(Unit) { while (true) { delay(250); now = System.currentTimeMillis() } }
 
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
     val embedded = live.mode == ViewMode.EMBEDDED
     val paused = player.state == PlayState.Paused
-    val showControls = live.panel != Panel.NONE || paused || now - lastMove < 3000
+    val ended = player.state == PlayState.Ended
+    // La información y los controles: con clic, al cambiar de canal o en pausa; se van a los 6 s
+    val overlay = live.panel != Panel.NONE || paused || ended || now - live.overlayAt < 6000
+    // En la vista previa, los botones pequeños aparecen al pasar el mouse
+    val hovering = now - lastMove < 2500
 
     Box(
         modifier
             .background(Color.Black)
-            .onPointerEvent(PointerEventType.Move) { lastMove = System.currentTimeMillis() }
-            .onPointerEvent(PointerEventType.Enter) { lastMove = System.currentTimeMillis() }
+            .onPointerEvent(PointerEventType.Move) { ev ->
+                // Solo cuenta un movimiento real: al ocultar el cursor, Windows envía movimientos falsos
+                val pos = ev.changes.firstOrNull()?.position ?: return@onPointerEvent
+                val prev = lastPos
+                lastPos = pos
+                if (prev == null || (pos - prev).getDistance() > 3f) lastMove = System.currentTimeMillis()
+            }
             .onPointerEvent(PointerEventType.Scroll) { ev ->
                 val dy = ev.changes.firstOrNull()?.scrollDelta?.y ?: 0f
-                if (dy != 0f) { live.changeVolume(if (dy < 0) 5 else -5); lastMove = System.currentTimeMillis() }
+                if (dy != 0f) live.changeVolume(if (dy < 0) 5 else -5)
             }
             .pointerInput(live.mode) {
                 detectTapGestures(
                     onDoubleTap = { onToggleFull() },
                     onTap = {
                         focus.clearFocus() // deja de escribir en el buscador: vuelven los atajos
-                        if (live.panel != Panel.NONE) live.panel = Panel.NONE else lastMove = System.currentTimeMillis()
+                        when {
+                            live.panel != Panel.NONE -> live.panel = Panel.NONE
+                            !embedded && overlay -> live.overlayAt = 0
+                            else -> live.poke()
+                        }
                     },
                 )
             }
-            .then(if (!embedded && !showControls) Modifier.pointerHoverIcon(hiddenCursor) else Modifier)
+            .then(if (!embedded && !overlay && !hovering) Modifier.pointerHoverIcon(hiddenCursor) else Modifier)
     ) {
         VideoSurface(player, Modifier.fillMaxSize())
-        StatusLayer(live)
+        StatusLayer(live, onExitVod)
 
         // Número tecleado / aviso corto
         Column(Modifier.align(Alignment.TopEnd).padding(if (embedded) 10.dp else 28.dp), horizontalAlignment = Alignment.End) {
@@ -136,8 +154,8 @@ fun PlayerView(live: LiveController, modifier: Modifier = Modifier, onToggleFull
         }
 
         if (embedded) {
-            // Vista previa: solo una pista discreta al pasar el mouse
-            AnimatedVisibility(ch != null && showControls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
+            // Vista previa: botones discretos al pasar el mouse
+            AnimatedVisibility(live.hasMedia && (hovering || paused), enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.BottomStart)) {
                 Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     RoundButton(if (paused) Ico.PLAY else Ico.PAUSE, "Pausa (espacio)", small = true) { player.togglePause() }
                     RoundButton(Ico.FULLSCREEN, "Pantalla completa (F)", small = true) { onToggleFull() }
@@ -149,15 +167,15 @@ fun PlayerView(live: LiveController, modifier: Modifier = Modifier, onToggleFull
             return@Box
         }
 
-        // ── Ventana completa / mini: controles completos ──
-        AnimatedVisibility(showControls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+        // ── Ventana completa / mini: información y controles ──
+        AnimatedVisibility(overlay, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxSize()) {
-                if (live.mode == ViewMode.FULL) TopInfo(live, now, Modifier.align(Alignment.TopStart))
+                if (live.mode == ViewMode.FULL) TopInfo(live, now, onExitVod, Modifier.align(Alignment.TopStart))
                 BottomBar(live, now, onToggleFull, onToggleMini, Modifier.align(Alignment.BottomCenter))
             }
         }
         if (live.panel != Panel.NONE && live.mode == ViewMode.FULL) {
-            Box(Modifier.align(Alignment.CenterEnd).padding(end = 24.dp, top = 24.dp, bottom = 120.dp).fillMaxHeight()) {
+            Box(Modifier.align(Alignment.CenterEnd).padding(end = 24.dp, top = 24.dp, bottom = 150.dp).fillMaxHeight()) {
                 SidePanel(live)
             }
         }
@@ -166,10 +184,11 @@ fun PlayerView(live: LiveController, modifier: Modifier = Modifier, onToggleFull
 
 /** Mensajes de estado: cargando, reconectando, error. */
 @Composable
-private fun BoxScope.StatusLayer(live: LiveController) {
+private fun BoxScope.StatusLayer(live: LiveController, onExitVod: () -> Unit) {
     val player = live.player
     val small = live.mode != ViewMode.FULL
     when (val s = player.state) {
+        PlayState.Ended -> live.vod?.let { v -> EndedCard(live, v, onExitVod, Modifier.align(Alignment.Center)) }
         PlayState.Idle -> if (live.current == null) Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
             JxIcon(Ico.LIVE, 30.dp, Jx.Muted)
             Spacer(Modifier.height(8.dp))
@@ -202,18 +221,33 @@ private fun BoxScope.StatusLayer(live: LiveController) {
 }
 
 @Composable
-private fun TopInfo(live: LiveController, now: Long, modifier: Modifier) {
-    val ch = live.current ?: return
+private fun TopInfo(live: LiveController, now: Long, onExitVod: () -> Unit, modifier: Modifier) {
+    val ch = live.current
+    val vod = live.vod
+    if (ch == null && vod == null) return
     Row(
         modifier.fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color(0xCC000000), Color.Transparent)))
             .padding(horizontal = 28.dp, vertical = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("${ch.num}", color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-        Spacer(Modifier.width(14.dp))
-        Text(ch.name, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        if (vod != null) {
+            RoundButton(Ico.PREV, "Volver (Esc)") { onExitVod() }
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(vod.title, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (vod.subtitle.isNotBlank()) Text(vod.subtitle, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 14.sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        } else if (ch != null) {
+            RemoteImage(ch.logo, ch.name, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)))
+            Spacer(Modifier.width(14.dp))
+            Text("${ch.num}", color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+            Spacer(Modifier.width(14.dp))
+            Text(ch.name, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        }
         live.sleepAt?.let { at ->
             val min = ((at - now) / 60_000).coerceAtLeast(0) + 1
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -230,6 +264,7 @@ private fun TopInfo(live: LiveController, now: Long, modifier: Modifier) {
 private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit, onToggleMini: () -> Unit, modifier: Modifier) {
     val player = live.player
     val ch = live.current
+    val vod = live.vod
     val mini = live.mode == ViewMode.MINI
     val control = LocalWindowControl.current
     Column(
@@ -241,11 +276,21 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
             EpgNowNext(live.repo, ch, now)
             Spacer(Modifier.height(14.dp))
         }
+        if (vod != null) {
+            SeekBar(live, compact = mini)
+            Spacer(Modifier.height(if (mini) 4.dp else 10.dp))
+        }
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (mini) 4.dp else 8.dp)) {
             val paused = player.state == PlayState.Paused
-            RoundButton(Ico.PREV, "Canal anterior (↑)", small = mini) { live.step(-1) }
-            RoundButton(if (paused) Ico.PLAY else Ico.PAUSE, "Pausa (espacio)", accent = true, small = mini) { player.togglePause() }
-            RoundButton(Ico.NEXT, "Canal siguiente (↓)", small = mini) { live.step(1) }
+            if (vod != null) {
+                RoundButton(Ico.PREV, "Atrás 10 s (←)", small = mini) { live.seekBy(-10_000) }
+                RoundButton(if (paused) Ico.PLAY else Ico.PAUSE, "Pausa (espacio)", accent = true, small = mini) { player.togglePause() }
+                RoundButton(Ico.NEXT, "Adelante 10 s (→)", small = mini) { live.seekBy(10_000) }
+            } else {
+                RoundButton(Ico.PREV, "Canal anterior (↑)", small = mini) { live.step(-1) }
+                RoundButton(if (paused) Ico.PLAY else Ico.PAUSE, "Pausa (espacio)", accent = true, small = mini) { player.togglePause() }
+                RoundButton(Ico.NEXT, "Canal siguiente (↓)", small = mini) { live.step(1) }
+            }
             Spacer(Modifier.width(6.dp))
             RoundButton(if (player.muted || player.volume == 0) Ico.MUTE else Ico.VOLUME, "Silencio (M)", small = mini) { live.toggleMute() }
             if (!mini) {
@@ -258,10 +303,15 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
             }
             Spacer(Modifier.weight(1f))
             if (!mini) {
-                RoundButton(Ico.LIST, "Canales (C)", selected = live.panel == Panel.CHANNELS) { live.toggle(Panel.CHANNELS) }
+                if (vod?.next != null) {
+                    PillButton("Siguiente episodio") { vod.next.invoke() }
+                    Spacer(Modifier.width(6.dp))
+                }
+                if (vod == null) RoundButton(Ico.LIST, "Canales (C)", selected = live.panel == Panel.CHANNELS) { live.toggle(Panel.CHANNELS) }
                 RoundButton(Ico.AUDIO, "Audio (A)", selected = live.panel == Panel.AUDIO) { live.toggle(Panel.AUDIO) }
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }
+                if (vod != null) RoundButton(Ico.CLOCK, "Velocidad (V)", selected = live.panel == Panel.SPEED) { live.toggle(Panel.SPEED) }
                 RoundButton(Ico.SLEEP, "Apagado automático", selected = live.panel == Panel.SLEEP) { live.toggle(Panel.SLEEP) }
                 RoundButton(Ico.INFO, "Información técnica (I)", selected = live.panel == Panel.INFO) { live.toggle(Panel.INFO) }
                 Spacer(Modifier.width(6.dp))
@@ -273,6 +323,68 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
             ) { onToggleFull() }
         }
     }
+}
+
+/** Barra de tiempo de la película: clic o arrastre para ir a otro momento. */
+@Composable
+private fun SeekBar(live: LiveController, compact: Boolean) {
+    val player = live.player
+    var dragging by remember { mutableStateOf<Float?>(null) }
+    val len = player.lengthMs
+    val pos = dragging?.let { (it * len).toLong() } ?: player.timeMs
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(clock(pos), color = Jx.TextSoft, fontFamily = Exo2, fontSize = 12.sp, modifier = Modifier.width(if (compact) 52.dp else 64.dp))
+        Slider(
+            value = if (len > 0) (pos.toFloat() / len).coerceIn(0f, 1f) else 0f,
+            onValueChange = { dragging = it; live.poke() },
+            onValueChangeFinished = { dragging?.let { player.seekTo((it * len).toLong()) }; dragging = null },
+            enabled = len > 0,
+            modifier = Modifier.weight(1f),
+            colors = SliderDefaults.colors(thumbColor = Jx.Accent, activeTrackColor = Jx.Accent, inactiveTrackColor = Jx.Line),
+        )
+        Text(if (len > 0) "-" + clock(len - pos) else "", color = Jx.TextSoft, fontFamily = Exo2, fontSize = 12.sp,
+            modifier = Modifier.width(if (compact) 58.dp else 70.dp).padding(start = 8.dp))
+    }
+}
+
+/** Al terminar: seguir con el siguiente episodio (cuenta regresiva) o volver. */
+@Composable
+private fun EndedCard(live: LiveController, vod: VodSession, onExit: () -> Unit, modifier: Modifier) {
+    var left by remember(vod.url) { mutableIntStateOf(10) }
+    val next = vod.next
+    if (next != null) LaunchedEffect(vod.url) {
+        while (left > 0) { delay(1000); left-- }
+        next()
+    }
+    Column(
+        modifier.widthIn(max = 460.dp).background(Color(0xE60A0E14), RoundedCornerShape(16.dp)).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (next != null) {
+            Text("Siguiente episodio en $left s", color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Spacer(Modifier.height(6.dp))
+            Text(vod.nextLabel.orEmpty(), color = Jx.Text, fontFamily = Exo2, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Ver ahora") { next() }
+                PillButton("Volver") { onExit() }
+            }
+        } else {
+            Text("Terminó", color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Ver de nuevo") { live.playVod(vod, 0) }
+                PillButton("Volver") { onExit() }
+            }
+        }
+    }
+}
+
+/** 1:02:03 o 02:03 */
+fun clock(ms: Long): String {
+    val t = (ms / 1000).coerceAtLeast(0)
+    val h = t / 3600; val m = (t % 3600) / 60; val sec = t % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%02d:%02d".format(m, sec)
 }
 
 /** AHORA y A CONTINUACIÓN del canal, con barra de avance. */
@@ -333,6 +445,7 @@ private fun SidePanel(live: LiveController) {
             Panel.AUDIO -> "Audio"
             Panel.SUBTITLES -> "Subtítulos"
             Panel.PICTURE -> "Formato de imagen"
+            Panel.SPEED -> "Velocidad"
             Panel.SLEEP -> "Apagado automático"
             Panel.INFO -> "Información técnica"
             Panel.NONE -> ""
@@ -358,6 +471,11 @@ private fun SidePanel(live: LiveController) {
                 Aspect.entries.forEach { a -> Choice(a.label + if (a == Aspect.STRETCH) " (recomendado)" else "", a == player.aspect) { player.setAspectMode(a) } }
                 Note("Atajo: Z cambia de formato.")
             }
+            Panel.SPEED -> Column(Modifier.fillMaxWidth()) {
+                LiveController.SPEEDS.forEach { r ->
+                    Choice(if (r == 1f) "Normal" else LiveController.speedLabel(r), kotlin.math.abs(r - player.rate) < 0.01f) { player.setSpeed(r) }
+                }
+            }
             Panel.SLEEP -> Column(Modifier.fillMaxWidth()) {
                 val sel = live.sleepAt
                 Choice("Desactivado", sel == null) { live.setSleep(null) }
@@ -368,6 +486,21 @@ private fun SidePanel(live: LiveController) {
                 var info by remember { mutableStateOf(player.techInfo()) }
                 LaunchedEffect(Unit) { while (true) { delay(2000); info = player.techInfo() } }
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Logo del canal (o carátula) con su nombre
+                    val ch = live.current
+                    val vod = live.vod
+                    val img = ch?.logo ?: vod?.image.orEmpty()
+                    val name = ch?.name ?: vod?.title.orEmpty()
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RemoteImage(img, name, Modifier.size(width = if (vod != null) 48.dp else 64.dp, height = 64.dp)
+                            .clip(RoundedCornerShape(10.dp)), scale = if (vod != null) androidx.compose.ui.layout.ContentScale.Crop else androidx.compose.ui.layout.ContentScale.Fit)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(name, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 15.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            if (ch != null) Text("Canal ${ch.num}", color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp)
+                        }
+                    }
                     info.forEach { (k, v) ->
                         Column {
                             Text(k.uppercase(), color = Jx.Muted, fontFamily = Exo2, fontSize = 11.sp, fontWeight = FontWeight.Bold)
