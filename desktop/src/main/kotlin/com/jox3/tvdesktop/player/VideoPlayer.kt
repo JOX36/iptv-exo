@@ -333,10 +333,16 @@ class VideoPlayer {
             // y termina; aquí se reproduce ese video. Si no hubo, YouTube no lo dejó.
             if (!isLive && url.contains("youtube.com/") && !subitemTried) {
                 subitemTried = true
+                val my = token
                 ctl.execute {
                     val ok = runCatching { mediaPlayer.subitems().controls().play(); true }.getOrDefault(false)
                     if (!ok) state = PlayState.Failed("YouTube no dejó reproducir el tráiler")
                 }
+                // Si en 15 s no empezó, se da por fallido (y se ofrece el navegador)
+                ctl.schedule({
+                    if (my == token && state != PlayState.Playing && state != PlayState.Paused && state != PlayState.Ended)
+                        state = PlayState.Failed("YouTube no dejó reproducir el tráiler")
+                }, 15, TimeUnit.SECONDS)
                 return
             }
             if (isLive) scheduleRetry("terminó la transmisión") else state = PlayState.Ended
