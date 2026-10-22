@@ -3,7 +3,14 @@ name: Build APK
 on:
   push:
     branches: [ '**' ]        # compila cualquier rama, no solo main
+    # Los cambios que son solo del programa de PC no compilan ni publican un APK nuevo
+    paths-ignore:
+      - 'desktop/**'
+      - '.github/workflows/desktop.yml'
   pull_request:
+    paths-ignore:
+      - 'desktop/**'
+      - '.github/workflows/desktop.yml'
   workflow_dispatch:          # botón "Run workflow" manual en la pestaña Actions
 
 permissions:
