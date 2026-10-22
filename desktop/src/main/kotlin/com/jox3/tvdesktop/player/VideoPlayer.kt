@@ -205,15 +205,18 @@ class VideoPlayer {
     fun techInfo(): List<Pair<String, String>> {
         val p = mp ?: return listOf("Reproductor" to (unavailableReason ?: "no disponible"))
         val out = ArrayList<Pair<String, String>>()
+        // La resolución sale del cuadro que entrega VLC: siempre disponible cuando hay imagen
+        if (videoWidth > 0 && videoHeight > 0) out += "Resolución" to "${videoWidth}×${videoHeight}  ·  ${qualityLabel(videoWidth, videoHeight)}"
         try {
             val info = p.media().info()
             info.videoTracks().firstOrNull()?.let { v ->
                 val fps = if (v.frameRateBase() > 0) v.frameRate().toFloat() / v.frameRateBase() else 0f
-                out += "Video" to listOfNotNull(
-                    if (videoWidth > 0) "${videoWidth}×${videoHeight}" else if (v.width() > 0) "${v.width()}×${v.height()}" else null,
+                if (videoWidth <= 0 && v.width() > 0) out += "Resolución" to "${v.width()}×${v.height()}  ·  ${qualityLabel(v.width(), v.height())}"
+                val line = listOfNotNull(
                     codecName(v.codecDescription(), v.codecName()),
                     if (fps > 0) "${Math.round(fps)} fps" else null,
                 ).joinToString("  ·  ")
+                if (line.isNotEmpty()) out += "Video" to line
             }
             info.audioTracks().firstOrNull()?.let { a ->
                 out += "Audio" to listOfNotNull(
@@ -377,6 +380,17 @@ class VideoPlayer {
     companion object {
         private const val MAX_RETRIES = 6
         private const val STALL_MS = 20_000L
+
+        /** Calidad en palabras: 4K, Full HD, HD o SD. */
+        fun qualityLabel(w: Int, h: Int): String {
+            val p = minOf(w, h).let { if (w >= h) h else w }
+            return when {
+                w >= 3200 || p >= 1800 -> "4K"
+                w >= 1800 || p >= 1000 -> "Full HD"
+                w >= 1200 || p >= 700 -> "HD"
+                else -> "SD"
+            }
+        }
 
         private fun clean(desc: String?, fallback: String): String =
             desc?.replace(Regex("^Track\\s*\\d+\\s*-?\\s*", RegexOption.IGNORE_CASE), "")?.trim()?.ifBlank { null } ?: fallback

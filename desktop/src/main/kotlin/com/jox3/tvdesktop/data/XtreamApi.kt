@@ -171,6 +171,47 @@ class XtreamApi(val account: Account) {
         }.distinctBy { it.id } // algunos servidores repiten el mismo canal
     }
 
+    suspend fun movies(categoryId: String? = null): List<Movie> {
+        val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
+        return streamList(apiUrl("get_vod_streams", extra), MOVIE_KEYS) { o, _ ->
+            val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
+            Movie(
+                id = id,
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                poster = o["stream_icon"].orEmpty(),
+                rating = o["rating"].orEmpty().takeUnless { it == "0" || it == "null" }.orEmpty(),
+                ext = o["container_extension"]?.ifBlank { null } ?: "mp4",
+                categoryId = o["category_id"].orEmpty(),
+                added = o["added"]?.toLongOrNull() ?: 0L,
+            )
+        }.distinctBy { it.id }
+    }
+
+    suspend fun series(categoryId: String? = null): List<Series> {
+        val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
+        return streamList(apiUrl("get_series", extra), SERIES_KEYS) { o, _ ->
+            val id = o["series_id"].orEmpty().ifBlank { return@streamList null }
+            Series(
+                id = id,
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                poster = o["cover"].orEmpty(),
+                rating = o["rating"].orEmpty().takeUnless { it == "0" || it == "null" }.orEmpty(),
+                categoryId = o["category_id"].orEmpty(),
+                updated = o["last_modified"]?.toLongOrNull() ?: 0L,
+            )
+        }.distinctBy { it.id }
+    }
+
+    suspend fun movieInfo(id: String): MovieInfo {
+        val text = get(apiUrl("get_vod_info", "&vod_id=${enc(id)}"))
+        return withContext(Dispatchers.Default) { parseMovieInfo(text) }
+    }
+
+    suspend fun seriesInfo(id: String): SeriesInfo {
+        val text = get(apiUrl("get_series_info", "&series_id=${enc(id)}"))
+        return withContext(Dispatchers.Default) { parseSeriesInfo(text) }
+    }
+
     /** Guía corta de un canal: el programa actual y los siguientes. */
     suspend fun shortEpg(streamId: String, limit: Int = 4): List<EpgItem> {
         val text = get(apiUrl("get_short_epg", "&stream_id=${enc(streamId)}&limit=$limit"))
@@ -188,6 +229,91 @@ class XtreamApi(val account: Account) {
 
     companion object {
         private val CH_KEYS = setOf("stream_id", "name", "stream_icon", "category_id", "num", "epg_channel_id")
+        private val MOVIE_KEYS = setOf("stream_id", "name", "stream_icon", "rating", "container_extension", "category_id", "added")
+        private val SERIES_KEYS = setOf("series_id", "name", "cover", "rating", "category_id", "last_modified")
+
+        private fun JSONObject.str(vararg keys: String): String {
+            for (k in keys) {
+                val v = optString(k, "").trim()
+                if (v.isNotEmpty() && v != "null") return v
+            }
+            return ""
+        }
+
+        /** backdrop_path puede ser texto o arreglo de URLs. */
+        private fun JSONObject.firstImage(key: String): String = when (val v = opt(key)) {
+            is JSONArray -> if (v.length() > 0) v.optString(0) else ""
+            is String -> v
+            else -> ""
+        }
+
+        /** Ficha de película (get_vod_info). Separado para poder probarlo sin servidor. */
+        fun parseMovieInfo(text: String): MovieInfo {
+            val json = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
+            val info = json.optJSONObject("info") ?: JSONObject()
+            val data = json.optJSONObject("movie_data") ?: JSONObject()
+            return MovieInfo(
+                plot = info.str("plot", "description"),
+                genre = info.str("genre"),
+                director = info.str("director"),
+                cast = info.str("cast", "actors"),
+                duration = info.str("duration"),
+                year = info.str("releasedate", "release_date", "year").take(4),
+                rating = info.str("rating").takeUnless { it == "0" }.orEmpty(),
+                backdrop = info.firstImage("backdrop_path"),
+                poster = info.str("movie_image", "cover_big"),
+                ext = data.optString("container_extension", ""),
+            )
+        }
+
+        /**
+         * Ficha de serie con sus temporadas (get_series_info). Los paneles devuelven
+         * "episodes" como objeto {"1":[...]} o como arreglo de arreglos: se aceptan ambos.
+         */
+        fun parseSeriesInfo(text: String): SeriesInfo {
+            val json = try { JSONObject(text) } catch (e: Exception) { JSONObject() }
+            val info = json.optJSONObject("info") ?: JSONObject()
+            val seasons = sortedMapOf<Int, MutableList<Episode>>()
+            fun addEpisode(o: JSONObject, seasonHint: Int) {
+                val season = o.optInt("season", seasonHint)
+                val epInfo = o.optJSONObject("info") ?: JSONObject()
+                val list = seasons.getOrPut(season) { mutableListOf() }
+                list.add(
+                    Episode(
+                        id = o.optString("id"),
+                        season = season,
+                        num = o.optInt("episode_num", list.size + 1),
+                        title = o.optString("title", "").trim(),
+                        plot = epInfo.str("plot"),
+                        image = epInfo.str("movie_image", "cover_big"),
+                        duration = epInfo.str("duration"),
+                        ext = o.optString("container_extension", "mkv"),
+                    )
+                )
+            }
+            when (val eps = json.opt("episodes")) {
+                is JSONObject -> eps.keys().forEach { k ->
+                    val list = eps.optJSONArray(k) ?: return@forEach
+                    for (i in 0 until list.length()) list.optJSONObject(i)?.let { addEpisode(it, k.toIntOrNull() ?: 1) }
+                }
+                is JSONArray -> for (s in 0 until eps.length()) {
+                    val list = eps.optJSONArray(s) ?: continue
+                    for (i in 0 until list.length()) list.optJSONObject(i)?.let { addEpisode(it, s + 1) }
+                }
+            }
+            val clean = seasons.mapValues { (_, list) -> list.filter { it.id.isNotBlank() }.distinctBy { it.id }.sortedBy { it.num } }
+                .filterValues { it.isNotEmpty() }
+            return SeriesInfo(
+                name = info.str("name"),
+                plot = info.str("plot"),
+                genre = info.str("genre"),
+                year = info.str("releaseDate", "release_date", "year").take(4),
+                rating = info.str("rating").takeUnless { it == "0" }.orEmpty(),
+                backdrop = info.firstImage("backdrop_path"),
+                poster = info.str("cover"),
+                seasons = clean,
+            )
+        }
 
         /** Los títulos de la guía vienen en Base64; si no lo son, se dejan tal cual. */
         fun b64(s: String): String {

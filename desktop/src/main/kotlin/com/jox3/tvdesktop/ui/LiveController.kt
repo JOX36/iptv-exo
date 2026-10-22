@@ -1,6 +1,7 @@
 package com.jox3.tvdesktop.ui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.jox3.tvdesktop.data.Channel
@@ -13,11 +14,26 @@ import com.jox3.tvdesktop.player.VideoPlayer
 enum class ViewMode { EMBEDDED, FULL, MINI }
 
 /** Panel de opciones abierto sobre el video. */
-enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SLEEP, INFO }
+enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO }
 
 /**
- * Lo que se está viendo en vivo y cómo: canal actual, la lista para pasar de canal,
- * modo de vista, panel abierto, apagado automático y el número que se está tecleando.
+ * Película o episodio en reproducción. [next] = siguiente episodio (para "Siguiente" y
+ * para seguir solo al terminar), [image] = carátula para la información.
+ */
+data class VodSession(
+    val item: SavedItem,
+    val title: String,
+    val subtitle: String,
+    val image: String,
+    val url: String,
+    val nextLabel: String? = null,
+    val next: (() -> Unit)? = null,
+)
+
+/**
+ * Lo que se está viendo y cómo: canal en vivo (con la lista para pasar de canal) o
+ * película/episodio, modo de vista, panel abierto, apagado automático, número tecleado
+ * y cuándo mostrar los controles.
  */
 class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     var current by mutableStateOf<Channel?>(null); private set
@@ -31,13 +47,44 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     var typedNumber by mutableStateOf("")
     /** Mensaje corto que aparece un momento sobre el video ("Volumen 80 %", "Estirar"…). */
     var toast by mutableStateOf<Pair<String, Long>?>(null); private set
+    /** Película o episodio en reproducción (null = en vivo o nada). */
+    var vod by mutableStateOf<VodSession?>(null); private set
+    /** Momento en que se pidieron los controles (clic, cambio de canal…): se ven 6 s. */
+    var overlayAt by mutableLongStateOf(System.currentTimeMillis())
+
+    val hasMedia: Boolean get() = current != null || vod != null
+
+    /** Muestra la información y los controles durante unos segundos. */
+    fun poke() { overlayAt = System.currentTimeMillis() }
 
     fun play(ch: Channel, list: List<Channel>, listName: String) {
+        saveVodProgress()
+        vod = null
         this.list = list
         this.listName = listName
         current = ch
         player.play(repo.api.liveUrl(ch.id), ch.name, live = true)
         repo.library.addRecentChannel(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
+        poke()
+    }
+
+    /** Reproduce una película o episodio en pantalla completa, desde [startMs]. */
+    fun playVod(session: VodSession, startMs: Long) {
+        saveVodProgress()
+        current = null
+        vod = session
+        panel = Panel.NONE
+        player.play(session.url, session.title, live = false, startMs = startMs)
+        poke()
+    }
+
+    /** Guarda dónde va la película o episodio (cada pocos segundos y al salir). */
+    fun saveVodProgress() {
+        val v = vod ?: return
+        val len = player.lengthMs
+        if (len <= 0) return
+        val pos = if (player.state == com.jox3.tvdesktop.player.PlayState.Ended) len else player.timeMs
+        repo.library.saveProgress(v.item, pos, len)
     }
 
     /** Canal siguiente (+1) o anterior (-1) de la lista actual, dando la vuelta. */
@@ -51,6 +98,22 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         flash("${next.num}  ${next.name}")
     }
 
+    /** Adelanta o atrasa la película (en vivo no hace nada). */
+    fun seekBy(deltaMs: Long) {
+        if (player.isLive) return
+        player.seekBy(deltaMs)
+        flash(if (deltaMs > 0) "+${deltaMs / 1000} s" else "${deltaMs / 1000} s")
+        poke()
+    }
+
+    fun cycleSpeed() {
+        val speeds = SPEEDS
+        val i = speeds.indexOfFirst { kotlin.math.abs(it - player.rate) < 0.01f }
+        val n = speeds[(i + 1).mod(speeds.size)]
+        player.setSpeed(n)
+        flash("Velocidad ${speedLabel(n)}")
+    }
+
     /** Ir al canal con ese número (de la lista actual). */
     fun jumpTo(number: Int): Boolean {
         val ch = list.firstOrNull { it.num == number } ?: return false
@@ -60,8 +123,10 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     }
 
     fun stop() {
+        saveVodProgress()
         player.stop()
         current = null
+        vod = null
         mode = ViewMode.EMBEDDED
         panel = Panel.NONE
     }
@@ -83,7 +148,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
 
     fun cycleSubtitles() {
         val t = player.subTracks
-        if (t.isEmpty()) { flash("Este canal no tiene subtítulos"); return }
+        if (t.isEmpty()) { flash("No hay subtítulos disponibles"); return }
         val i = t.indexOfFirst { it.id == player.subTrack }
         if (i == t.size - 1) { player.selectSubtitle(-1); flash("Subtítulos: no") }
         else { val n = t[i + 1]; player.selectSubtitle(n.id); flash("Subtítulos: ${n.name}") }
@@ -105,4 +170,9 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     }
 
     fun flash(text: String) { toast = text to System.currentTimeMillis() }
+
+    companion object {
+        val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+        fun speedLabel(r: Float) = if (r == 1f) "normal" else "${"%.2f".format(r).trimEnd('0').trimEnd(',', '.')}×"
+    }
 }
