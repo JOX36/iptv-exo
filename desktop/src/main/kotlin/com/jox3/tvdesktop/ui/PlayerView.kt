@@ -431,6 +431,7 @@ private fun Note(text: String) {
 }
 
 /** Botón redondo con icono y descripción al pasar el mouse. */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RoundButton(
     ico: Ico, tip: String, small: Boolean = false, accent: Boolean = false, selected: Boolean = false, onClick: () -> Unit,

@@ -173,6 +173,7 @@ private fun GuideRow(live: LiveController, ch: Channel, start: Long, spanMin: Lo
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick: () -> Unit) {
     val from = maxOf(p.start, start)
