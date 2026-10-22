@@ -210,8 +210,10 @@ fun HomeScreen(
     }
 
     // Si se cambia de sección con un canal sonando en la vista previa, se detiene (sin audio escondido)
-    LaunchedEffect(tab) {
-        if (tab != Tab.LIVE && live.mode == ViewMode.EMBEDDED && live.current != null) live.stop()
+    // y al volver a En vivo el mismo canal sigue solo.
+    LaunchedEffect(tab, live.vod) {
+        if (tab != Tab.LIVE && live.mode == ViewMode.EMBEDDED && live.current != null) live.pauseLive()
+        if (tab == Tab.LIVE && live.vod == null) live.resumeLive()
     }
 
     Box(Modifier.fillMaxSize().background(Jx.Bg)) {
