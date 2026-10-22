@@ -64,6 +64,8 @@ import com.jox3.tvdesktop.data.SavedItem
 import com.jox3.tvdesktop.data.Section
 import com.jox3.tvdesktop.data.Series
 import com.jox3.tvdesktop.data.SeriesInfo
+import com.jox3.tvdesktop.data.ServerHub
+import com.jox3.tvdesktop.data.Tmdb
 import com.jox3.tvdesktop.data.TvRepo
 import kotlinx.coroutines.launch
 
@@ -105,6 +107,15 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
     var filter by remember(section) { mutableStateOf("") }
     var catFilter by remember(section) { mutableStateOf("") }
     var sort by remember(section) { mutableStateOf(runCatching { Sort.valueOf(Settings.string("$key.sort", "SERVER")) }.getOrDefault(Sort.SERVER)) }
+
+    // Abrir la ficha que pidió el buscador (u otro servidor)
+    LaunchedEffect(live.openRequest) {
+        val r = live.openRequest ?: return@LaunchedEffect
+        if (r.kind != kind) return@LaunchedEffect
+        live.openRequest = null
+        detail = if (isMovies) Detail.OfMovie(Movie(r.id, r.name, r.image, "", r.ext.ifBlank { "mp4" }, r.categoryId, 0))
+        else Detail.OfSeries(Series(r.id, r.name, r.image, "", r.categoryId, 0))
+    }
 
     LaunchedEffect(catList) {
         if (selected == null && catList != null) {
@@ -278,7 +289,7 @@ private fun PosterCard(name: String, poster: String, rating: String, favorite: B
             Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp))
                 .then(if (hovered) Modifier.border(2.dp, Jx.Accent, RoundedCornerShape(12.dp)) else Modifier)
         ) {
-            RemoteImage(poster, name, Modifier.fillMaxSize(), scale = ContentScale.Crop)
+            PosterImage(poster, name, Modifier.fillMaxSize())
             if (rating.isNotBlank()) {
                 Text("★ ${rating.take(3)}", color = Jx.Gold, fontFamily = Exo2, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
@@ -303,7 +314,7 @@ private fun PosterCard(name: String, poster: String, rating: String, favorite: B
 @Composable
 private fun DetailHeader(
     backdrop: String, poster: String, title: String, meta: List<String>, rating: String,
-    onBack: () -> Unit, content: @Composable () -> Unit,
+    onBack: () -> Unit, certification: String = "", content: @Composable () -> Unit,
 ) {
     Box(Modifier.fillMaxWidth().height(330.dp)) {
         val bg = backdrop.ifBlank { poster }
@@ -315,7 +326,7 @@ private fun DetailHeader(
                 RoundButton(Ico.PREV, "Volver") { onBack() }
             }
             Spacer(Modifier.width(18.dp))
-            RemoteImage(poster, title, Modifier.width(190.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)), scale = ContentScale.Crop)
+            PosterImage(poster, title, Modifier.width(190.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(12.dp)))
             Spacer(Modifier.width(24.dp))
             Column(Modifier.weight(1f).padding(top = 8.dp)) {
                 Text(title, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 28.sp,
@@ -324,6 +335,10 @@ private fun DetailHeader(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (rating.isNotBlank()) {
                         Text("★ ${rating.take(3)}", color = Jx.Gold, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Spacer(Modifier.width(14.dp))
+                    }
+                    if (certification.isNotBlank()) {
+                        Pill(certification, Jx.TextSoft)
                         Spacer(Modifier.width(14.dp))
                     }
                     Text(meta.filter { it.isNotBlank() }.joinToString("  ·  "), color = Jx.TextSoft, fontFamily = Exo2, fontSize = 14.sp,
@@ -341,18 +356,27 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
     val repo = live.repo
     val lib = repo.library
     val info by produceState<Result<com.jox3.tvdesktop.data.MovieInfo>?>(null, movie.id) { value = runCatching { repo.movieInfo(movie.id) } }
+    val tmdb by produceState<Tmdb.Info?>(null, movie.name) { value = Tmdb.movie(movie.name) }
     val i = info?.getOrNull()
+    val t = tmdb
     val progressV by lib.progressVersion
     @Suppress("UNUSED_VARIABLE") val pv = progressV
     val resume = lib.positionOf(movie.id)?.takeUnless { it.finished || it.position < 5_000 }
     val fav = lib.isFavorite("movie", movie.id)
-    val poster = i?.poster?.ifBlank { null } ?: movie.poster
+    // Lo del servidor primero; lo que falte, de TMDB
+    val poster = i?.poster?.ifBlank { null } ?: movie.poster.ifBlank { null } ?: t?.poster.orEmpty()
+    val backdrop = i?.backdrop?.ifBlank { null } ?: t?.backdrop.orEmpty()
     val ext = i?.ext?.ifBlank { null } ?: movie.ext
+    val year = i?.year?.ifBlank { null } ?: t?.year.orEmpty()
+    val genre = i?.genre?.ifBlank { null } ?: t?.genres.orEmpty()
+    val duration = i?.duration?.ifBlank { null } ?: t?.runtimeMin?.takeIf { it > 0 }?.let { "$it min" }.orEmpty()
+    val plot = i?.plot?.ifBlank { null } ?: t?.overview.orEmpty()
+    val rating = t?.ratingText?.ifBlank { null } ?: i?.rating?.ifBlank { null } ?: movie.rating
 
     fun session() = VodSession(
         item = SavedItem("movie", movie.id, movie.name, poster, ext = ext, categoryId = movie.categoryId),
         title = movie.name,
-        subtitle = listOf(i?.year.orEmpty(), i?.genre.orEmpty()).filter { it.isNotBlank() }.joinToString(" · "),
+        subtitle = listOf(year, genre).filter { it.isNotBlank() }.joinToString(" · "),
         image = poster,
         url = repo.api.movieUrl(movie.id, ext),
     )
@@ -360,9 +384,8 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             DetailHeader(
-                backdrop = i?.backdrop.orEmpty(), poster = poster, title = movie.name,
-                meta = listOf(i?.year.orEmpty(), i?.duration.orEmpty(), i?.genre.orEmpty()),
-                rating = i?.rating?.ifBlank { null } ?: movie.rating, onBack = onBack,
+                backdrop = backdrop, poster = poster, title = movie.name,
+                meta = listOf(year, duration, genre), rating = rating, onBack = onBack, certification = t?.certification.orEmpty(),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (resume != null) {
@@ -370,6 +393,9 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
                         GhostButton("Desde el inicio") { onPlay(session(), 0) }
                     } else {
                         PillButton("▶  Ver") { onPlay(session(), 0) }
+                    }
+                    if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") {
+                        if (!Tmdb.openTrailer(t!!.trailerKey)) live.flash("No se pudo abrir el navegador")
                     }
                     GhostButton(if (fav) "★  En favoritos" else "☆  Favorito") {
                         lib.toggleFavorite(SavedItem("movie", movie.id, movie.name, poster, ext = ext, categoryId = movie.categoryId))
@@ -388,17 +414,21 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
         item {
             Column(Modifier.padding(horizontal = 32.dp, vertical = 8.dp).fillMaxWidth()) {
                 when {
-                    info == null -> Text("Cargando la ficha…", color = Jx.Faint, fontFamily = Exo2)
-                    i == null -> Text("El servidor no entregó la ficha de esta película.", color = Jx.Faint, fontFamily = Exo2)
+                    info == null && t == null -> Text("Cargando la ficha…", color = Jx.Faint, fontFamily = Exo2)
+                    plot.isBlank() && i == null -> Text("El servidor no entregó la ficha de esta película.", color = Jx.Faint, fontFamily = Exo2)
                     else -> {
-                        if (i.plot.isNotBlank()) Text(i.plot, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 15.sp, lineHeight = 22.sp)
+                        if (plot.isNotBlank()) Text(plot, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 15.sp, lineHeight = 22.sp)
                         Spacer(Modifier.height(16.dp))
-                        if (i.director.isNotBlank()) InfoLine("Dirección", i.director)
-                        if (i.cast.isNotBlank()) InfoLine("Reparto", i.cast)
+                        val director = i?.director?.ifBlank { null } ?: t?.director.orEmpty()
+                        if (director.isNotBlank()) InfoLine("Dirección", director)
+                        if (t?.cast.isNullOrEmpty() && !i?.cast.isNullOrBlank()) InfoLine("Reparto", i!!.cast)
                     }
                 }
             }
         }
+        t?.cast?.takeIf { it.isNotEmpty() }?.let { cast -> item { CastRow(cast) } }
+        item { AlsoOn(live, "movie", movie.name, movie.id) }
+        item { Spacer(Modifier.height(24.dp)) }
     }
 }
 
@@ -407,12 +437,15 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
     val repo = live.repo
     val lib = repo.library
     val info by produceState<Result<SeriesInfo>?>(null, series.id) { value = runCatching { repo.seriesInfo(series.id) } }
+    val tmdb by produceState<Tmdb.Info?>(null, series.name) { value = Tmdb.series(series.name) }
     val si = info?.getOrNull()
+    val t = tmdb
     val progressV by lib.progressVersion
     @Suppress("UNUSED_VARIABLE") val pv = progressV
     val last = lib.lastEpisodeOf(series.id)
     val fav = lib.isFavorite("series", series.id)
-    val poster = si?.poster?.ifBlank { null } ?: series.poster
+    val poster = si?.poster?.ifBlank { null } ?: series.poster.ifBlank { null } ?: t?.poster.orEmpty()
+    val plot = si?.plot?.ifBlank { null } ?: t?.overview.orEmpty()
     val seasons = si?.seasons.orEmpty()
     var season by remember(series.id, si) {
         mutableStateOf(startSeason ?: last?.let { r -> seasons.entries.firstOrNull { e -> e.value.any { it.id == r.item.id } }?.key }
@@ -438,9 +471,11 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             DetailHeader(
-                backdrop = si?.backdrop.orEmpty(), poster = poster, title = si?.name?.ifBlank { null } ?: series.name,
-                meta = listOf(si?.year.orEmpty(), si?.genre.orEmpty(), if (seasons.isNotEmpty()) "${seasons.size} temporada${if (seasons.size > 1) "s" else ""}" else ""),
-                rating = si?.rating?.ifBlank { null } ?: series.rating, onBack = onBack,
+                backdrop = si?.backdrop?.ifBlank { null } ?: t?.backdrop.orEmpty(), poster = poster, title = si?.name?.ifBlank { null } ?: series.name,
+                meta = listOf(si?.year?.ifBlank { null } ?: t?.year.orEmpty(), si?.genre?.ifBlank { null } ?: t?.genres.orEmpty(),
+                    if (seasons.isNotEmpty()) "${seasons.size} temporada${if (seasons.size > 1) "s" else ""}" else ""),
+                rating = t?.ratingText?.ifBlank { null } ?: si?.rating?.ifBlank { null } ?: series.rating, onBack = onBack,
+                certification = t?.certification.orEmpty(),
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                     val lastEp = last?.let { r -> allEpisodes.firstOrNull { it.id == r.item.id } }
@@ -454,13 +489,16 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
                         }
                         allEpisodes.isNotEmpty() -> PillButton("▶  Ver T${allEpisodes[0].season} E${allEpisodes[0].num}") { onPlay(session(allEpisodes[0]), 0) }
                     }
+                    if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") {
+                        if (!Tmdb.openTrailer(t!!.trailerKey)) live.flash("No se pudo abrir el navegador")
+                    }
                     GhostButton(if (fav) "★  En favoritos" else "☆  Favorito") {
                         lib.toggleFavorite(SavedItem("series", series.id, series.name, poster, categoryId = series.categoryId))
                     }
                 }
-                if (!si?.plot.isNullOrBlank()) {
+                if (plot.isNotBlank()) {
                     Spacer(Modifier.height(12.dp))
-                    Text(si!!.plot, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 14.sp, lineHeight = 21.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    Text(plot, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 14.sp, lineHeight = 21.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -484,6 +522,8 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
                         }
                     }
                 }
+                t?.cast?.takeIf { it.isNotEmpty() }?.let { cast -> item { CastRow(cast) } }
+                item { AlsoOn(live, "series", series.name, series.id) }
                 items(seasons[season].orEmpty(), key = { it.id }) { ep ->
                     val r = lib.positionOf(ep.id)
                     EpisodeRow(ep, poster, r, playing = false) {
@@ -528,6 +568,59 @@ private fun EpisodeRow(ep: Episode, poster: String, resume: Resume?, playing: Bo
             if (ep.plot.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(ep.plot, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+/** Reparto con fotos (de TMDB). */
+@Composable
+private fun CastRow(cast: List<Tmdb.Person>) {
+    Column(Modifier.padding(start = 32.dp, top = 8.dp, bottom = 8.dp)) {
+        Text("Reparto", color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 17.sp)
+        Spacer(Modifier.height(10.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(end = 32.dp)) {
+            items(cast) { p ->
+                Column(Modifier.width(96.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    RemoteImage(p.photo, p.name, Modifier.size(84.dp).clip(RoundedCornerShape(50)), scale = ContentScale.Crop)
+                    Spacer(Modifier.height(6.dp))
+                    Text(p.name, color = Jx.Text, fontFamily = Exo2, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    if (p.role.isNotBlank()) Text(p.role, color = Jx.Faint, fontFamily = Exo2, fontSize = 11.sp, maxLines = 2,
+                        overflow = TextOverflow.Ellipsis, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                }
+            }
+        }
+    }
+}
+
+/** "También en": el mismo título en otros servidores (o en otra calidad del mismo). */
+@Composable
+private fun AlsoOn(live: LiveController, kind: String, name: String, currentId: String) {
+    val servers = LocalServers.current ?: return
+    val idxVersion by ServerHub.indexVersion
+    val copies by produceState<List<ServerHub.Copy>>(emptyList(), name, idxVersion) {
+        value = ServerHub.copiesOf(kind, name, servers.account, live.repo.cachedIndex(), servers.all)
+            .filterNot { it.account.key == servers.account.key && it.id == currentId }
+    }
+    if (copies.isEmpty()) return
+    Column(Modifier.padding(horizontal = 32.dp, vertical = 8.dp)) {
+        Text("También disponible en", color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            copies.take(8).forEach { c ->
+                val here = c.account.key == servers.account.key
+                Row(
+                    Modifier.clip(RoundedCornerShape(50)).background(Jx.Surface)
+                        .clickable { servers.switchTo(c.account, c) }.pointerHoverIcon(PointerIcon.Hand)
+                        .padding(start = 6.dp, end = 14.dp, top = 5.dp, bottom = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Letter(ServerHub.letter(servers.all, c.account), here)
+                    Spacer(Modifier.width(8.dp))
+                    Text((if (here) "Este servidor" else ServerHub.name(servers.all, c.account)) + if (c.tag.isNotBlank()) " · ${c.tag}" else "",
+                        color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp, maxLines = 1)
+                }
             }
         }
     }

@@ -65,6 +65,10 @@ object SelfTest {
             "VLC ${com.jox3.tvdesktop.player.VlcRuntime.version()} (${com.jox3.tvdesktop.player.VlcRuntime.source})"
         }
 
+        // TMDB: solo informa (sin el secreto el programa funciona, pero sin fichas de TMDB)
+        lines += if (com.jox3.tvdesktop.data.Tmdb.enabled()) "OK    TMDB: token incluido"
+        else "AVISO TMDB: sin token (el secreto TMDB_TOKEN no llegó a la compilación)"
+
         lines += if (ok) "RESULTADO: OK" else "RESULTADO: FALLA"
         out.parentFile?.mkdirs()
         out.writeText(lines.joinToString("\n") + "\n")

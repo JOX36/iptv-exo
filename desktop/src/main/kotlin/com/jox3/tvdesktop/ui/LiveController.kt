@@ -30,6 +30,19 @@ data class VodSession(
     val next: (() -> Unit)? = null,
 )
 
+/** Pedido de abrir algo desde el buscador: un canal, la ficha de una película o de una serie. */
+data class OpenRequest(val kind: String, val id: String, val name: String, val image: String,
+                       val ext: String = "", val categoryId: String = "")
+
+/** El servidor en uso, todos los guardados y cómo cambiar a otro (abriendo algo al llegar). */
+data class ServerCtx(
+    val account: com.jox3.tvdesktop.data.Account,
+    val all: List<com.jox3.tvdesktop.data.Account>,
+    val switchTo: (com.jox3.tvdesktop.data.Account, com.jox3.tvdesktop.data.ServerHub.Copy?) -> Unit,
+)
+
+val LocalServers = androidx.compose.runtime.staticCompositionLocalOf<ServerCtx?> { null }
+
 /**
  * Lo que se está viendo y cómo: canal en vivo (con la lista para pasar de canal) o
  * película/episodio, modo de vista, panel abierto, apagado automático, número tecleado
@@ -53,6 +66,8 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     var overlayAt by mutableLongStateOf(System.currentTimeMillis())
 
     val hasMedia: Boolean get() = current != null || vod != null
+    /** Algo que hay que abrir (lo pide el buscador; lo atiende la sección que corresponde). */
+    var openRequest by mutableStateOf<OpenRequest?>(null)
 
     /** Muestra la información y los controles durante unos segundos. */
     fun poke() { overlayAt = System.currentTimeMillis() }

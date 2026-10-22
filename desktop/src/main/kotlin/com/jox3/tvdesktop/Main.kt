@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -172,9 +173,15 @@ private fun App(player: VideoPlayer) {
     var error by remember { mutableStateOf<String?>(null) }
     var prefill by remember { mutableStateOf<Account?>(null) }
 
-    /** Comprueba la cuenta con el servidor; si responde bien, la guarda y entra. */
+    var banner by remember { mutableStateOf<String?>(null) }
+
+    /**
+     * Comprueba la cuenta con el servidor; si responde bien, la guarda y entra.
+     * Al cambiar de servidor desde el inicio, si el otro no responde se queda en el actual.
+     */
     suspend fun connect(acc: Account) {
         if (busy) return
+        val previous = screen as? Screen.Home
         busy = true; error = null
         try {
             val api = XtreamApi(acc)
@@ -184,9 +191,14 @@ private fun App(player: VideoPlayer) {
             screen = Screen.Home(acc, api, info)
         } catch (e: Exception) {
             Log.w("No se pudo iniciar sesión en ${acc.label}: ${e.message}")
-            error = e.message ?: "No se pudo conectar"
-            prefill = acc
-            screen = Screen.Login
+            if (previous != null) {
+                com.jox3.tvdesktop.data.ServerHub.pendingOpen = null
+                banner = "No se pudo entrar a ${acc.label}: ${e.message ?: "no responde"}. Sigues en ${previous.account.label}."
+            } else {
+                error = e.message ?: "No se pudo conectar"
+                prefill = acc
+                screen = Screen.Login
+            }
         } finally {
             busy = false
         }
@@ -198,6 +210,7 @@ private fun App(player: VideoPlayer) {
         if (last != null && last.pass.isNotEmpty()) connect(last) else { prefill = last; screen = Screen.Login }
     }
 
+    Box(Modifier.fillMaxSize()) {
     when (val s = screen) {
         Screen.Starting -> Splash()
         Screen.Login -> LoginScreen(
@@ -226,6 +239,8 @@ private fun App(player: VideoPlayer) {
             api = s.api,
             info = s.info,
             player = player,
+            accounts = store.accounts,
+            onSwitchServer = { acc -> scope.launch { connect(acc) } },
             version = APP_VERSION,
             onLogout = {
                 store.logout()
@@ -234,6 +249,25 @@ private fun App(player: VideoPlayer) {
             },
             onOpenLogs = { Crash.openLogs() },
         )
+    }
+    // Aviso arriba (por ejemplo, si no se pudo cambiar de servidor)
+    banner?.let { text ->
+        LaunchedEffect(text) { kotlinx.coroutines.delay(6000); banner = null }
+        Box(Modifier.fillMaxSize().padding(top = 70.dp), contentAlignment = Alignment.TopCenter) {
+            Text(text, color = Jx.Text, fontFamily = com.jox3.tvdesktop.ui.Exo2,
+                modifier = Modifier.background(Jx.SurfaceHi, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                    .padding(horizontal = 16.dp, vertical = 10.dp))
+        }
+    }
+    if (busy && screen is Screen.Home) {
+        Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x88000000)), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Jx.Accent)
+                Spacer(Modifier.height(12.dp))
+                Text("Cambiando de servidor…", color = Jx.Text)
+            }
+        }
+    }
     }
 }
 

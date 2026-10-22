@@ -95,6 +95,9 @@ jobs:
       # createDistributable deja el programa armado (carpeta app/) para la autoprueba.
       # Luego el instalador .msi (incluye su propio Java: el usuario no necesita instalar nada más).
       - name: Pruebas e instalador MSI
+        env:
+          # Token de TMDB (información de películas y series): el mismo secreto de la app Android
+          TMDB_TOKEN: ${{ secrets.TMDB_TOKEN }}
         run: |
           set -o pipefail
           gradle -p desktop test createDistributable packageMsi -PappVersion=1.0.${{ github.run_number }} --stacktrace 2>&1 | tee build.log
