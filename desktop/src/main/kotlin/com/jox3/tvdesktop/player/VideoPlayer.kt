@@ -16,7 +16,7 @@ import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
 import uk.co.caprica.vlcj.player.base.MediaPlayer
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter
-import uk.co.caprica.vlcj.player.base.TrackType
+import uk.co.caprica.vlcj.media.TrackType
 import uk.co.caprica.vlcj.player.embedded.EmbeddedMediaPlayer
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormat
 import uk.co.caprica.vlcj.player.embedded.videosurface.callback.BufferFormatCallback
