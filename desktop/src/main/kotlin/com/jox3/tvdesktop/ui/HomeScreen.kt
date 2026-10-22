@@ -209,9 +209,9 @@ fun HomeScreen(
         onDispose { KeyRouter.handler = null }
     }
 
-    if (live.mode != ViewMode.EMBEDDED || live.vod != null) {
-        PlayerView(live, Modifier.fillMaxSize(), ::toggleFull, ::toggleMini, ::exitVod)
-        return
+    // Si se cambia de sección con un canal sonando en la vista previa, se detiene (sin audio escondido)
+    LaunchedEffect(tab) {
+        if (tab != Tab.LIVE && live.mode == ViewMode.EMBEDDED && live.current != null) live.stop()
     }
 
     Box(Modifier.fillMaxSize().background(Jx.Bg)) {
@@ -243,7 +243,12 @@ fun HomeScreen(
                 }
             }
         }
-        if (showAccount) {
+        // Video en ventana completa o mini: va ENCIMA de la sección, así al volver todo sigue
+        // donde estaba (la ficha abierta, la categoría, la posición de la lista).
+        if (live.mode != ViewMode.EMBEDDED || live.vod != null) {
+            PlayerView(live, Modifier.fillMaxSize(), ::toggleFull, ::toggleMini, ::exitVod)
+        }
+        if (showAccount && live.mode == ViewMode.EMBEDDED && live.vod == null) {
             Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
             ) { showAccount = false })
