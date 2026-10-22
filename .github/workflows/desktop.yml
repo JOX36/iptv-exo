@@ -43,18 +43,23 @@ jobs:
           gradle-version: '8.14.3'
 
       # Primero las pruebas automáticas; si alguna falla, no se genera el instalador.
+      # createDistributable deja el programa armado (carpeta app/) para la autoprueba.
       # Luego el instalador .msi (incluye su propio Java: el usuario no necesita instalar nada más).
       - name: Pruebas e instalador MSI
         run: |
           set -o pipefail
-          gradle -p desktop test packageMsi -PappVersion=1.0.${{ github.run_number }} --stacktrace 2>&1 | tee build.log
+          gradle -p desktop test createDistributable packageMsi -PappVersion=1.0.${{ github.run_number }} --stacktrace 2>&1 | tee build.log
 
       # Abre el programa ya empaquetado en modo autoprueba (sin ventana) y revisa que no le falte nada.
       - name: Autoprueba del programa empaquetado
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "desktop/build/compose/binaries/main/app" -Recurse -Filter "JOX3 TV.exe" | Select-Object -First 1
-          if (-not $exe) { Write-Output "::error::No se encontró JOX3 TV.exe"; exit 1 }
+          $exe = Get-ChildItem "desktop/build/compose/binaries" -Recurse -Filter "*.exe" | Where-Object { $_.Name -like "JOX3*" } | Select-Object -First 1
+          if (-not $exe) {
+            Get-ChildItem "desktop/build/compose/binaries" -Recurse -Depth 3 | ForEach-Object { $_.FullName }
+            Write-Output "::error::No se encontró el programa empaquetado (JOX3 TV.exe)"; exit 1
+          }
+          Write-Output "Programa: $($exe.FullName)"
           $out = Join-Path $env:RUNNER_TEMP "selftest.txt"
           $p = Start-Process -FilePath $exe.FullName -ArgumentList "--self-test", "`"$out`"" -Wait -PassThru
           if (Test-Path $out) { Get-Content $out } else { Write-Output "::error::La autoprueba no dejó resultado (código $($p.ExitCode))"; exit 1 }
