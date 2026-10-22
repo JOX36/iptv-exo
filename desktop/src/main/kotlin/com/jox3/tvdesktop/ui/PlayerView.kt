@@ -98,7 +98,8 @@ fun PlayerView(
     LaunchedEffect(Unit) { while (true) { delay(250); now = System.currentTimeMillis() } }
 
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
-    val embedded = live.mode == ViewMode.EMBEDDED
+    val pip = live.mode == ViewMode.PIP
+    val embedded = live.mode == ViewMode.EMBEDDED || pip
     val paused = player.state == PlayState.Paused
     val ended = player.state == PlayState.Ended
     // La información y los controles: con clic, al cambiar de canal o en pausa; se van a los 6 s
@@ -155,6 +156,33 @@ fun PlayerView(
                 Text(t.first, color = Jx.Text, fontSize = if (embedded) 13.sp else 17.sp, fontFamily = Exo2,
                     modifier = Modifier.background(Color(0xCC070A0F), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp))
             }
+        }
+
+        if (pip) {
+            // Ventanita de la esquina: título, ampliar, pausa y cerrar al pasar el mouse
+            AnimatedVisibility(hovering || paused, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xAA000000), Color.Transparent, Color(0xAA000000))))) {
+                    Text(live.vod?.title ?: live.current?.name.orEmpty(), color = Jx.Text, fontFamily = Exo2, fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.align(Alignment.TopStart).padding(start = 12.dp, top = 10.dp, end = 44.dp))
+                    Box(Modifier.align(Alignment.TopEnd).padding(6.dp)) {
+                        RoundButton(Ico.CLOSE, "Cerrar", small = true) { onExitVod() }
+                    }
+                    Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (live.vod != null) RoundButton(Ico.PREV, "Atrás 10 s", small = true) { live.seekBy(-10_000) }
+                        RoundButton(if (paused) Ico.PLAY else Ico.PAUSE, "Pausa (espacio)", accent = true) { player.togglePause() }
+                        if (live.vod != null) RoundButton(Ico.NEXT, "Adelante 10 s", small = true) { live.seekBy(10_000) }
+                    }
+                    Box(Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                        RoundButton(Ico.FULLSCREEN, "Ampliar (doble clic)", small = true) { onToggleFull() }
+                    }
+                    if (live.vod != null && player.lengthMs > 0) {
+                        ProgressLine((player.timeMs.toFloat() / player.lengthMs).coerceIn(0f, 1f),
+                            Modifier.align(Alignment.BottomStart).fillMaxWidth(0.8f).padding(start = 12.dp, bottom = 18.dp), height = 3.dp)
+                    }
+                }
+            }
+            return@Box
         }
 
         if (embedded) {
@@ -216,9 +244,17 @@ private fun BoxScope.StatusLayer(live: LiveController, onExitVod: () -> Unit) {
             Modifier.align(Alignment.Center).padding(20.dp).widthIn(max = 460.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(s.message, color = Jx.Text, fontFamily = Exo2, fontSize = if (small) 13.sp else 16.sp)
+            val trailer = live.vod?.item?.kind == "trailer"
+            Text(if (trailer) "YouTube no dejó reproducir el tráiler aquí." else s.message,
+                color = Jx.Text, fontFamily = Exo2, fontSize = if (small) 13.sp else 16.sp)
             Spacer(Modifier.height(12.dp))
-            PillButton("Reintentar") { player.togglePause() }
+            if (trailer) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton("Abrir en el navegador") {
+                    com.jox3.tvdesktop.data.Tmdb.openTrailer(live.vod?.item?.id.orEmpty().removePrefix("yt:"))
+                    onExitVod()
+                }
+                GhostButton("Volver") { onExitVod() }
+            } else PillButton("Reintentar") { player.togglePause() }
         }
         else -> {}
     }

@@ -10,6 +10,8 @@ import javax.swing.SwingUtilities
  */
 object Crash {
     @Volatile private var showing = false
+    /** Hubo un fallo ya avisado y el programa se cierra por eso (para el informe del próximo inicio). */
+    @Volatile var handledCrash = false
 
     fun install() {
         Thread.setDefaultUncaughtExceptionHandler { t, e ->

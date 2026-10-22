@@ -94,9 +94,12 @@ class VideoPlayer {
     private var retryTask: ScheduledFuture<*>? = null
     private var watchdog: ScheduledFuture<*>? = null
     @Volatile private var lastProgressAt = 0L
+    @Volatile private var subitemTried = false
 
-    // Doble búfer: VLC escribe en uno mientras la ventana dibuja el otro (sin parpadeos).
-    private val bitmaps = arrayOfNulls<Bitmap>(2)
+    // Triple búfer: VLC escribe en uno mientras la ventana dibuja otro (sin parpadeos).
+    // Las imágenes viejas NUNCA se liberan a mano: si la ventana todavía estaba dibujando
+    // una y se liberaba, el programa se cerraba de golpe. Las libera Java cuando ya nadie las usa.
+    private val bitmaps = arrayOfNulls<Bitmap>(3)
     private var back = 0
     private var bytes = ByteArray(0)
     private var info: ImageInfo? = null
@@ -122,6 +125,7 @@ class VideoPlayer {
         val my = token
         this.title = title; this.url = mrl; this.isLive = live
         retries = 0
+        subitemTried = false
         timeMs = 0; lengthMs = 0
         state = PlayState.Opening
         options = buildList {
@@ -324,6 +328,16 @@ class VideoPlayer {
         }
         override fun paused(mediaPlayer: MediaPlayer) { state = PlayState.Paused }
         override fun finished(mediaPlayer: MediaPlayer) {
+            // YouTube (tráileres): VLC primero convierte el enlace en el video real (un "subitem")
+            // y termina; aquí se reproduce ese video. Si no hubo, YouTube no lo dejó.
+            if (!isLive && url.contains("youtube.com/") && !subitemTried) {
+                subitemTried = true
+                ctl.execute {
+                    val ok = runCatching { mediaPlayer.subitems().controls().play() }.getOrDefault(false)
+                    if (!ok) state = PlayState.Failed("YouTube no dejó reproducir el tráiler")
+                }
+                return
+            }
             if (isLive) scheduleRetry("terminó la transmisión") else state = PlayState.Ended
         }
         override fun error(mediaPlayer: MediaPlayer) {
@@ -348,10 +362,8 @@ class VideoPlayer {
             synchronized(bitmaps) {
                 info = ImageInfo(sourceWidth, sourceHeight, ColorType.BGRA_8888, ColorAlphaType.OPAQUE)
                 bytes = ByteArray(sourceWidth * sourceHeight * 4)
-                for (i in 0..1) {
-                    bitmaps[i]?.close()
-                    bitmaps[i] = Bitmap().apply { allocPixels(info!!) }
-                }
+                for (i in bitmaps.indices) bitmaps[i] = Bitmap().apply { allocPixels(info!!) }
+                back = 0
             }
             videoWidth = sourceWidth; videoHeight = sourceHeight
             if (sourceHeight > 0) videoAspect = sourceWidth.toFloat() / sourceHeight
@@ -371,7 +383,7 @@ class VideoPlayer {
                 buf.get(bytes, 0, bytes.size)
                 bmp.installPixels(bytes)
                 frame = bmp.asComposeImageBitmap()
-                back = 1 - back
+                back = (back + 1) % bitmaps.size
             }
             frameVersion++
         }

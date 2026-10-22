@@ -10,8 +10,11 @@ import com.jox3.tvdesktop.data.TvRepo
 import com.jox3.tvdesktop.player.Aspect
 import com.jox3.tvdesktop.player.VideoPlayer
 
-/** Cómo se ve el reproductor: en la vista previa, ocupando la ventana, o en mini (siempre encima). */
-enum class ViewMode { EMBEDDED, FULL, MINI }
+/**
+ * Cómo se ve el reproductor: en la vista previa, ocupando la ventana, en mini (ventana
+ * pequeña siempre encima) o en PIP (ventanita en la esquina mientras navegas por el programa).
+ */
+enum class ViewMode { EMBEDDED, FULL, MINI, PIP }
 
 /** Panel de opciones abierto sobre el video. */
 enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO }
@@ -66,6 +69,10 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     var overlayAt by mutableLongStateOf(System.currentTimeMillis())
 
     val hasMedia: Boolean get() = current != null || vod != null
+    /** La sección visible registra aquí cómo pasar de categoría (← →) y desplazar su lista (↑ ↓). */
+    var categoryStep: ((Int) -> Unit)? = null
+    var listScroll: ((Int) -> Unit)? = null
+
     /** Algo que hay que abrir (lo pide el buscador; lo atiende la sección que corresponde). */
     var openRequest by mutableStateOf<OpenRequest?>(null)
 
@@ -74,6 +81,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
 
     fun play(ch: Channel, list: List<Channel>, listName: String) {
         saveVodProgress()
+        if (mode == ViewMode.PIP) mode = ViewMode.EMBEDDED // el canal se ve en la vista previa
         vod = null
         this.list = list
         this.listName = listName
@@ -97,6 +105,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     /** Guarda dónde va la película o episodio (cada pocos segundos y al salir). */
     fun saveVodProgress() {
         val v = vod ?: return
+        if (v.item.kind == "trailer") return // los tráileres no van a "continuar viendo"
         val len = player.lengthMs
         if (len <= 0) return
         val pos = if (player.state == com.jox3.tvdesktop.player.PlayState.Ended) len else player.timeMs

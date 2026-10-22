@@ -59,7 +59,11 @@ compose.desktop {
     application {
         mainClass = "com.jox3.tvdesktop.MainKt"
         // El programa conoce su propia versión (sirve para las actualizaciones de la etapa 5).
-        jvmArgs += listOf("-Djox3.version=$appVersion", "-Dfile.encoding=UTF-8")
+        jvmArgs += listOf(
+            "-Djox3.version=$appVersion", "-Dfile.encoding=UTF-8",
+            // Si Java llega a fallar, deja su informe en la carpeta del programa ($APPDIR lo completa el lanzador)
+            "-XX:ErrorFile=\$APPDIR/hs_err_pid%p.log",
+        )
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi)

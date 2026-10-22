@@ -170,6 +170,19 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
                 if (q.isEmpty()) allCats else allCats.filter { it.id == CONTINUE_ID || it.id == FAV_ID || TvRepo.normalize(it.name).contains(q) }
             }
             val catState = rememberLazyListState()
+            androidx.compose.runtime.DisposableEffect(shownCats) {
+                live.categoryStep = { d ->
+                    val i = shownCats.indexOfFirst { it.id == selected?.id }
+                    shownCats.getOrNull((i + d).coerceIn(0, shownCats.size - 1))?.let { selected = it; detail = null }
+                }
+                onDispose { live.categoryStep = null }
+            }
+            LaunchedEffect(selected?.id) {
+                val i = shownCats.indexOfFirst { it.id == selected?.id }
+                if (i >= 0 && (i < catState.firstVisibleItemIndex || i > catState.firstVisibleItemIndex + catState.layoutInfo.visibleItemsInfo.size - 2)) {
+                    catState.animateScrollToItem((i - 3).coerceAtLeast(0))
+                }
+            }
             Box(Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.fillMaxSize(), state = catState, contentPadding = PaddingValues(start = 8.dp, end = 12.dp, bottom = 16.dp)) {
                     items(shownCats, key = { it.id }) { c ->
@@ -253,6 +266,12 @@ private fun PosterGrid(live: LiveController, tiles: List<Tile>, kind: String, on
     val lib = live.repo.library
     val state = rememberLazyGridState()
     val progressV by lib.progressVersion
+    val scope = rememberCoroutineScope()
+    // ↑ ↓ desplazan la cuadrícula (unas filas por pulsación)
+    androidx.compose.runtime.DisposableEffect(state) {
+        live.listScroll = { d -> scope.launch { state.animateScrollToItem((state.firstVisibleItemIndex + d * 6).coerceIn(0, (tiles.size - 1).coerceAtLeast(0))) } }
+        onDispose { live.listScroll = null }
+    }
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(158.dp),
@@ -394,9 +413,7 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
                     } else {
                         PillButton("▶  Ver") { onPlay(session(), 0) }
                     }
-                    if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") {
-                        if (!Tmdb.openTrailer(t!!.trailerKey)) live.flash("No se pudo abrir el navegador")
-                    }
+                    if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") { playTrailer(live, t!!.trailerKey, movie.name, poster, onPlay) }
                     GhostButton(if (fav) "★  En favoritos" else "☆  Favorito") {
                         lib.toggleFavorite(SavedItem("movie", movie.id, movie.name, poster, ext = ext, categoryId = movie.categoryId))
                     }
@@ -489,9 +506,7 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
                         }
                         allEpisodes.isNotEmpty() -> PillButton("▶  Ver T${allEpisodes[0].season} E${allEpisodes[0].num}") { onPlay(session(allEpisodes[0]), 0) }
                     }
-                    if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") {
-                        if (!Tmdb.openTrailer(t!!.trailerKey)) live.flash("No se pudo abrir el navegador")
-                    }
+                    if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") { playTrailer(live, t!!.trailerKey, series.name, poster, onPlay) }
                     GhostButton(if (fav) "★  En favoritos" else "☆  Favorito") {
                         lib.toggleFavorite(SavedItem("series", series.id, series.name, poster, categoryId = series.categoryId))
                     }
@@ -571,6 +586,22 @@ private fun EpisodeRow(ep: Episode, poster: String, resume: Resume?, playing: Bo
             }
         }
     }
+}
+
+/**
+ * Tráiler: se intenta ver DENTRO del programa (VLC abre YouTube). Si YouTube no lo deja,
+ * el reproductor ofrece abrirlo en el navegador. En Ajustes se puede elegir abrirlo siempre afuera.
+ */
+private fun playTrailer(live: LiveController, key: String, title: String, image: String, onPlay: (VodSession, Long) -> Unit) {
+    if (!Settings.bool("trailer.inApp", true)) {
+        if (!Tmdb.openTrailer(key)) live.flash("No se pudo abrir el navegador")
+        return
+    }
+    onPlay(VodSession(
+        item = SavedItem("trailer", "yt:$key", title, image),
+        title = title, subtitle = "Tráiler", image = image,
+        url = "https://www.youtube.com/watch?v=$key",
+    ), 0)
 }
 
 /** Reparto con fotos (de TMDB). */
