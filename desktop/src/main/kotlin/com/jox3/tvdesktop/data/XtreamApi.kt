@@ -10,6 +10,9 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.net.UnknownHostException
 import java.net.SocketTimeoutException
+import java.net.ConnectException
+import javax.net.ssl.SSLException
+import com.jox3.tvdesktop.core.Log
 
 /**
  * Cliente de la API Xtream Codes (player_api.php). Misma lógica que la app Android;
@@ -35,15 +38,29 @@ class XtreamApi(val account: Account) {
             .build()
         try {
             Net.api.newCall(req).execute().use { r ->
-                if (!r.isSuccessful) throw IOException("El servidor respondió HTTP ${r.code}")
+                if (!r.isSuccessful) throw IOException(
+                    if (r.code == 401 || r.code == 403) "Acceso denegado: revisa usuario y contraseña, o la cuenta está bloqueada (HTTP ${r.code})"
+                    else "El servidor respondió con un error (HTTP ${r.code})"
+                )
                 val body = r.body?.string().orEmpty()
                 if (body.isBlank()) throw IOException("Respuesta vacía del servidor")
                 body
             }
         } catch (e: UnknownHostException) {
-            throw IOException("No se encontró el servidor. Revisa la dirección.")
+            Log.w("Servidor no encontrado: $url")
+            throw IOException("No se encontró el servidor. Revisa la dirección o tu internet.")
         } catch (e: SocketTimeoutException) {
-            throw IOException("El servidor no respondió a tiempo.")
+            Log.w("Tiempo agotado: $url")
+            throw IOException("El servidor no respondió a tiempo. Intenta de nuevo.")
+        } catch (e: ConnectException) {
+            Log.w("Conexión rechazada: $url")
+            throw IOException("El servidor rechazó la conexión. Revisa la dirección y el puerto.")
+        } catch (e: SSLException) {
+            Log.w("Error de conexión segura: $url", e)
+            throw IOException("Falló la conexión segura (https). Prueba con http://")
+        } catch (e: IOException) {
+            Log.w("Error de red: $url", e)
+            throw e
         }
     }
 

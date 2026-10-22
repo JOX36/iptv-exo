@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +41,7 @@ fun HomeScreen(
     info: ServerInfo,
     version: String,
     onLogout: () -> Unit,
+    onOpenLogs: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize().background(Jx.Bg)) {
         // ── Barra superior ──
@@ -95,12 +97,12 @@ fun HomeScreen(
                     ) { Text("Cambiar de cuenta") }
                 }
             }
-            Text(
-                "Versión $version",
-                color = Jx.Faint,
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.align(Alignment.BottomEnd),
-            )
+            Row(Modifier.align(Alignment.BottomEnd), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onOpenLogs, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
+                    Text("Registro de errores", color = Jx.Faint, style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Versión $version", color = Jx.Faint, style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }

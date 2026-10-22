@@ -17,12 +17,19 @@ kotlin {
     jvmToolchain(21)
 }
 
+tasks.test {
+    useJUnitPlatform()
+}
+
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20240303")
+    implementation("net.java.dev.jna:jna-platform:5.15.0") // cifrado de contraseñas con Windows (DPAPI)
+
+    testImplementation(kotlin("test"))
 }
 
 compose.desktop {

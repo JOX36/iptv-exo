@@ -42,20 +42,42 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
-      # Instalador .msi (incluye su propio Java: el usuario no necesita instalar nada más).
-      - name: Build MSI
+      # Primero las pruebas automáticas; si alguna falla, no se genera el instalador.
+      # Luego el instalador .msi (incluye su propio Java: el usuario no necesita instalar nada más).
+      - name: Pruebas e instalador MSI
         run: |
           set -o pipefail
-          gradle -p desktop packageMsi -PappVersion=1.0.${{ github.run_number }} --stacktrace 2>&1 | tee build.log
+          gradle -p desktop test packageMsi -PappVersion=1.0.${{ github.run_number }} --stacktrace 2>&1 | tee build.log
+
+      # Abre el programa ya empaquetado en modo autoprueba (sin ventana) y revisa que no le falte nada.
+      - name: Autoprueba del programa empaquetado
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "desktop/build/compose/binaries/main/app" -Recurse -Filter "JOX3 TV.exe" | Select-Object -First 1
+          if (-not $exe) { Write-Output "::error::No se encontró JOX3 TV.exe"; exit 1 }
+          $out = Join-Path $env:RUNNER_TEMP "selftest.txt"
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--self-test", "`"$out`"" -Wait -PassThru
+          if (Test-Path $out) { Get-Content $out } else { Write-Output "::error::La autoprueba no dejó resultado (código $($p.ExitCode))"; exit 1 }
+          Get-Content $out | Where-Object { $_ -like "FALLA*" } | ForEach-Object { Write-Output "::error::Autoprueba: $_" }
+          if ($p.ExitCode -ne 0) { exit 1 }
 
       # Si falla, los errores aparecen como anotaciones en la pestaña del PR / Actions
       - name: Resumen de errores
         if: failure()
         run: |
-          { grep -E "^e: |error:" build.log; grep -E -A3 "What went wrong|Could not (find|resolve)" build.log; } \
+          { grep -E "^e: |error:| FAILED$" build.log; grep -E -A2 "^\s+(java|kotlin|org\.opentest4j)\..*(Error|Exception)" build.log; \
+            grep -E -A3 "What went wrong|Could not (find|resolve)" build.log; } \
             | head -45 | while IFS= read -r line; do
             echo "::error::${line}"
           done
+
+      - name: Informe de pruebas
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pruebas-${{ github.run_number }}
+          path: desktop/build/reports/tests/test/
+          if-no-files-found: ignore
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4

@@ -11,6 +11,9 @@ data class Account(
     /** Nombre corto para mostrar: el dominio del servidor. */
     val label: String
         get() = host.removePrefix("http://").removePrefix("https://").substringBefore('/').substringBefore(':')
+
+    /** Nunca muestra la contraseña (por si la cuenta termina en un registro de errores). */
+    override fun toString() = "Account($host, $user, ***)"
 }
 
 /** Estado de la cuenta que devuelve el servidor al iniciar sesión. */
