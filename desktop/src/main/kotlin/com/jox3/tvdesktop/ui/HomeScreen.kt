@@ -67,7 +67,7 @@ object KeyRouter {
     var handler: ((KeyEvent) -> Boolean)? = null
 }
 
-private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series"), SEARCH("Buscar") }
+private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series"), SEARCH("Buscar"), SETTINGS("Ajustes") }
 
 /**
  * Inicio tras entrar: barra superior con secciones y cuenta, y la sección elegida.
@@ -311,7 +311,7 @@ fun HomeScreen(
                 Brand(iconSize = 30.dp, textSize = 20)
                 Spacer(Modifier.width(30.dp))
                 Tab.entries.forEach { t ->
-                    TabButton(t.label, selected = tab == t, icon = if (t == Tab.SEARCH) Ico.SEARCH else null) { tab = t }
+                    TabButton(t.label, selected = tab == t, icon = when (t) { Tab.SEARCH -> Ico.SEARCH; Tab.SETTINGS -> Ico.SETTINGS; else -> null }) { tab = t }
                     Spacer(Modifier.width(6.dp))
                 }
                 Spacer(Modifier.weight(1f))
@@ -328,6 +328,7 @@ fun HomeScreen(
                     Tab.MOVIES -> VodScreen(live, Section.VOD, onPlay = ::startVod)
                     Tab.SERIES -> VodScreen(live, Section.SERIES, onPlay = ::startVod)
                     Tab.SEARCH -> SearchScreen(live) { c -> open(c.account, c) }
+                    Tab.SETTINGS -> SettingsScreen(live, version)
                 }
             }
         }

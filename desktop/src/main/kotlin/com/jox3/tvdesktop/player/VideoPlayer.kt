@@ -129,7 +129,8 @@ class VideoPlayer {
         timeMs = 0; lengthMs = 0
         state = PlayState.Opening
         options = buildList {
-            add(":network-caching=${if (live) 2000 else 3000}")
+            // Búfer de red: en vivo se elige en Ajustes (más búfer = menos cortes, pero más demora al cambiar)
+            add(":network-caching=${if (live) liveBufferMs() else 3000}")
             if (startMs > 0) add(":start-time=${startMs / 1000.0}")
         }.toTypedArray()
         Log.i("Reproducir${if (live) " (en vivo)" else ""}: $title — $mrl")
@@ -238,7 +239,7 @@ class VideoPlayer {
         if (host.isNotBlank()) out += "Servidor" to host
         val ext = url.substringAfterLast('.', "").substringBefore('?').lowercase()
         if (ext.isNotEmpty() && ext.length <= 5) out += "Formato" to ext.uppercase()
-        out += "Búfer de red" to "${if (isLive) 2 else 3} s"
+        out += "Búfer de red" to "${(if (isLive) liveBufferMs() else 3000) / 1000} s"
         out += "Reproductor" to "VLC ${VlcRuntime.version()} (${VlcRuntime.source})"
         return out
     }
@@ -333,7 +334,7 @@ class VideoPlayer {
             if (!isLive && url.contains("youtube.com/") && !subitemTried) {
                 subitemTried = true
                 ctl.execute {
-                    val ok = runCatching { mediaPlayer.subitems().controls().play() }.getOrDefault(false)
+                    val ok = runCatching { mediaPlayer.subitems().controls().play(); true }.getOrDefault(false)
                     if (!ok) state = PlayState.Failed("YouTube no dejó reproducir el tráiler")
                 }
                 return
@@ -390,6 +391,7 @@ class VideoPlayer {
     }
 
     companion object {
+        fun liveBufferMs(): Int = Settings.int("live.buffer", 2).coerceIn(1, 10) * 1000
         private const val MAX_RETRIES = 6
         private const val STALL_MS = 20_000L
 

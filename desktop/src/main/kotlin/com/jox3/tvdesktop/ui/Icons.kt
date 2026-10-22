@@ -20,7 +20,7 @@ import kotlin.math.sin
 
 /** Iconos propios dibujados (no dependen de fuentes ni de paquetes externos). */
 enum class Ico { PLAY, PAUSE, PREV, NEXT, VOLUME, MUTE, FULLSCREEN, EXIT_FULLSCREEN, MINI, STAR, STAR_FILLED,
-    LIST, INFO, SUBTITLES, AUDIO, PICTURE, SLEEP, SEARCH, CLOSE, GUIDE, REFRESH, LIVE, USER, CLOCK }
+    LIST, INFO, SUBTITLES, AUDIO, PICTURE, SLEEP, SEARCH, CLOSE, GUIDE, REFRESH, LIVE, USER, CLOCK, SETTINGS }
 
 @Composable
 fun JxIcon(ico: Ico, size: Dp = 20.dp, color: Color = Jx.Text, modifier: Modifier = Modifier) {
@@ -118,6 +118,16 @@ private fun DrawScope.drawIco(ico: Ico, c: Color) {
         Ico.USER -> {
             drawCircle(c, s * 0.18f, p(0.5f, 0.32f))
             drawArc(c, 180f, 180f, true, p(0.18f, 0.56f), Size(s * 0.64f, s * 0.6f))
+        }
+        Ico.SETTINGS -> {
+            // Engranaje: 8 dientes alrededor de un aro
+            for (k in 0 until 8) {
+                val a = Math.toRadians(k * 45.0)
+                drawLine(c, p(0.5f + 0.3f * cos(a).toFloat(), 0.5f + 0.3f * sin(a).toFloat()),
+                    p(0.5f + 0.43f * cos(a).toFloat(), 0.5f + 0.43f * sin(a).toFloat()), s * 0.13f, StrokeCap.Round)
+            }
+            drawCircle(c, s * 0.28f, p(0.5f, 0.5f), style = stroke)
+            drawCircle(c, s * 0.1f, p(0.5f, 0.5f))
         }
         Ico.CLOCK -> {
             drawCircle(c, s * 0.4f, p(0.5f, 0.5f), style = stroke)

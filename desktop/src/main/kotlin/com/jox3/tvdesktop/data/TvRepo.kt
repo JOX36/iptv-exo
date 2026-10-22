@@ -75,6 +75,7 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
 
     private fun startExternalEpg(liveCats: List<Category>) {
         synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.name) } }
+        if (!com.jox3.tvdesktop.core.Settings.bool("epg.internet", true)) return // apagada en Ajustes
         ExternalEpg.ensure(EpgCountries.filesFor(liveCats)) {
             // Los canales que quedaron sin guía se vuelven a consultar
             synchronized(epg) { epg.entries.removeAll { it.value.second.isEmpty() } }

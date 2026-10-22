@@ -228,6 +228,9 @@ object Tmdb {
 
     internal fun yearOf(name: String): String = Regex("\\b(19[2-9]\\d|20[0-4]\\d)\\b").findAll(name).lastOrNull()?.value.orEmpty()
 
+    /** Borra lo guardado de TMDB (Ajustes → Almacenamiento). */
+    fun clearCache() { synchronized(mem) { mem.clear() }; cache.clear(); version.intValue++ }
+
     /** Abre el tráiler en YouTube con el navegador del PC. */
     fun openTrailer(key: String): Boolean {
         if (key.isBlank()) return false
