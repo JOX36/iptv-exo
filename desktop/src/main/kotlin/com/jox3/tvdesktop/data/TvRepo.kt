@@ -58,6 +58,7 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
 
     /** Vuelve a pedir todo al servidor (botón "Actualizar"). */
     suspend fun clear() {
+        index = null
         lock.withLock {
             categories.clear(); channels.clear(); movies.clear(); series.clear()
             movieInfos.clear(); seriesInfos.clear(); seriesInfoAt.clear()
@@ -110,7 +111,36 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
         return list
     }
 
+    // ── Búsqueda en todo el catálogo ──
+    /** Catálogo completo con los nombres ya normalizados (sin tildes): buscar es solo comparar texto. */
+    class Index(val channels: List<Channel>, val movies: List<Movie>, val series: List<Series>) {
+        val channelKeys: List<String> = channels.map { normalize(it.name) }
+        val movieKeys: List<String> = movies.map { normalize(it.name) }
+        val seriesKeys: List<String> = series.map { normalize(it.name) }
+    }
+
+    @Volatile private var index: Index? = null
+    private val indexLock = Mutex()
+
+    /** Catálogo completo para buscar. Se arma una sola vez por sesión, de a una lista (menos memoria). */
+    suspend fun searchIndex(): Index = index ?: indexLock.withLock {
+        index ?: run {
+            val ch = runCatching { api.channels() }.getOrDefault(emptyList())
+            val mv = runCatching { api.movies() }.getOrDefault(emptyList())
+            val sr = runCatching { api.series() }.getOrDefault(emptyList())
+            withContext(Dispatchers.Default) { Index(ch, mv, sr) }.also { index = it }
+        }
+    }
+
+    fun cachedIndex(): Index? = index
+
     companion object {
+        /** Título sin año ni etiquetas ([4K], (2023)…): para reconocer copias del mismo título. */
+        fun titleKey(name: String): String =
+            normalize(name).replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("[^a-z0-9]+"), " ")
+                .replace(Regex("\\b(4k|uhd|fhd|hd|sd|latino|castellano|subtitulado|dual|19\\d\\d|20\\d\\d)\\b"), " ")
+                .replace(Regex("\\s+"), " ").trim()
+
         /** Programa que se emite ahora (si la guía lo trae). */
         fun nowPlaying(list: List<EpgItem>, now: Long = System.currentTimeMillis()): EpgItem? =
             list.firstOrNull { now in it.start until it.end } ?: list.firstOrNull { it.end > now }

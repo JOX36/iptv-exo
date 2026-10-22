@@ -32,11 +32,14 @@ class LibraryStore(account: Account, dir: File = File(AppDirs.data, "library")) 
     /** Sube con cada cambio de progreso: obliga a recalcular "continuar viendo". */
     val progressVersion = mutableIntStateOf(0)
     private val progress = LinkedHashMap<String, Resume>()
+    /** Búsquedas recientes, la más nueva primero (como en Android). */
+    val searchHistory = mutableStateListOf<String>()
 
     init {
         SafeFile.read(file) { JSONObject(it) }?.let { o ->
             favorites.addAll(load(o.optJSONArray("fav")))
             recentChannels.addAll(load(o.optJSONArray("recent")))
+            o.optJSONArray("search")?.let { a -> for (i in 0 until a.length()) a.optString(i).takeIf { it.isNotBlank() }?.let { searchHistory.add(it) } }
             o.optJSONArray("progress")?.let { arr ->
                 for (i in 0 until arr.length()) {
                     val p = arr.optJSONObject(i) ?: continue
@@ -73,6 +76,23 @@ class LibraryStore(account: Account, dir: File = File(AppDirs.data, "library")) 
     fun lastEpisodeOf(seriesId: String): Resume? =
         progress.values.filter { it.item.kind == "episode" && it.item.seriesId == seriesId }.maxByOrNull { it.ts }
 
+    /**
+     * Guarda una búsqueda. Mientras se escribe no se guardan los pedazos:
+     * "los" → "los simps" → "los simpson" deja solo "los simpson".
+     */
+    fun addSearch(query: String) {
+        val q = query.trim()
+        if (q.length < 2) return
+        if (searchHistory.any { it.length > q.length && it.startsWith(q, ignoreCase = true) }) return
+        searchHistory.removeAll { q.startsWith(it, ignoreCase = true) }
+        searchHistory.add(0, q)
+        while (searchHistory.size > 12) searchHistory.removeAt(searchHistory.size - 1)
+        save()
+    }
+
+    fun removeSearch(query: String) { searchHistory.remove(query); save() }
+    fun clearSearches() { searchHistory.clear(); save() }
+
     fun isFavorite(kind: String, id: String) = favorites.any { it.kind == kind && it.id == id }
 
     /** Agrega o quita de favoritos. Devuelve true si quedó como favorito. */
@@ -97,6 +117,7 @@ class LibraryStore(account: Account, dir: File = File(AppDirs.data, "library")) 
             .put("version", 1)
             .put("fav", JSONArray().apply { favorites.forEach { put(toJson(it)) } })
             .put("recent", JSONArray().apply { recentChannels.forEach { put(toJson(it)) } })
+            .put("search", JSONArray(searchHistory.toList()))
             .put("progress", JSONArray().apply {
                 progress.values.forEach { r ->
                     put(JSONObject().put("item", toJson(r.item)).put("pos", r.position).put("dur", r.duration).put("ts", r.ts))

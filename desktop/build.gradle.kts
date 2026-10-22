@@ -17,6 +17,27 @@ kotlin {
     jvmToolchain(21)
 }
 
+// Token de TMDB: llega del secreto TMDB_TOKEN de GitHub Actions al compilar (igual que en
+// la app Android). Nunca se escribe en el código ni en el repositorio: se genera un archivo
+// temporal dentro de build/.
+val tmdbToken: String = (System.getenv("TMDB_TOKEN") ?: "").trim().filter { it.isLetterOrDigit() || it in "._-" }
+val generateSecrets by tasks.registering {
+    val out = layout.buildDirectory.dir("generated/secrets/kotlin")
+    val token = tmdbToken
+    inputs.property("tmdbTokenHash", token.hashCode())
+    outputs.dir(out)
+    doLast {
+        val f = out.get().asFile.resolve("com/jox3/tvdesktop/BuildSecrets.kt")
+        f.parentFile.mkdirs()
+        f.writeText(
+            "package com.jox3.tvdesktop\n\n" +
+                "/** Generado al compilar (no editar). */\n" +
+                "internal object BuildSecrets {\n    const val TMDB_TOKEN = \"" + token + "\"\n}\n"
+        )
+    }
+}
+kotlin.sourceSets.named("main") { kotlin.srcDir(generateSecrets) }
+
 tasks.test {
     useJUnitPlatform()
 }
