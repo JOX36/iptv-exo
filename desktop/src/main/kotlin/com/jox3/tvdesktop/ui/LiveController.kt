@@ -95,7 +95,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     }
 
     fun toggleMute() {
-        player.setMuted(!player.muted)
+        player.applyMute(!player.muted)
         flash(if (player.muted) "Sin sonido" else "Sonido activado")
     }
 

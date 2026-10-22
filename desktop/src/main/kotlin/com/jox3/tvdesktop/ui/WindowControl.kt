@@ -22,12 +22,20 @@ class WindowControl(val state: WindowState, val window: ComposeWindow) {
 
     private var before: Triple<WindowPlacement, DpSize, WindowPosition>? = null
 
+    /** Cómo estaba la ventana antes de la pantalla completa (normal o maximizada). */
+    private var beforeFull = WindowPlacement.Floating
+
     fun setFullscreen(on: Boolean) {
-        if (on && mini) setMini(false)
-        state.placement = if (on) WindowPlacement.Fullscreen else WindowPlacement.Floating
+        if (on && mini) switchMini(false)
+        if (on) {
+            if (state.placement != WindowPlacement.Fullscreen) beforeFull = state.placement
+            state.placement = WindowPlacement.Fullscreen
+        } else if (state.placement == WindowPlacement.Fullscreen) {
+            state.placement = beforeFull
+        }
     }
 
-    fun setMini(on: Boolean) {
+    fun switchMini(on: Boolean) {
         if (on == mini) return
         if (on) {
             before = Triple(

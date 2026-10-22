@@ -91,13 +91,13 @@ fun HomeScreen(
         if (live.mode == ViewMode.FULL) {
             control?.setFullscreen(false); live.mode = ViewMode.EMBEDDED; live.panel = com.jox3.tvdesktop.ui.Panel.NONE
         } else {
-            control?.setMini(false); live.mode = ViewMode.FULL; control?.setFullscreen(true)
+            control?.switchMini(false); live.mode = ViewMode.FULL; control?.setFullscreen(true)
         }
     }
     fun toggleMini() {
         if (live.current == null) { live.flash("Elige un canal primero"); return }
-        if (live.mode == ViewMode.MINI) { control?.setMini(false); live.mode = ViewMode.EMBEDDED }
-        else { control?.setFullscreen(false); live.panel = com.jox3.tvdesktop.ui.Panel.NONE; live.mode = ViewMode.MINI; control?.setMini(true) }
+        if (live.mode == ViewMode.MINI) { control?.switchMini(false); live.mode = ViewMode.EMBEDDED }
+        else { control?.setFullscreen(false); live.panel = com.jox3.tvdesktop.ui.Panel.NONE; live.mode = ViewMode.MINI; control?.switchMini(true) }
     }
     fun leaveVideoMode() {
         when (live.mode) {

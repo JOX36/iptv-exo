@@ -167,12 +167,12 @@ class VideoPlayer {
     fun setVolumeTo(v: Int) {
         val nv = v.coerceIn(0, 200)
         volume = nv
-        if (muted && nv > 0) setMuted(false)
+        if (muted && nv > 0) applyMute(false)
         Settings.put("player.volume", nv)
         mp?.let { p -> ctl.execute { runCatching { p.audio().setVolume(nv) } } }
     }
 
-    fun setMuted(m: Boolean) {
+    fun applyMute(m: Boolean) {
         muted = m
         mp?.let { p -> ctl.execute { runCatching { p.audio().setMute(m) } } }
     }
