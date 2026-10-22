@@ -42,6 +42,11 @@ import com.jox3.tvdesktop.data.AccountStore
 import com.jox3.tvdesktop.data.ServerInfo
 import com.jox3.tvdesktop.data.XtreamApi
 import com.jox3.tvdesktop.ui.Brand
+import com.jox3.tvdesktop.ui.KeyRouter
+import com.jox3.tvdesktop.ui.LocalWindowControl
+import com.jox3.tvdesktop.ui.WindowControl
+import com.jox3.tvdesktop.player.VideoPlayer
+import com.jox3.tvdesktop.player.VlcRuntime
 import com.jox3.tvdesktop.ui.HomeScreen
 import com.jox3.tvdesktop.ui.Jx
 import com.jox3.tvdesktop.ui.JxTheme
@@ -78,6 +83,8 @@ fun main(args: Array<String>) {
         }
     }
     Runtime.getRuntime().addShutdownHook(Thread { SingleInstance.release() })
+    // VLC arranca en segundo plano mientras se abre la ventana (así el primer canal sale rápido)
+    kotlin.concurrent.thread(isDaemon = true, name = "vlc-init") { VlcRuntime.factory() }
 
     val prefs = WindowPrefs.load()
 
@@ -88,19 +95,27 @@ fun main(args: Array<String>) {
             position = pos?.let { WindowPosition(it.first.dp, it.second.dp) } ?: WindowPosition(Alignment.Center),
             size = DpSize(prefs.width.dp, prefs.height.dp),
         )
-        // Último tamaño/posición "normal" (no maximizada), para restaurarlo bien al volver a abrir.
+        // Último tamaño/posición "normal" (no maximizada ni mini), para restaurarlo bien al volver a abrir.
         var floating by remember { mutableStateOf(prefs) }
+        var maximized by remember { mutableStateOf(prefs.maximized) }
+        var control by remember { mutableStateOf<WindowControl?>(null) }
         LaunchedEffect(state) {
             snapshotFlow { Triple(state.placement, state.size, state.position) }.collect { (pl, size, p) ->
+                if (control?.mini == true) return@collect
+                if (pl != WindowPlacement.Fullscreen) maximized = pl == WindowPlacement.Maximized
                 if (pl == WindowPlacement.Floating && p.isSpecified) {
                     floating = WindowPrefs(p.x.value.toInt(), p.y.value.toInt(), size.width.value.toInt(), size.height.value.toInt())
                 }
             }
         }
+        // Un solo reproductor para todo el programa
+        val player = remember { VideoPlayer() }
 
         fun close() {
-            WindowPrefs.save(floating.copy(maximized = state.placement == WindowPlacement.Maximized))
+            WindowPrefs.save(floating.copy(maximized = maximized))
             Log.i("Programa cerrado por el usuario")
+            runCatching { player.release() }
+            runCatching { VlcRuntime.release() }
             exitApplication()
         }
 
@@ -120,7 +135,10 @@ fun main(args: Array<String>) {
                 state = state,
                 title = "JOX3 TV",
                 icon = painterResource("icon.png"),
+                onPreviewKeyEvent = { KeyRouter.handler?.invoke(it) ?: false },
             ) {
+                val wc = remember { WindowControl(state, window) }
+                LaunchedEffect(wc) { control = wc }
                 LaunchedEffect(Unit) {
                     window.minimumSize = Dimension(960, 600)
                     // Otra copia pidió mostrarse: traer esta ventana al frente.
@@ -130,7 +148,9 @@ fun main(args: Array<String>) {
                         window.isAlwaysOnTop = true; window.toFront(); window.requestFocus(); window.isAlwaysOnTop = false
                     }
                 }
-                JxTheme { App() }
+                CompositionLocalProvider(LocalWindowControl provides wc) {
+                    JxTheme { App(player) }
+                }
             }
         }
     }
@@ -140,11 +160,11 @@ fun main(args: Array<String>) {
 private sealed interface Screen {
     data object Starting : Screen
     data object Login : Screen
-    data class Home(val account: Account, val info: ServerInfo) : Screen
+    data class Home(val account: Account, val api: XtreamApi, val info: ServerInfo) : Screen
 }
 
 @Composable
-private fun App() {
+private fun App(player: VideoPlayer) {
     val store = remember { AccountStore() }
     val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf<Screen>(Screen.Starting) }
@@ -157,10 +177,11 @@ private fun App() {
         if (busy) return
         busy = true; error = null
         try {
-            val info = XtreamApi(acc).serverInfo()
+            val api = XtreamApi(acc)
+            val info = api.serverInfo()
             store.use(acc)
-            Log.i("Sesión iniciada en ${acc.label} (${info.status})")
-            screen = Screen.Home(acc, info)
+            Log.i("Sesión iniciada en ${acc.label} (${info.status}, en vivo .${api.liveExt})")
+            screen = Screen.Home(acc, api, info)
         } catch (e: Exception) {
             Log.w("No se pudo iniciar sesión en ${acc.label}: ${e.message}")
             error = e.message ?: "No se pudo conectar"
@@ -202,7 +223,9 @@ private fun App() {
         )
         is Screen.Home -> HomeScreen(
             account = s.account,
+            api = s.api,
             info = s.info,
+            player = player,
             version = APP_VERSION,
             onLogout = {
                 store.logout()

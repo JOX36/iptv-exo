@@ -18,6 +18,9 @@ permissions:
   contents: write             # para publicar la versión (Release) con el instalador
   pull-requests: read         # para leer las novedades del PR publicado
 
+env:
+  VLC_VERSION: '3.0.21'     # versión de VLC incluida en el instalador
+
 concurrency:
   group: desktop-${{ github.ref }}
   cancel-in-progress: true
@@ -41,6 +44,52 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.14.3'
+
+      # VLC oficial para incluirlo dentro del instalador (se guarda en caché entre compilaciones).
+      - name: Caché de VLC
+        id: vlc-cache
+        uses: actions/cache@v4
+        with:
+          path: desktop/vlc
+          key: vlc-${{ env.VLC_VERSION }}-win64-v2
+
+      - name: Preparar VLC
+        if: steps.vlc-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $v = "${{ env.VLC_VERSION }}"
+          $url = "https://download.videolan.org/pub/videolan/vlc/$v/win64/vlc-$v-win64.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "vlc.zip"
+          for ($i = 1; $i -le 3; $i++) {
+            try { Invoke-WebRequest $url -OutFile $zip -UseBasicParsing; break } catch { if ($i -eq 3) { throw } ; Start-Sleep 10 }
+          }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          Write-Output "SHA256 de VLC: $hash"
+          # Se compara con la huella oficial publicada por VideoLAN
+          try {
+            $c = (Invoke-WebRequest "$url.sha256" -UseBasicParsing).Content
+            if ($c -is [byte[]]) { $c = [Text.Encoding]::ASCII.GetString($c) }
+            $official = ($c.Trim() -split '\s+')[0].ToLower()
+            if ($official -ne $hash) { Write-Output "::error::La descarga de VLC no coincide con la huella oficial"; exit 1 }
+            Write-Output "Huella oficial verificada"
+          } catch { Write-Output "::warning::No se pudo leer la huella oficial de VLC ($($_.Exception.Message))" }
+          $tmp = Join-Path $env:RUNNER_TEMP "vlc"
+          Expand-Archive $zip -DestinationPath $tmp -Force
+          $src = Get-ChildItem $tmp -Directory | Select-Object -First 1
+          $dst = "desktop/vlc/windows/vlc"
+          New-Item -ItemType Directory -Force $dst | Out-Null
+          Copy-Item (Join-Path $src.FullName "libvlc.dll"), (Join-Path $src.FullName "libvlccore.dll") $dst
+          Copy-Item (Join-Path $src.FullName "plugins") $dst -Recurse
+          # Fuera lo que el programa no usa (interfaz propia de VLC, visualizaciones, scripts,
+          # grabar/retransmitir y buscar dispositivos en la red): instalador más liviano
+          foreach ($d in "gui", "visualization", "lua", "video_splitter", "stream_out", "access_output", "mux", "services_discovery") {
+            $p = Join-Path $dst "plugins/$d"; if (Test-Path $p) { Remove-Item $p -Recurse -Force }
+          }
+          # Caché de plugins: así VLC no los revisa uno por uno cada vez que abre (arranque más rápido)
+          & (Join-Path $src.FullName "vlc-cache-gen.exe") (Resolve-Path (Join-Path $dst "plugins")).Path
+          $mb = [math]::Round(((Get-ChildItem $dst -Recurse | Measure-Object Length -Sum).Sum / 1MB), 1)
+          Write-Output "VLC listo: $mb MB"
 
       # Primero las pruebas automáticas; si alguna falla, no se genera el instalador.
       # createDistributable deja el programa armado (carpeta app/) para la autoprueba.

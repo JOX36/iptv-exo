@@ -28,6 +28,8 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.json:json:20240303")
     implementation("net.java.dev.jna:jna-platform:5.15.0") // cifrado de contraseñas con Windows (DPAPI)
+    implementation("uk.co.caprica:vlcj:4.7.3")             // reproductor: libVLC desde Kotlin (rama 4.7, API estable)
+    implementation("com.google.code.gson:gson:2.11.0")    // lectura por partes de listas JSON enormes
 
     testImplementation(kotlin("test"))
 }
@@ -48,7 +50,14 @@ compose.desktop {
 
             // Partes de Java que se incluyen dentro del instalador (no hace falta tener Java instalado).
             // jdk.crypto.ec: conexiones HTTPS de muchos servidores. jdk.localedata: fechas en español.
-            modules("java.naming", "java.sql", "java.management", "jdk.unsupported", "jdk.crypto.ec", "jdk.charsets", "jdk.localedata")
+            // java.xml: guía de programación de internet (XMLTV).
+            modules("java.naming", "java.sql", "java.management", "java.xml", "jdk.unsupported", "jdk.crypto.ec", "jdk.charsets", "jdk.localedata")
+
+            // VLC va DENTRO del instalador (carpeta vlc/windows/vlc, la prepara CI): el usuario
+            // no instala nada aparte y siempre tiene la versión probada. En el programa queda
+            // en la carpeta de recursos (propiedad compose.application.resources.dir).
+            val vlcDir = project.layout.projectDirectory.dir("vlc")
+            if (vlcDir.asFile.exists()) appResourcesRootDir.set(vlcDir)
 
             windows {
                 iconFile.set(project.file("icons/icon.ico"))

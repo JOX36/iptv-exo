@@ -2,6 +2,10 @@ package com.jox3.tvdesktop.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,103 +19,272 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jox3.tvdesktop.data.Account
+import com.jox3.tvdesktop.data.LibraryStore
 import com.jox3.tvdesktop.data.ServerInfo
+import com.jox3.tvdesktop.data.TvRepo
+import com.jox3.tvdesktop.data.XtreamApi
+import com.jox3.tvdesktop.player.PlayState
+import com.jox3.tvdesktop.player.VideoPlayer
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Quien maneja las teclas de la ventana en este momento (lo registra el inicio). */
+object KeyRouter {
+    var handler: ((KeyEvent) -> Boolean)? = null
+}
+
+private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series") }
+
 /**
- * Inicio tras entrar. Por ahora muestra las secciones (llegan en las etapas 2 y 3)
- * y el estado de la cuenta.
+ * Inicio tras entrar: barra superior con secciones y cuenta, y la sección elegida.
+ * Cuando el video está en pantalla completa o en mini, ocupa toda la ventana.
  */
 @Composable
 fun HomeScreen(
     account: Account,
+    api: XtreamApi,
     info: ServerInfo,
     version: String,
+    player: VideoPlayer,
     onLogout: () -> Unit,
     onOpenLogs: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize().background(Jx.Bg)) {
-        // ── Barra superior ──
-        Row(
-            Modifier.fillMaxWidth().background(Jx.Rail).padding(horizontal = 28.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Brand(iconSize = 34.dp, textSize = 22)
-            Spacer(Modifier.width(36.dp))
-            listOf("En vivo", "Películas", "Series").forEach { name ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(end = 22.dp)) {
-                    Text(name, color = Jx.Faint, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(6.dp))
-                    Pill("Pronto", Jx.Faint)
-                }
-            }
-            Spacer(Modifier.weight(1f))
-            Text(account.label, color = Jx.Muted, style = MaterialTheme.typography.titleSmall)
-        }
+    val repo = remember(account.key) { TvRepo(api, LibraryStore(account)) }
+    val live = remember(repo) { LiveController(repo, player) }
+    val control = LocalWindowControl.current
+    var tab by remember { mutableStateOf(Tab.LIVE) }
+    var showAccount by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-        // ── Contenido ──
-        Box(Modifier.fillMaxSize().padding(40.dp), contentAlignment = Alignment.Center) {
-            Column(
-                Modifier.widthIn(max = 520.dp).fillMaxWidth()
-                    .background(Jx.Surface, RoundedCornerShape(18.dp))
-                    .border(1.dp, Jx.Line, RoundedCornerShape(18.dp))
-                    .padding(28.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Tu cuenta", style = MaterialTheme.typography.headlineSmall)
-                    Spacer(Modifier.width(12.dp))
-                    val active = info.status.equals("Active", ignoreCase = true)
-                    Pill(if (active) "ACTIVA" else info.status.uppercase().ifBlank { "SIN ESTADO" }, if (active) Jx.Ok else Jx.Gold)
+    fun toggleFull() {
+        if (live.current == null) { live.flash("Elige un canal primero"); return }
+        if (live.mode == ViewMode.FULL) {
+            control?.setFullscreen(false); live.mode = ViewMode.EMBEDDED; live.panel = com.jox3.tvdesktop.ui.Panel.NONE
+        } else {
+            control?.switchMini(false); live.mode = ViewMode.FULL; control?.setFullscreen(true)
+        }
+    }
+    fun toggleMini() {
+        if (live.current == null) { live.flash("Elige un canal primero"); return }
+        if (live.mode == ViewMode.MINI) { control?.switchMini(false); live.mode = ViewMode.EMBEDDED }
+        else { control?.setFullscreen(false); live.panel = com.jox3.tvdesktop.ui.Panel.NONE; live.mode = ViewMode.MINI; control?.switchMini(true) }
+    }
+    fun leaveVideoMode() {
+        when (live.mode) {
+            ViewMode.MINI -> toggleMini()
+            ViewMode.FULL -> toggleFull()
+            ViewMode.EMBEDDED -> {}
+        }
+    }
+
+    // Apagado automático
+    LaunchedEffect(live.sleepAt) {
+        val at = live.sleepAt ?: return@LaunchedEffect
+        delay((at - System.currentTimeMillis()).coerceAtLeast(0))
+        if (live.sleepAt == at) {
+            live.sleepAt = null
+            leaveVideoMode()
+            live.stop()
+            live.flash("Apagado automático: reproducción detenida")
+        }
+    }
+
+    // Número de canal tecleado: se cambia 1,5 s después del último dígito
+    var numberJob by remember { mutableStateOf<Job?>(null) }
+    fun typeDigit(d: Int) {
+        if (live.current == null) return
+        live.typedNumber = (live.typedNumber + d).takeLast(5)
+        numberJob?.cancel()
+        numberJob = scope.launch {
+            delay(1500)
+            val n = live.typedNumber.toIntOrNull()
+            live.typedNumber = ""
+            if (n != null && !live.jumpTo(n)) live.flash("No hay canal $n en esta lista")
+        }
+    }
+
+    // ── Atajos de teclado ──
+    DisposableEffect(live) {
+        KeyRouter.handler = handler@{ ev ->
+            if (ev.type != KeyEventType.KeyDown || ev.isCtrlPressed || ev.isAltPressed) return@handler false
+            if (Typing.active && ev.key != Key.Escape) return@handler false
+            val active = live.current != null
+            when (ev.key) {
+                Key.Escape -> when {
+                    live.panel != com.jox3.tvdesktop.ui.Panel.NONE -> live.panel = com.jox3.tvdesktop.ui.Panel.NONE
+                    live.mode != ViewMode.EMBEDDED -> leaveVideoMode()
+                    showAccount -> showAccount = false
+                    else -> return@handler false
                 }
-                Spacer(Modifier.height(18.dp))
-                InfoRow("Servidor", account.host)
-                InfoRow("Usuario", account.user)
-                InfoRow("Vence", info.expires?.let { fmtDate(it) } ?: "Sin fecha de vencimiento")
-                InfoRow("Conexiones", "${info.activeCons} en uso de ${info.maxCons}")
-                Spacer(Modifier.height(22.dp))
-                Text(
-                    "Las secciones En vivo, Películas y Series llegan en las próximas versiones.",
-                    color = Jx.Muted,
-                )
-                Spacer(Modifier.height(22.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // La cuenta queda guardada: se puede volver a entrar con un clic.
-                    OutlinedButton(
-                        onClick = onLogout,
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Jx.Accent),
-                    ) { Text("Cambiar de cuenta") }
+                Key.Spacebar, Key.K -> if (active) player.togglePause() else return@handler false
+                Key.F, Key.F11 -> toggleFull()
+                Key.T -> toggleMini()
+                Key.DirectionUp, Key.PageUp -> if (active) live.step(-1) else return@handler false
+                Key.DirectionDown, Key.PageDown -> if (active) live.step(1) else return@handler false
+                Key.DirectionLeft -> if (active && !player.isLive) player.seekBy(-10_000) else return@handler false
+                Key.DirectionRight -> if (active && !player.isLive) player.seekBy(10_000) else return@handler false
+                Key.Plus, Key.Equals, Key.NumPadAdd -> live.changeVolume(5)
+                Key.Minus, Key.NumPadSubtract -> live.changeVolume(-5)
+                Key.M -> live.toggleMute()
+                Key.A -> if (active) live.cycleAudio() else return@handler false
+                Key.S -> if (active) live.cycleSubtitles() else return@handler false
+                Key.Z -> if (active) live.cycleAspect() else return@handler false
+                Key.I -> if (active) {
+                    if (live.mode != ViewMode.FULL) toggleFull()
+                    live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.INFO) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.INFO
+                } else return@handler false
+                Key.C -> if (active && live.mode == ViewMode.FULL) {
+                    live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.CHANNELS) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.CHANNELS
+                } else return@handler false
+                else -> {
+                    val digit = digitOf(ev.key) ?: return@handler false
+                    typeDigit(digit)
                 }
             }
-            Row(Modifier.align(Alignment.BottomEnd), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = onOpenLogs, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
-                    Text("Registro de errores", color = Jx.Faint, style = MaterialTheme.typography.bodySmall)
+            true
+        }
+        onDispose { KeyRouter.handler = null }
+    }
+
+    if (live.mode != ViewMode.EMBEDDED) {
+        PlayerView(live, Modifier.fillMaxSize(), ::toggleFull, ::toggleMini)
+        return
+    }
+
+    Box(Modifier.fillMaxSize().background(Jx.Bg)) {
+        Column(Modifier.fillMaxSize()) {
+            // ── Barra superior ──
+            Row(
+                Modifier.fillMaxWidth().background(Jx.Rail).padding(horizontal = 22.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Brand(iconSize = 30.dp, textSize = 20)
+                Spacer(Modifier.width(30.dp))
+                Tab.entries.forEach { t ->
+                    TabButton(t.label, selected = tab == t, soon = t != Tab.LIVE) { tab = t }
+                    Spacer(Modifier.width(6.dp))
                 }
-                Text("Versión $version", color = Jx.Faint, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.weight(1f))
+                if (live.current != null && player.state == PlayState.Playing) {
+                    Pill("EN VIVO", Jx.Live)
+                    Spacer(Modifier.width(12.dp))
+                }
+                TabButton(account.label, selected = showAccount, icon = Ico.USER) { showAccount = !showAccount }
+            }
+            // ── Sección ──
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when (tab) {
+                    Tab.LIVE -> LiveScreen(live, ::toggleFull, ::toggleMini)
+                    Tab.MOVIES, Tab.SERIES -> Status("${tab.label} llega en la próxima versión de JOX3 TV para PC.")
+                }
             }
         }
+        if (showAccount) {
+            Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(
+                interactionSource = remember { MutableInteractionSource() }, indication = null,
+            ) { showAccount = false })
+            AccountPanel(account, info, version, Modifier.align(Alignment.TopEnd).padding(top = 60.dp, end = 20.dp),
+                onLogout = { showAccount = false; live.stop(); onLogout() }, onOpenLogs = onOpenLogs)
+        }
+    }
+}
+
+private fun digitOf(k: Key): Int? = when (k) {
+    Key.Zero, Key.NumPad0 -> 0; Key.One, Key.NumPad1 -> 1; Key.Two, Key.NumPad2 -> 2
+    Key.Three, Key.NumPad3 -> 3; Key.Four, Key.NumPad4 -> 4; Key.Five, Key.NumPad5 -> 5
+    Key.Six, Key.NumPad6 -> 6; Key.Seven, Key.NumPad7 -> 7; Key.Eight, Key.NumPad8 -> 8
+    Key.Nine, Key.NumPad9 -> 9; else -> null
+}
+
+@Composable
+private fun TabButton(label: String, selected: Boolean, soon: Boolean = false, icon: Ico? = null, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val hovered by source.collectIsHoveredAsState()
+    Row(
+        Modifier.clip(RoundedCornerShape(10.dp))
+            .background(when { selected -> Jx.SurfaceHi; hovered -> Jx.Surface; else -> Color.Transparent })
+            .hoverable(source).clickable(onClick = onClick).pointerHoverIcon(PointerIcon.Hand)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (icon != null) { JxIcon(icon, 16.dp, if (selected) Jx.Accent else Jx.TextSoft); Spacer(Modifier.width(8.dp)) }
+        Text(label, color = if (selected) Jx.Accent else if (soon) Jx.Faint else Jx.TextSoft,
+            style = MaterialTheme.typography.titleSmall)
+        if (soon) { Spacer(Modifier.width(6.dp)); Pill("Pronto", Jx.Faint) }
+    }
+}
+
+/** Datos de la cuenta, cambiar de cuenta y registro de errores. */
+@Composable
+private fun AccountPanel(
+    account: Account, info: ServerInfo, version: String, modifier: Modifier,
+    onLogout: () -> Unit, onOpenLogs: () -> Unit,
+) {
+    Column(
+        modifier.widthIn(max = 420.dp).fillMaxWidth()
+            .background(Jx.Surface, RoundedCornerShape(16.dp))
+            .border(1.dp, Jx.Line, RoundedCornerShape(16.dp))
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
+            .padding(22.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Tu cuenta", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(12.dp))
+            val active = info.status.equals("Active", ignoreCase = true)
+            Pill(if (active) "ACTIVA" else info.status.uppercase().ifBlank { "SIN ESTADO" }, if (active) Jx.Ok else Jx.Gold)
+        }
+        Spacer(Modifier.height(14.dp))
+        InfoRow("Servidor", account.host)
+        InfoRow("Usuario", account.user)
+        InfoRow("Vence", info.expires?.let { fmtDate(it) } ?: "Sin fecha de vencimiento")
+        InfoRow("Conexiones", "${info.activeCons} en uso de ${info.maxCons}")
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            PillButton("Cambiar de cuenta", onLogout)
+            Text("Registro de errores", color = Jx.Faint, fontSize = 12.sp, fontFamily = Exo2, fontWeight = FontWeight.Medium,
+                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onOpenLogs)
+                    .pointerHoverIcon(PointerIcon.Hand).padding(8.dp))
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("JOX3 TV para PC · versión $version", color = Jx.Faint, fontSize = 11.sp, fontFamily = Exo2)
     }
 }
 
 @Composable
 private fun InfoRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        Text(label, color = Jx.Muted, modifier = Modifier.width(120.dp))
-        Text(value, color = Jx.TextSoft)
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Text(label, color = Jx.Muted, modifier = Modifier.width(110.dp), fontFamily = Exo2, fontSize = 14.sp)
+        Text(value, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 14.sp)
     }
 }
 
