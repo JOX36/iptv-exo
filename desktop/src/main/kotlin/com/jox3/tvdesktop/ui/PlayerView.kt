@@ -125,9 +125,13 @@ fun PlayerView(
                     onDoubleTap = { onToggleFull() },
                     onTap = {
                         focus.clearFocus() // deja de escribir en el buscador: vuelven los atajos
+                        // Se calcula AHORA (no con el valor de cuando se armó la pantalla):
+                        // clic con los controles visibles = ocultar; ocultos = mostrar.
+                        val visibleNow = live.player.state == PlayState.Paused ||
+                            System.currentTimeMillis() - live.overlayAt < 6000
                         when {
                             live.panel != Panel.NONE -> live.panel = Panel.NONE
-                            !embedded && overlay -> live.overlayAt = 0
+                            live.mode != ViewMode.EMBEDDED && visibleNow -> live.overlayAt = 0
                             else -> live.poke()
                         }
                     },
@@ -247,6 +251,12 @@ private fun TopInfo(live: LiveController, now: Long, onExitVod: () -> Unit, modi
             Spacer(Modifier.width(14.dp))
             Text(ch.name, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 22.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        }
+        // Calidad del video que se está viendo ("1080p · Full HD")
+        val w = live.player.videoWidth; val h = live.player.videoHeight
+        if (w > 0 && h > 0) {
+            Pill("${h}p · ${com.jox3.tvdesktop.player.VideoPlayer.qualityLabel(w, h)}", Jx.Accent)
+            Spacer(Modifier.width(18.dp))
         }
         live.sleepAt?.let { at ->
             val min = ((at - now) / 60_000).coerceAtLeast(0) + 1

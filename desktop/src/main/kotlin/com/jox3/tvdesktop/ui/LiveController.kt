@@ -71,6 +71,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     /** Reproduce una película o episodio en pantalla completa, desde [startMs]. */
     fun playVod(session: VodSession, startMs: Long) {
         saveVodProgress()
+        current?.let { lastLive = Triple(it, list, listName) }
         current = null
         vod = session
         panel = Panel.NONE
@@ -120,6 +121,24 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         play(ch, list, listName)
         flash("${ch.num}  ${ch.name}")
         return true
+    }
+
+    /** Último canal en vivo (para seguir viéndolo al volver a En vivo). */
+    private var lastLive: Triple<Channel, List<Channel>, String>? = null
+
+    /** Detiene el canal en vivo pero lo recuerda para retomarlo con [resumeLive]. */
+    fun pauseLive() {
+        val ch = current ?: return
+        lastLive = Triple(ch, list, listName)
+        stop()
+    }
+
+    /** Vuelve a poner el último canal en vivo, si se detuvo al cambiar de sección. */
+    fun resumeLive() {
+        if (hasMedia) return
+        val (ch, l, n) = lastLive ?: return
+        lastLive = null
+        play(ch, l, n)
     }
 
     fun stop() {
