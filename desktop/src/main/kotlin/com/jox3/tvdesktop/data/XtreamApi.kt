@@ -3,7 +3,12 @@ package com.jox3.tvdesktop.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import java.io.InputStreamReader
+import java.util.Base64
 import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
@@ -14,10 +19,7 @@ import java.net.ConnectException
 import javax.net.ssl.SSLException
 import com.jox3.tvdesktop.core.Log
 
-/**
- * Cliente de la API Xtream Codes (player_api.php). Misma lógica que la app Android;
- * en esta etapa solo el inicio de sesión. Las listas llegan en la etapa 2.
- */
+/** Cliente de la API Xtream Codes (player_api.php). Misma lógica que la app Android. */
 class XtreamApi(val account: Account) {
 
     private val host = account.host.trimEnd('/')
@@ -31,7 +33,11 @@ class XtreamApi(val account: Account) {
         append(extra)
     }
 
-    private suspend fun get(url: String): String = withContext(Dispatchers.IO) {
+    /**
+     * Hace la petición y entrega la respuesta a [read] (en un hilo de red). Traduce los
+     * errores de red a mensajes claros y los anota en el registro (sin contraseñas).
+     */
+    private suspend fun <T> request(url: String, read: (okhttp3.ResponseBody) -> T): T = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url)
             .header("User-Agent", Net.API_USER_AGENT)
             .header("Accept", "application/json, */*")
@@ -42,9 +48,7 @@ class XtreamApi(val account: Account) {
                     if (r.code == 401 || r.code == 403) "Acceso denegado: revisa usuario y contraseña, o la cuenta está bloqueada (HTTP ${r.code})"
                     else "El servidor respondió con un error (HTTP ${r.code})"
                 )
-                val body = r.body?.string().orEmpty()
-                if (body.isBlank()) throw IOException("Respuesta vacía del servidor")
-                body
+                read(r.body ?: throw IOException("Respuesta vacía del servidor"))
             }
         } catch (e: UnknownHostException) {
             Log.w("Servidor no encontrado: $url")
@@ -64,8 +68,54 @@ class XtreamApi(val account: Account) {
         }
     }
 
+    private suspend fun get(url: String): String = request(url) { body ->
+        body.string().also { if (it.isBlank()) throw IOException("Respuesta vacía del servidor") }
+    }
+
+    /**
+     * Lista grande (canales, películas, series) leída POR PARTES mientras llega: nunca se
+     * guarda el texto completo en memoria (catálogos de decenas de MB). De cada elemento
+     * solo se guardan [keys]. Mismo método que la app Android.
+     */
+    private suspend fun <T> streamList(url: String, keys: Set<String>, make: (Map<String, String>, Int) -> T?): List<T> =
+        request(url) { body ->
+            val out = ArrayList<T>()
+            JsonReader(InputStreamReader(body.byteStream(), Charsets.UTF_8)).use { jr ->
+                jr.setStrictness(com.google.gson.Strictness.LENIENT)
+                if (jr.peek() != JsonToken.BEGIN_ARRAY) { jr.skipValue(); return@use }
+                jr.beginArray()
+                var i = 0
+                val fields = HashMap<String, String>(keys.size * 2)
+                while (jr.hasNext()) {
+                    if (jr.peek() != JsonToken.BEGIN_OBJECT) { jr.skipValue(); continue }
+                    fields.clear()
+                    jr.beginObject()
+                    while (jr.hasNext()) {
+                        val name = jr.nextName()
+                        if (name !in keys) { jr.skipValue(); continue }
+                        when (jr.peek()) {
+                            JsonToken.STRING, JsonToken.NUMBER -> fields[name] = jr.nextString()
+                            JsonToken.BOOLEAN -> fields[name] = jr.nextBoolean().toString()
+                            JsonToken.NULL -> { jr.nextNull(); fields[name] = "" }
+                            else -> jr.skipValue()
+                        }
+                    }
+                    jr.endObject()
+                    make(fields, i)?.let { out.add(it) }
+                    i++
+                }
+                jr.endArray()
+            }
+            out
+        }
+
     // ── URLs de reproducción ──
-    fun liveUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.m3u8"
+    /**
+     * Canal en vivo. Con VLC el formato .ts (directo) arranca más rápido y se corta menos
+     * que .m3u8; se usa .ts salvo que el servidor diga que no lo permite.
+     */
+    @Volatile var liveExt: String = "ts"
+    fun liveUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.$liveExt"
     fun movieUrl(id: String, ext: String) = "$host/movie/${account.user}/${account.pass}/$id.${ext.ifBlank { "mp4" }}"
     fun episodeUrl(id: String, ext: String) = "$host/series/${account.user}/${account.pass}/$id.${ext.ifBlank { "mkv" }}"
 
@@ -79,6 +129,10 @@ class XtreamApi(val account: Account) {
             val u = json.optJSONObject("user_info") ?: throw IOException("Respuesta no válida del servidor")
             if (u.optInt("auth", 1) == 0) throw IOException("Usuario o contraseña incorrectos")
             val exp = u.optString("exp_date", "").toLongOrNull()?.takeIf { it > 0 }?.times(1000)
+            val formats = u.optJSONArray("allowed_output_formats")?.let { arr ->
+                (0 until arr.length()).map { arr.optString(it).lowercase() }
+            }.orEmpty()
+            liveExt = if (formats.isEmpty() || "ts" in formats) "ts" else "m3u8"
             ServerInfo(
                 status = u.optString("status", ""),
                 expires = exp,
@@ -88,7 +142,62 @@ class XtreamApi(val account: Account) {
         }
     }
 
+    // ── Catálogo ──
+    suspend fun categories(section: Section): List<Category> {
+        val text = get(apiUrl(section.apiCategories)).trim()
+        return withContext(Dispatchers.Default) {
+            if (!text.startsWith("[")) return@withContext emptyList()
+            val arr = JSONArray(text)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val id = o.optString("category_id").ifBlank { return@mapNotNull null }
+                Category(id, o.optString("category_name", "?").trim())
+            }.distinctBy { it.id }
+        }
+    }
+
+    suspend fun channels(categoryId: String? = null): List<Channel> {
+        val extra = if (categoryId != null) "&category_id=${enc(categoryId)}" else ""
+        return streamList(apiUrl("get_live_streams", extra), CH_KEYS) { o, i ->
+            val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
+            Channel(
+                id = id,
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                logo = o["stream_icon"].orEmpty(),
+                categoryId = o["category_id"].orEmpty(),
+                num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
+                epgId = o["epg_channel_id"].orEmpty().takeUnless { it == "null" }.orEmpty(),
+            )
+        }.distinctBy { it.id } // algunos servidores repiten el mismo canal
+    }
+
+    /** Guía corta de un canal: el programa actual y los siguientes. */
+    suspend fun shortEpg(streamId: String, limit: Int = 4): List<EpgItem> {
+        val text = get(apiUrl("get_short_epg", "&stream_id=${enc(streamId)}&limit=$limit"))
+        return withContext(Dispatchers.Default) {
+            val json = try { JSONObject(text) } catch (e: Exception) { return@withContext emptyList() }
+            val list = json.optJSONArray("epg_listings") ?: return@withContext emptyList()
+            (0 until list.length()).mapNotNull { i ->
+                val o = list.optJSONObject(i) ?: return@mapNotNull null
+                val start = o.optString("start_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
+                val end = o.optString("stop_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
+                EpgItem(b64(o.optString("title")), b64(o.optString("description")), start, end)
+            }.filter { it.title.isNotBlank() && it.end > it.start }
+        }
+    }
+
     companion object {
+        private val CH_KEYS = setOf("stream_id", "name", "stream_icon", "category_id", "num", "epg_channel_id")
+
+        /** Los títulos de la guía vienen en Base64; si no lo son, se dejan tal cual. */
+        fun b64(s: String): String {
+            if (s.isBlank()) return ""
+            return try {
+                String(Base64.getMimeDecoder().decode(s.trim()), Charsets.UTF_8).trim()
+                    .takeIf { t -> t.isNotEmpty() && t.none { it == '\uFFFD' } } ?: s
+            } catch (e: IllegalArgumentException) { s }
+        }
+
         /**
          * Acepta lo que el usuario pegue en "Servidor": un host normal, una URL
          * get.php?username=..&password=.. o un enlace /live/usuario/clave/...

@@ -55,6 +55,16 @@ object SelfTest {
             "imagen ${bmp.width}x${bmp.height}"
         }
 
+        check("Reproductor VLC") {
+            val dir = com.jox3.tvdesktop.player.VlcRuntime.bundledDir() ?: error("VLC no viene incluido en el programa")
+            require(java.io.File(dir, "plugins").isDirectory) { "faltan los plugins de VLC" }
+            com.jox3.tvdesktop.player.VlcRuntime.factory() ?: error(com.jox3.tvdesktop.player.VlcRuntime.error ?: "no arrancó")
+            val p = com.jox3.tvdesktop.player.VideoPlayer()
+            require(p.available) { p.unavailableReason ?: "sin reproductor" }
+            p.release()
+            "VLC ${com.jox3.tvdesktop.player.VlcRuntime.version()} (${com.jox3.tvdesktop.player.VlcRuntime.source})"
+        }
+
         lines += if (ok) "RESULTADO: OK" else "RESULTADO: FALLA"
         out.parentFile?.mkdirs()
         out.writeText(lines.joinToString("\n") + "\n")
