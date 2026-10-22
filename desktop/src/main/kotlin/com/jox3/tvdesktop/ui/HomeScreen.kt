@@ -48,6 +48,7 @@ import com.jox3.tvdesktop.data.Account
 import com.jox3.tvdesktop.data.LibraryStore
 import com.jox3.tvdesktop.data.Section
 import com.jox3.tvdesktop.data.ServerInfo
+import com.jox3.tvdesktop.data.ServerHub
 import com.jox3.tvdesktop.data.TvRepo
 import com.jox3.tvdesktop.data.XtreamApi
 import com.jox3.tvdesktop.player.PlayState
@@ -64,7 +65,7 @@ object KeyRouter {
     var handler: ((KeyEvent) -> Boolean)? = null
 }
 
-private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series") }
+private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series"), SEARCH("Buscar") }
 
 /**
  * Inicio tras entrar: barra superior con secciones y cuenta, y la sección elegida.
@@ -77,6 +78,8 @@ fun HomeScreen(
     info: ServerInfo,
     version: String,
     player: VideoPlayer,
+    accounts: List<Account>,
+    onSwitchServer: (Account) -> Unit,
     onLogout: () -> Unit,
     onOpenLogs: () -> Unit,
 ) {
@@ -86,6 +89,42 @@ fun HomeScreen(
     var tab by remember { mutableStateOf(Tab.LIVE) }
     var showAccount by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    /** Abre algo del buscador o de "También en" que está en ESTE servidor. */
+    fun openHere(c: ServerHub.Copy) {
+        when (c.kind) {
+            "live" -> {
+                tab = Tab.LIVE
+                scope.launch {
+                    // Con la lista de su categoría, para poder pasar de canal con ↑ ↓
+                    val list = runCatching { repo.channels(c.categoryId) }.getOrDefault(emptyList())
+                    val ch = list.firstOrNull { it.id == c.id } ?: com.jox3.tvdesktop.data.Channel(c.id, c.name, c.image, c.categoryId, 1)
+                    live.play(ch, list.ifEmpty { listOf(ch) }, "Búsqueda")
+                }
+            }
+            "movie" -> { tab = Tab.MOVIES; live.openRequest = OpenRequest("movie", c.id, c.name, c.image, c.ext, c.categoryId) }
+            "series" -> { tab = Tab.SERIES; live.openRequest = OpenRequest("series", c.id, c.name, c.image, "", c.categoryId) }
+        }
+    }
+
+    /** Abrir en este servidor o cambiar a otro (y abrir allá al entrar). */
+    fun open(acc: Account, c: ServerHub.Copy?) {
+        if (acc.key == account.key) { c?.let(::openHere); return }
+        live.stop()
+        ServerHub.pendingOpen = c
+        onSwitchServer(acc)
+    }
+    val serverCtx = remember(account.key, accounts) { ServerCtx(account, accounts, ::open) }
+
+    // Al entrar: lo pendiente de otro servidor, estado de los servidores y sus catálogos para buscar
+    LaunchedEffect(account.key) {
+        ServerHub.pendingOpen?.let { p -> if (p.account.key == account.key) { ServerHub.pendingOpen = null; openHere(p) } }
+        ServerHub.refresh(accounts)
+        if (accounts.size > 1 && ServerHub.searchAllEnabled()) {
+            delay(8000) // primero que cargue lo de este servidor
+            ServerHub.ensureIndexes(accounts.filter { it.key != account.key })
+        }
+    }
 
     /** Empieza una película o episodio: deja el canal en vivo y ocupa toda la ventana. */
     fun startVod(session: VodSession, startMs: Long) {
@@ -164,6 +203,9 @@ fun HomeScreen(
     // ── Atajos de teclado ──
     DisposableEffect(live) {
         KeyRouter.handler = handler@{ ev ->
+            if (ev.type == KeyEventType.KeyDown && ev.isCtrlPressed && ev.key == Key.F && live.mode == ViewMode.EMBEDDED && live.vod == null) {
+                tab = Tab.SEARCH; return@handler true   // Ctrl + F: buscador
+            }
             if (ev.type != KeyEventType.KeyDown || ev.isCtrlPressed || ev.isAltPressed) return@handler false
             if (Typing.active && ev.key != Key.Escape) return@handler false
             val active = live.hasMedia
@@ -216,6 +258,7 @@ fun HomeScreen(
         if (tab == Tab.LIVE && live.vod == null) live.resumeLive()
     }
 
+    androidx.compose.runtime.CompositionLocalProvider(LocalServers provides serverCtx) {
     Box(Modifier.fillMaxSize().background(Jx.Bg)) {
         Column(Modifier.fillMaxSize()) {
             // ── Barra superior ──
@@ -226,7 +269,7 @@ fun HomeScreen(
                 Brand(iconSize = 30.dp, textSize = 20)
                 Spacer(Modifier.width(30.dp))
                 Tab.entries.forEach { t ->
-                    TabButton(t.label, selected = tab == t) { tab = t }
+                    TabButton(t.label, selected = tab == t, icon = if (t == Tab.SEARCH) Ico.SEARCH else null) { tab = t }
                     Spacer(Modifier.width(6.dp))
                 }
                 Spacer(Modifier.weight(1f))
@@ -242,6 +285,7 @@ fun HomeScreen(
                     Tab.LIVE -> LiveScreen(live, ::toggleFull, ::toggleMini)
                     Tab.MOVIES -> VodScreen(live, Section.VOD, onPlay = ::startVod)
                     Tab.SERIES -> VodScreen(live, Section.SERIES, onPlay = ::startVod)
+                    Tab.SEARCH -> SearchScreen(live) { c -> open(c.account, c) }
                 }
             }
         }
@@ -254,9 +298,11 @@ fun HomeScreen(
             Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
             ) { showAccount = false })
-            AccountPanel(account, info, version, Modifier.align(Alignment.TopEnd).padding(top = 60.dp, end = 20.dp),
+            AccountPanel(account, accounts, info, version, Modifier.align(Alignment.TopEnd).padding(top = 60.dp, end = 20.dp),
+                onUse = { acc -> showAccount = false; open(acc, null) },
                 onLogout = { showAccount = false; live.stop(); onLogout() }, onOpenLogs = onOpenLogs)
         }
+    }
     }
 }
 
@@ -285,14 +331,14 @@ private fun TabButton(label: String, selected: Boolean, soon: Boolean = false, i
     }
 }
 
-/** Datos de la cuenta, cambiar de cuenta y registro de errores. */
+/** Datos de la cuenta, los servidores guardados (con su estado) y el registro de errores. */
 @Composable
 private fun AccountPanel(
-    account: Account, info: ServerInfo, version: String, modifier: Modifier,
-    onLogout: () -> Unit, onOpenLogs: () -> Unit,
+    account: Account, accounts: List<Account>, info: ServerInfo, version: String, modifier: Modifier,
+    onUse: (Account) -> Unit, onLogout: () -> Unit, onOpenLogs: () -> Unit,
 ) {
     Column(
-        modifier.widthIn(max = 420.dp).fillMaxWidth()
+        modifier.widthIn(max = 460.dp).fillMaxWidth()
             .background(Jx.Surface, RoundedCornerShape(16.dp))
             .border(1.dp, Jx.Line, RoundedCornerShape(16.dp))
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
@@ -309,9 +355,44 @@ private fun AccountPanel(
         InfoRow("Usuario", account.user)
         InfoRow("Vence", info.expires?.let { fmtDate(it) } ?: "Sin fecha de vencimiento")
         InfoRow("Conexiones", "${info.activeCons} en uso de ${info.maxCons}")
+
+        // ── Servidores ──
+        Spacer(Modifier.height(16.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Servidores", color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, modifier = Modifier.weight(1f))
+            Text("Revisar", color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp, modifier = Modifier.clip(RoundedCornerShape(6.dp))
+                .clickable { ServerHub.refresh(accounts, force = true) }.pointerHoverIcon(PointerIcon.Hand).padding(6.dp))
+        }
+        Spacer(Modifier.height(6.dp))
+        accounts.forEach { acc ->
+            val st = ServerHub.status[acc.key]
+            val here = acc.key == account.key
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                Letter(ServerHub.letter(accounts, acc), here)
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(ServerHub.name(accounts, acc), color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp, maxLines = 1)
+                    val detail = when {
+                        st == null -> "Revisando…"
+                        !st.ok -> st.error.ifBlank { "No responde" }
+                        else -> listOfNotNull(
+                            "${st.pingMs} ms",
+                            st.daysLeft?.let { if (it == 0L) "vence hoy" else "vence en $it días" },
+                            st.info?.let { "${it.activeCons}/${it.maxCons} conexiones" },
+                        ).joinToString(" · ")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(levelColor(st?.level)))
+                        Spacer(Modifier.width(6.dp))
+                        Text(detail, color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp, maxLines = 1)
+                    }
+                }
+                if (here) Pill("EN USO", Jx.Accent) else GhostButton("Usar") { onUse(acc) }
+            }
+        }
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            PillButton("Cambiar de cuenta", onLogout)
+            PillButton("Agregar o cambiar cuenta", onLogout)
             Text("Registro de errores", color = Jx.Faint, fontSize = 12.sp, fontFamily = Exo2, fontWeight = FontWeight.Medium,
                 modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onOpenLogs)
                     .pointerHoverIcon(PointerIcon.Hand).padding(8.dp))
