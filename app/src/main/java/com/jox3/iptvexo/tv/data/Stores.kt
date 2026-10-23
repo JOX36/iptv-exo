@@ -179,7 +179,7 @@ class LibraryStore(context: Context, accountKey: String) {
 
     private fun fromJson(o: JSONObject) = SavedItem(
         kind = o.optString("kind"), id = o.optString("id"),
-        name = Names.clean(o.optString("name"), titles = o.optString("kind") != "live"),
+        name = o.optString("name").let { n -> if (o.optString("kind") == "live") Names.channel(n) else Names.clean(n, titles = true) },
         image = o.optString("image"), ext = o.optString("ext"), seriesId = o.optString("seriesId"),
         categoryId = o.optString("categoryId"), ts = o.optLong("ts"),
     )
