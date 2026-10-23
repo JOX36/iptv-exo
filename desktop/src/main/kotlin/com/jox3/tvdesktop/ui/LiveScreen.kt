@@ -145,6 +145,20 @@ fun LiveScreen(live: LiveController, onToggleFull: () -> Unit, onToggleMini: () 
                 if (q.isEmpty()) allCats else allCats.filter { it.id == FAV_ID || it.id == RECENT_ID || TvRepo.normalize(it.name).contains(q) }
             }
             val catState = rememberLazyListState()
+            // ← → pasan de categoría; la lista se desplaza sola hasta la elegida
+            androidx.compose.runtime.DisposableEffect(shownCats) {
+                live.categoryStep = { d ->
+                    val i = shownCats.indexOfFirst { it.id == selected?.id }
+                    shownCats.getOrNull((i + d).coerceIn(0, shownCats.size - 1))?.let { selected = it }
+                }
+                onDispose { live.categoryStep = null }
+            }
+            LaunchedEffect(selected?.id) {
+                val i = shownCats.indexOfFirst { it.id == selected?.id }
+                if (i >= 0 && (i < catState.firstVisibleItemIndex || i > catState.firstVisibleItemIndex + catState.layoutInfo.visibleItemsInfo.size - 2)) {
+                    catState.animateScrollToItem((i - 3).coerceAtLeast(0))
+                }
+            }
             Box(Modifier.fillMaxSize()) {
                 LazyColumn(Modifier.fillMaxSize(), state = catState, contentPadding = PaddingValues(start = 8.dp, end = 12.dp, bottom = 16.dp)) {
                     items(shownCats, key = { it.id }) { c ->
@@ -193,7 +207,12 @@ fun LiveScreen(live: LiveController, onToggleFull: () -> Unit, onToggleMini: () 
                 else -> {
                     val state = rememberLazyListState()
                     // Al volver de pantalla completa, la lista muestra el canal que se está viendo
-                    LaunchedEffect(live.mode, selected?.id) {
+                    // ↑ ↓ sin canal sonando: desplazan la lista
+                    androidx.compose.runtime.DisposableEffect(state) {
+                        live.listScroll = { d -> scope.launch { state.animateScrollToItem((state.firstVisibleItemIndex + d * 5).coerceAtLeast(0)) } }
+                        onDispose { live.listScroll = null }
+                    }
+                    LaunchedEffect(live.mode, selected?.id, live.current?.id) {
                         if (live.mode != ViewMode.EMBEDDED) return@LaunchedEffect
                         val i = shownChannels.indexOfFirst { it.id == live.current?.id }
                         if (i >= 0 && (i < state.firstVisibleItemIndex || i > state.firstVisibleItemIndex + 8)) {

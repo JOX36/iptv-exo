@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowExceptionHandler
@@ -34,6 +37,8 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.jox3.tvdesktop.core.Crash
+import com.jox3.tvdesktop.core.CrashReport
+import com.jox3.tvdesktop.core.KeepAwake
 import com.jox3.tvdesktop.core.Log
 import com.jox3.tvdesktop.core.SelfTest
 import com.jox3.tvdesktop.core.SingleInstance
@@ -83,7 +88,13 @@ fun main(args: Array<String>) {
             exitProcess(0)
         }
     }
-    Runtime.getRuntime().addShutdownHook(Thread { SingleInstance.release() })
+    // ¿La vez anterior se cerró de golpe? (se ofrece el informe al abrir)
+    val crashedLastTime = CrashReport.startSession()
+    Runtime.getRuntime().addShutdownHook(Thread {
+        // Apagar el PC con el programa abierto también es un cierre normal
+        if (!Crash.handledCrash) CrashReport.endSession()
+        SingleInstance.release()
+    })
     // VLC arranca en segundo plano mientras se abre la ventana (así el primer canal sale rápido)
     kotlin.concurrent.thread(isDaemon = true, name = "vlc-init") { VlcRuntime.factory() }
 
@@ -110,13 +121,16 @@ fun main(args: Array<String>) {
             }
         }
         // Un solo reproductor para todo el programa
-        val player = remember { VideoPlayer() }
+        val player = remember {
+            VideoPlayer().also { p -> KeepAwake.start { p.state == com.jox3.tvdesktop.player.PlayState.Playing } }
+        }
 
         fun close() {
             WindowPrefs.save(floating.copy(maximized = maximized))
             Log.i("Programa cerrado por el usuario")
             runCatching { player.release() }
             runCatching { VlcRuntime.release() }
+            CrashReport.endSession()
             exitApplication()
         }
 
@@ -124,6 +138,7 @@ fun main(args: Array<String>) {
         CompositionLocalProvider(
             LocalWindowExceptionHandlerFactory provides WindowExceptionHandlerFactory { _ ->
                 WindowExceptionHandler { e ->
+                    Crash.handledCrash = true
                     Log.e("Fallo en la ventana", e)
                     Crash.showDialog(e, fatal = true)
                     SingleInstance.release()
@@ -150,7 +165,7 @@ fun main(args: Array<String>) {
                     }
                 }
                 CompositionLocalProvider(LocalWindowControl provides wc) {
-                    JxTheme { App(player) }
+                    JxTheme { App(player, crashedLastTime) }
                 }
             }
         }
@@ -165,7 +180,7 @@ private sealed interface Screen {
 }
 
 @Composable
-private fun App(player: VideoPlayer) {
+private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
     val store = remember { AccountStore() }
     val scope = rememberCoroutineScope()
     var screen by remember { mutableStateOf<Screen>(Screen.Starting) }
@@ -259,6 +274,9 @@ private fun App(player: VideoPlayer) {
                     .padding(horizontal = 16.dp, vertical = 10.dp))
         }
     }
+    // Informe de cierre inesperado (si la vez anterior se cerró de golpe)
+    var showCrash by remember { mutableStateOf(crashedLastTime) }
+    if (showCrash) CrashNotice(onClose = { showCrash = false })
     if (busy && screen is Screen.Home) {
         Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x88000000)), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -280,6 +298,31 @@ private fun Splash() {
             CircularProgressIndicator(color = Jx.Accent)
             Spacer(Modifier.height(14.dp))
             Text("Conectando…", color = Jx.Muted)
+        }
+    }
+}
+
+@Composable
+private fun CrashNotice(onClose: () -> Unit) {
+    var copied by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color(0x99000000)), contentAlignment = Alignment.Center) {
+        Column(
+            Modifier.widthIn(max = 520.dp).background(Jx.Surface, androidx.compose.foundation.shape.RoundedCornerShape(16.dp)).padding(24.dp)
+        ) {
+            Text("JOX3 TV se cerró de forma inesperada", color = Jx.Text, fontFamily = com.jox3.tvdesktop.ui.Exo2,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, fontSize = 18.sp)
+            Spacer(Modifier.height(8.dp))
+            Text("La última vez el programa se cerró sin avisar. El informe ayuda a encontrar la causa: " +
+                "cópialo y pégalo en un mensaje para el desarrollador. No incluye contraseñas.",
+                color = Jx.TextSoft, fontFamily = com.jox3.tvdesktop.ui.Exo2)
+            Spacer(Modifier.height(18.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                com.jox3.tvdesktop.ui.PillButton(if (copied) "¡Copiado!" else "Copiar informe") {
+                    copied = CrashReport.copyToClipboard(APP_VERSION)
+                }
+                com.jox3.tvdesktop.ui.GhostButton("Abrir carpeta") { Crash.openLogs() }
+                com.jox3.tvdesktop.ui.GhostButton("Cerrar") { onClose() }
+            }
         }
     }
 }

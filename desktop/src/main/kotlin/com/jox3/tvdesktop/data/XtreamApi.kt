@@ -115,7 +115,11 @@ class XtreamApi(val account: Account) {
      * que .m3u8; se usa .ts salvo que el servidor diga que no lo permite.
      */
     @Volatile var liveExt: String = "ts"
-    fun liveUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.$liveExt"
+    fun liveUrl(id: String): String {
+        // Ajustes → En vivo → Formato de los canales (automático = lo que permite el servidor)
+        val ext = when (com.jox3.tvdesktop.core.Settings.string("live.format", "auto")) { "ts" -> "ts"; "m3u8" -> "m3u8"; else -> liveExt }
+        return "$host/live/${account.user}/${account.pass}/$id.$ext"
+    }
     fun movieUrl(id: String, ext: String) = "$host/movie/${account.user}/${account.pass}/$id.${ext.ifBlank { "mp4" }}"
     fun episodeUrl(id: String, ext: String) = "$host/series/${account.user}/${account.pass}/$id.${ext.ifBlank { "mkv" }}"
 

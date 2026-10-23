@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -66,7 +67,7 @@ object KeyRouter {
     var handler: ((KeyEvent) -> Boolean)? = null
 }
 
-private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series"), SEARCH("Buscar") }
+private enum class Tab(val label: String) { LIVE("En vivo"), MOVIES("Películas"), SERIES("Series"), SEARCH("Buscar"), SETTINGS("Ajustes") }
 
 /**
  * Inicio tras entrar: barra superior con secciones y cuenta, y la sección elegida.
@@ -136,11 +137,25 @@ fun HomeScreen(
     /** Sale de la película o episodio: guarda dónde quedó y vuelve a su ficha. */
     fun exitVod() {
         control?.setFullscreen(false); control?.switchMini(false)
-        live.stop()
+        live.panel = com.jox3.tvdesktop.ui.Panel.NONE
+        // Como en la TV y el celular: el video sigue en una ventanita mientras navegas
+        if (com.jox3.tvdesktop.core.Settings.bool("player.pip", true) && live.vod?.item?.kind != "trailer") live.mode = ViewMode.PIP
+        else live.stop()
+    }
+
+    /** Ventanita de la esquina → grande otra vez. */
+    fun expandPip() {
+        if (live.vod != null) live.mode = ViewMode.FULL
+        else { tab = Tab.LIVE; live.mode = ViewMode.EMBEDDED }
     }
 
     fun toggleFull() {
         if (!live.hasMedia) { live.flash("Elige un canal primero"); return }
+        if (live.mode == ViewMode.PIP) {
+            live.mode = ViewMode.FULL
+            if (live.vod == null) control?.setFullscreen(true)
+            return
+        }
         if (live.vod != null && live.mode == ViewMode.FULL) {
             // Película: alterna entre pantalla completa real y ventana, sin salir del video
             control?.let { it.setFullscreen(!it.fullscreen) }; return
@@ -155,7 +170,7 @@ fun HomeScreen(
         if (!live.hasMedia) { live.flash("Elige un canal primero"); return }
         if (live.mode == ViewMode.MINI) {
             control?.switchMini(false)
-            live.mode = if (live.vod != null) ViewMode.FULL else ViewMode.EMBEDDED
+            live.mode = if (live.vod != null) ViewMode.FULL else if (tab == Tab.LIVE) ViewMode.EMBEDDED else ViewMode.PIP
         }
         else { control?.setFullscreen(false); live.panel = com.jox3.tvdesktop.ui.Panel.NONE; live.mode = ViewMode.MINI; control?.switchMini(true) }
     }
@@ -164,7 +179,7 @@ fun HomeScreen(
         when (live.mode) {
             ViewMode.MINI -> toggleMini()
             ViewMode.FULL -> toggleFull()
-            ViewMode.EMBEDDED -> {}
+            ViewMode.EMBEDDED, ViewMode.PIP -> {}
         }
     }
 
@@ -214,7 +229,7 @@ fun HomeScreen(
             when (ev.key) {
                 Key.Escape -> when {
                     live.panel != com.jox3.tvdesktop.ui.Panel.NONE -> live.panel = com.jox3.tvdesktop.ui.Panel.NONE
-                    live.mode != ViewMode.EMBEDDED -> leaveVideoMode()
+                    live.mode == ViewMode.FULL || live.mode == ViewMode.MINI -> leaveVideoMode()
                     showAccount -> showAccount = false
                     else -> return@handler false
                 }
@@ -222,10 +237,30 @@ fun HomeScreen(
                 Key.F, Key.F11 -> toggleFull()
                 Key.T -> toggleMini()
                 // En vivo ↑↓ cambian de canal; en películas ↑↓ es el volumen y ←→ adelanta o atrasa 10 s
-                Key.DirectionUp, Key.PageUp -> if (isVod) live.changeVolume(5) else if (active) live.step(-1) else return@handler false
-                Key.DirectionDown, Key.PageDown -> if (isVod) live.changeVolume(-5) else if (active) live.step(1) else return@handler false
-                Key.DirectionLeft -> if (isVod) live.seekBy(-10_000) else return@handler false
-                Key.DirectionRight -> if (isVod) live.seekBy(10_000) else return@handler false
+                // En películas: ↑ ↓ volumen y ← → adelantar/atrasar. En vivo: ↑ ↓ canal.
+                // En las listas: ← → cambian de categoría y ↑ ↓ desplazan (si no hay canal sonando).
+                Key.DirectionUp, Key.PageUp -> when {
+                    isVod -> live.changeVolume(5)
+                    live.current != null && tab == Tab.LIVE || live.mode != ViewMode.EMBEDDED -> live.step(-1)
+                    live.listScroll != null -> live.listScroll?.invoke(-1)
+                    else -> return@handler false
+                }
+                Key.DirectionDown, Key.PageDown -> when {
+                    isVod -> live.changeVolume(-5)
+                    live.current != null && tab == Tab.LIVE || live.mode != ViewMode.EMBEDDED -> live.step(1)
+                    live.listScroll != null -> live.listScroll?.invoke(1)
+                    else -> return@handler false
+                }
+                Key.DirectionLeft -> when {
+                    isVod -> live.seekBy(-10_000)
+                    live.mode == ViewMode.EMBEDDED && live.categoryStep != null -> live.categoryStep?.invoke(-1)
+                    else -> return@handler false
+                }
+                Key.DirectionRight -> when {
+                    isVod -> live.seekBy(10_000)
+                    live.mode == ViewMode.EMBEDDED && live.categoryStep != null -> live.categoryStep?.invoke(1)
+                    else -> return@handler false
+                }
                 Key.V -> if (isVod) live.cycleSpeed() else return@handler false
                 Key.N -> if (isVod && live.vod?.next != null) live.vod?.next?.invoke() else return@handler false
                 Key.Plus, Key.Equals, Key.NumPadAdd -> live.changeVolume(5)
@@ -254,9 +289,15 @@ fun HomeScreen(
 
     // Si se cambia de sección con un canal sonando en la vista previa, se detiene (sin audio escondido)
     // y al volver a En vivo el mismo canal sigue solo.
+    // Con la opción de mini reproductor (Ajustes), el canal sigue en la ventanita de la esquina.
     LaunchedEffect(tab, live.vod) {
-        if (tab != Tab.LIVE && live.mode == ViewMode.EMBEDDED && live.current != null) live.pauseLive()
-        if (tab == Tab.LIVE && live.vod == null) live.resumeLive()
+        val pip = com.jox3.tvdesktop.core.Settings.bool("player.pip", true)
+        if (tab != Tab.LIVE && live.mode == ViewMode.EMBEDDED && live.current != null) {
+            if (pip) live.mode = ViewMode.PIP else live.pauseLive()
+        }
+        if (tab == Tab.LIVE && live.vod == null) {
+            if (live.mode == ViewMode.PIP) live.mode = ViewMode.EMBEDDED else live.resumeLive()
+        }
     }
 
     androidx.compose.runtime.CompositionLocalProvider(LocalServers provides serverCtx) {
@@ -270,7 +311,7 @@ fun HomeScreen(
                 Brand(iconSize = 30.dp, textSize = 20)
                 Spacer(Modifier.width(30.dp))
                 Tab.entries.forEach { t ->
-                    TabButton(t.label, selected = tab == t, icon = if (t == Tab.SEARCH) Ico.SEARCH else null) { tab = t }
+                    TabButton(t.label, selected = tab == t, icon = when (t) { Tab.SEARCH -> Ico.SEARCH; Tab.SETTINGS -> Ico.SETTINGS; else -> null }) { tab = t }
                     Spacer(Modifier.width(6.dp))
                 }
                 Spacer(Modifier.weight(1f))
@@ -287,15 +328,25 @@ fun HomeScreen(
                     Tab.MOVIES -> VodScreen(live, Section.VOD, onPlay = ::startVod)
                     Tab.SERIES -> VodScreen(live, Section.SERIES, onPlay = ::startVod)
                     Tab.SEARCH -> SearchScreen(live) { c -> open(c.account, c) }
+                    Tab.SETTINGS -> SettingsScreen(live, version)
                 }
             }
         }
         // Video en ventana completa o mini: va ENCIMA de la sección, así al volver todo sigue
         // donde estaba (la ficha abierta, la categoría, la posición de la lista).
-        if (live.mode != ViewMode.EMBEDDED || live.vod != null) {
+        if (live.mode == ViewMode.FULL || live.mode == ViewMode.MINI) {
             PlayerView(live, Modifier.fillMaxSize(), ::toggleFull, ::toggleMini, ::exitVod)
         }
-        if (showAccount && live.mode == ViewMode.EMBEDDED && live.vod == null) {
+        if (live.mode == ViewMode.PIP && live.hasMedia) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).padding(20.dp).size(width = 400.dp, height = 225.dp)
+                    .shadow(16.dp, RoundedCornerShape(14.dp)).clip(RoundedCornerShape(14.dp))
+                    .border(1.dp, Jx.Line, RoundedCornerShape(14.dp))
+            ) {
+                PlayerView(live, Modifier.fillMaxSize(), ::expandPip, ::toggleMini, onExitVod = { live.stop() })
+            }
+        }
+        if (showAccount && (live.mode == ViewMode.EMBEDDED || live.mode == ViewMode.PIP)) {
             Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
             ) { showAccount = false })

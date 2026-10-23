@@ -9,6 +9,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.platform.Font
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /** Mismos colores que la app Android (tv/ui/Theme.kt). */
@@ -71,5 +72,14 @@ private val JxColors = darkColorScheme(
 
 @Composable
 fun JxTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = JxColors, typography = JxTypography, content = content)
+    // Barras de desplazamiento visibles (cian al pasar el mouse)
+    val scrollbars = androidx.compose.foundation.defaultScrollbarStyle().copy(
+        thickness = 8.dp,
+        unhoverColor = Jx.Line,
+        hoverColor = Jx.Accent.copy(alpha = 0.7f),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(4.dp),
+    )
+    androidx.compose.runtime.CompositionLocalProvider(androidx.compose.foundation.LocalScrollbarStyle provides scrollbars) {
+        MaterialTheme(colorScheme = JxColors, typography = JxTypography, content = content)
+    }
 }

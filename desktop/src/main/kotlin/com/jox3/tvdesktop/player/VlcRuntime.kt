@@ -46,11 +46,13 @@ object VlcRuntime {
                 else -> "del sistema (${discovery.discoveredPath()})"
             }
             if (!found) throw IllegalStateException("No se encontró VLC")
+            // Decodificación por hardware (Ajustes): si da problemas en un PC, se puede apagar
+            val hw = if (com.jox3.tvdesktop.core.Settings.bool("player.hw", true)) "--avcodec-hw=any" else "--avcodec-hw=none"
             MediaPlayerFactory(
+                hw,
                 "--no-video-title-show", // sin el nombre del archivo encima del video
                 "--no-osd",
                 "--no-snapshot-preview",
-                "--no-lua",
                 "--http-reconnect",      // si la conexión se corta, VLC intenta seguir
                 "--quiet",
             ).also {

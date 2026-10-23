@@ -51,7 +51,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: desktop/vlc
-          key: vlc-${{ env.VLC_VERSION }}-win64-v2
+          key: vlc-${{ env.VLC_VERSION }}-win64-v3
 
       - name: Preparar VLC
         if: steps.vlc-cache.outputs.cache-hit != 'true'
@@ -81,11 +81,17 @@ jobs:
           New-Item -ItemType Directory -Force $dst | Out-Null
           Copy-Item (Join-Path $src.FullName "libvlc.dll"), (Join-Path $src.FullName "libvlccore.dll") $dst
           Copy-Item (Join-Path $src.FullName "plugins") $dst -Recurse
-          # Fuera lo que el programa no usa (interfaz propia de VLC, visualizaciones, scripts,
+          # Fuera lo que el programa no usa (interfaz propia de VLC, visualizaciones,
           # grabar/retransmitir y buscar dispositivos en la red): instalador más liviano
-          foreach ($d in "gui", "visualization", "lua", "video_splitter", "stream_out", "access_output", "mux", "services_discovery") {
+          foreach ($d in "gui", "visualization", "video_splitter", "stream_out", "access_output", "mux", "services_discovery") {
             $p = Join-Path $dst "plugins/$d"; if (Test-Path $p) { Remove-Item $p -Recurse -Force }
           }
+          # Solo el script de YouTube (para ver tráileres dentro del programa)
+          $yt = Get-ChildItem (Join-Path $src.FullName "lua/playlist") -Filter "youtube.*" | Select-Object -First 1
+          if ($yt) {
+            New-Item -ItemType Directory -Force (Join-Path $dst "lua/playlist") | Out-Null
+            Copy-Item $yt.FullName (Join-Path $dst "lua/playlist")
+          } else { Write-Output "::warning::No se encontró el script de YouTube de VLC" }
           # Caché de plugins: así VLC no los revisa uno por uno cada vez que abre (arranque más rápido)
           & (Join-Path $src.FullName "vlc-cache-gen.exe") (Resolve-Path (Join-Path $dst "plugins")).Path
           $mb = [math]::Round(((Get-ChildItem $dst -Recurse | Measure-Object Length -Sum).Sum / 1MB), 1)
