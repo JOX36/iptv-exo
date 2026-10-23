@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.PlayerLauncher
 import com.jox3.iptvexo.tv.data.Account
@@ -87,6 +88,13 @@ fun PhoneApp(act: PhoneActivity) {
     }
     key(acc.key) {
         val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
+        // Historial en la nube: se sincroniza mientras la app está en pantalla
+        val syncOwner = LocalLifecycleOwner.current
+        LaunchedEffect(repo) {
+            syncOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                com.jox3.iptvexo.tv.data.CloudSync.run(context.applicationContext, acc, repo.library)
+            }
+        }
         PhoneShell(act, repo, accounts, acc,
             onSwitch = { a -> accounts.use(a); account = a },
             onAdd = { adding = true },

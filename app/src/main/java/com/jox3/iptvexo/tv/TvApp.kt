@@ -49,6 +49,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.jox3.iptvexo.tv.player.LiveFullscreen
 import com.jox3.iptvexo.tv.player.LivePlayback
 import com.jox3.iptvexo.tv.player.LocalLive
@@ -138,6 +139,13 @@ fun TvApp(host: TvHost) {
     }
     key(acc.key) {
         val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
+        // Historial en la nube: se sincroniza mientras la app está en pantalla
+        val syncOwner = LocalLifecycleOwner.current
+        LaunchedEffect(repo) {
+            syncOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                com.jox3.iptvexo.tv.data.CloudSync.run(context.applicationContext, acc, repo.library)
+            }
+        }
         host.player.repo = repo
         MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
             onDelete = { accounts.delete(acc); account = null },

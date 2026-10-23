@@ -1,0 +1,11 @@
+# Servidor de sincronización de JOX3 TV (historial, favoritos y recientes entre dispositivos).
+# Se publica solo desde GitHub Actions (.github/workflows/sync-server.yml).
+name = "jox3-sync"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jox3"
+database_id = "e75537aa-f2a5-440a-bd99-6264d76a48d8"
