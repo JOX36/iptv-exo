@@ -32,6 +32,7 @@ jobs:
           command: d1 execute jox3 --remote --file=schema.sql
 
       - name: Publicar
+        id: deploy
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -40,11 +41,16 @@ jobs:
           command: deploy
 
       - name: Probar que responde
+        env:
+          URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
-          sleep 5
-          curl -fsS https://jox3-sync.jox3.workers.dev/ ; echo
+          U="${URL:-https://jox3-sync.jox3.workers.dev}"
+          echo "Dirección: $U"
+          # Un subdominio nuevo de workers.dev puede tardar unos minutos en existir
+          for i in $(seq 1 30); do curl -fsS "$U/" && break; sleep 10; done; echo
           T=$(date +%s%3N)
-          curl -fsS -X POST https://jox3-sync.jox3.workers.dev/v1/sync -H 'content-type: application/json' \
+          curl -fsS -X POST "$U/v1/sync" -H 'content-type: application/json' \
             -d "{\"acc\":\"$(printf '0%.0s' {1..64})\",\"profile\":\"prueba\",\"since\":0,\"changes\":[{\"list\":\"fav\",\"item\":\"movie:1\",\"data\":\"{}\",\"ts\":$T}]}" \
             | tee /tmp/r.json ; echo
           grep -q '"movie:1"' /tmp/r.json
+          echo "::notice::Servidor listo en $U"
