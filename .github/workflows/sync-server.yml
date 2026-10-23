@@ -44,7 +44,7 @@ jobs:
         env:
           URL: ${{ steps.deploy.outputs.deployment-url }}
         run: |
-          U="${URL:-https://jox3-sync.jox3.workers.dev}"
+          U="${URL:-https://jox3-sync.jox3tv.workers.dev}"
           echo "Dirección: $U"
           # Un subdominio nuevo de workers.dev puede tardar unos minutos en existir
           for i in $(seq 1 30); do curl -fsS "$U/" && break; sleep 10; done; echo
