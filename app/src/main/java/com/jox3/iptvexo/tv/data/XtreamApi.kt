@@ -113,7 +113,7 @@ class XtreamApi(val account: Account) {
         val arr = array(apiUrl(section.apiCategories))
         return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
-            o.optString("category_name", "?").trim().let { raw -> Category(o.optString("category_id"), Names.clean(raw), raw) }
+            o.optString("category_name", "?").trim().let { raw -> Category(o.optString("category_id"), Names.category(raw), raw) }
         }
     }
 
@@ -123,7 +123,7 @@ class XtreamApi(val account: Account) {
             val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Channel(
                 id = id,
-                name = Names.clean(o["name"]?.trim()?.ifBlank { null } ?: "?"),
+                name = Names.channel(o["name"]?.trim()?.ifBlank { null } ?: "?"),
                 logo = o["stream_icon"].orEmpty(),
                 categoryId = o["category_id"].orEmpty(),
                 num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
