@@ -164,8 +164,27 @@ jobs:
           if [ -z "$NOTES" ]; then
             NOTES=$(printf '%s\n' "$HEAD_MSG" | grep -viE '^(merge pull request|co-authored-by|claude-session)' | sed '/^\s*$/d')
           fi
-          gh release create "desktop-v$VERSION" "JOX3-TV-PC-$VERSION.msi" \
+          NOTES="${NOTES:-Mejoras y correcciones.}"
+          # latest.json: lo que revisa el programa para actualizarse solo (versión, enlace, huella)
+          SHA256=$(sha256sum "JOX3-TV-PC-$VERSION.msi" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "JOX3-TV-PC-$VERSION.msi")
+          URL="https://github.com/${{ github.repository }}/releases/download/desktop-v$VERSION/JOX3-TV-PC-$VERSION.msi"
+          NOTES="$NOTES" VERSION="$VERSION" URL="$URL" SHA256="$SHA256" SIZE="$SIZE" python -c "
+          import json, os, datetime
+          json.dump({'version': os.environ['VERSION'], 'url': os.environ['URL'], 'sha256': os.environ['SHA256'],
+                     'size': int(os.environ['SIZE']), 'notes': os.environ['NOTES'],
+                     'date': datetime.datetime.now(datetime.timezone.utc).isoformat()},
+                    open('latest.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=2)"
+          cat latest.json
+          gh release create "desktop-v$VERSION" "JOX3-TV-PC-$VERSION.msi" latest.json \
             --title "JOX3 TV para PC $VERSION" \
-            --notes "${NOTES:-Mejoras y correcciones.}" \
+            --notes "$NOTES" \
             --target "${{ github.sha }}" \
             --latest=false
+          # Versión fija "desktop-latest" (marcada como prueba, para no confundir a Android) con el latest.json al día
+          if ! gh release view desktop-latest >/dev/null 2>&1; then
+            gh release create desktop-latest --title "JOX3 TV para PC · última versión" \
+              --notes "Archivo que revisa JOX3 TV para PC para actualizarse solo. No hace falta descargar nada aquí." \
+              --target "${{ github.sha }}" --prerelease --latest=false
+          fi
+          gh release upload desktop-latest latest.json --clobber

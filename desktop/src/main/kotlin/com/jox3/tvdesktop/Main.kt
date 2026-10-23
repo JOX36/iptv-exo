@@ -39,6 +39,8 @@ import androidx.compose.ui.window.rememberWindowState
 import com.jox3.tvdesktop.core.Crash
 import com.jox3.tvdesktop.core.CrashReport
 import com.jox3.tvdesktop.core.KeepAwake
+import com.jox3.tvdesktop.core.Shutdown
+import com.jox3.tvdesktop.core.Updater
 import com.jox3.tvdesktop.core.Log
 import com.jox3.tvdesktop.core.SelfTest
 import com.jox3.tvdesktop.core.SingleInstance
@@ -126,6 +128,7 @@ fun main(args: Array<String>) {
         }
 
         fun close() {
+            Shutdown.runAll()
             WindowPrefs.save(floating.copy(maximized = maximized))
             Log.i("Programa cerrado por el usuario")
             runCatching { player.release() }
@@ -146,6 +149,15 @@ fun main(args: Array<String>) {
                 }
             }
         ) {
+            LaunchedEffect(Unit) {
+                Shutdown.exit = { close() }
+                // Actualizaciones: al abrir (después de 10 s) y cada 6 horas
+                kotlinx.coroutines.delay(10_000)
+                while (true) {
+                    if (Updater.autoEnabled()) Updater.check(APP_VERSION)
+                    kotlinx.coroutines.delay(6 * 3600_000L)
+                }
+            }
             Window(
                 onCloseRequest = { close() },
                 state = state,
@@ -274,6 +286,9 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
                     .padding(horizontal = 16.dp, vertical = 10.dp))
         }
     }
+    // Aviso de versión nueva (abajo a la izquierda)
+    com.jox3.tvdesktop.ui.UpdateBanner(Modifier.align(Alignment.BottomStart))
+
     // Informe de cierre inesperado (si la vez anterior se cerró de golpe)
     var showCrash by remember { mutableStateOf(crashedLastTime) }
     if (showCrash) CrashNotice(onClose = { showCrash = false })
