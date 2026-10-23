@@ -63,7 +63,7 @@ object EpgCountries {
     fun filesFor(categories: List<Category>): List<String> {
         val count = HashMap<String, Double>()
         fun add(cc: String, w: Double = 1.0) { FILES[cc]?.let { f -> count[f] = (count[f] ?: 0.0) + w } }
-        categories.forEach { c -> ofCategory(c.name).takeIf { it.isNotEmpty() }?.let { add(it) } }
+        categories.forEach { c -> ofCategory(c.raw).takeIf { it.isNotEmpty() }?.let { add(it) } }
         // También el país del equipo (es-CO → Colombia)
         Locale.getDefault().country.takeIf { it.isNotEmpty() }?.let { add(it.uppercase(Locale.ROOT), 2.0) }
         val detected = count.entries.sortedByDescending { it.value }.map { it.key }

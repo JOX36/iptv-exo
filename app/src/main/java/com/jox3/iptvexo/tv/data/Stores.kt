@@ -178,7 +178,8 @@ class LibraryStore(context: Context, accountKey: String) {
         .put("ext", i.ext).put("seriesId", i.seriesId).put("categoryId", i.categoryId).put("ts", i.ts)
 
     private fun fromJson(o: JSONObject) = SavedItem(
-        kind = o.optString("kind"), id = o.optString("id"), name = o.optString("name"),
+        kind = o.optString("kind"), id = o.optString("id"),
+        name = Names.clean(o.optString("name"), titles = o.optString("kind") != "live"),
         image = o.optString("image"), ext = o.optString("ext"), seriesId = o.optString("seriesId"),
         categoryId = o.optString("categoryId"), ts = o.optLong("ts"),
     )

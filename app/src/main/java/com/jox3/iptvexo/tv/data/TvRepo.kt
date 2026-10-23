@@ -47,7 +47,7 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     private val catCountry = HashMap<String, String>()
 
     private fun startExternalEpg(liveCats: List<Category>) {
-        synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.name) } }
+        synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.raw) } }
         ExternalEpg.ensure(context, EpgCountries.filesFor(liveCats)) {
             // Los canales que quedaron sin guía se vuelven a consultar
             synchronized(epg) { epg.entries.removeAll { it.value.second.isEmpty() } }
