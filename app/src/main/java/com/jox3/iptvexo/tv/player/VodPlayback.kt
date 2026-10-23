@@ -61,7 +61,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     private var exo: ExoPlayer? = null
     val player: ExoPlayer? get() = exo
     private val main = Handler(Looper.getMainLooper())
-    private val progress = context.getSharedPreferences("vod_progress", Context.MODE_PRIVATE)
+    private val progress = context.getSharedPreferences(lib.progressFile, Context.MODE_PRIVATE)
 
     var queue by mutableStateOf<List<VodItem>>(emptyList()); private set
     var index by mutableIntStateOf(0); private set

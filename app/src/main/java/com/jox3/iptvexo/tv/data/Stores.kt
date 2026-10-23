@@ -46,6 +46,7 @@ class AccountStore(context: Context) {
     fun delete(acc: Account) {
         remove(acc)
         ServerHub.forget(acc)
+        ProfileStore.wipeAccount(app, acc)
         val lib = app.getSharedPreferences("tv_library", Context.MODE_PRIVATE)
         val ns = acc.key.hashCode().toString() + "."
         val ed = lib.edit()
@@ -65,11 +66,12 @@ class AccountStore(context: Context) {
  * "continuar viendo". Los cambios se reflejan al instante en la interfaz
  * (listas observables de Compose).
  */
-class LibraryStore(context: Context, accountKey: String) {
+class LibraryStore(context: Context, accountKey: String, val profileId: String = Profiles.MAIN) {
     private val prefs = context.getSharedPreferences("tv_library", Context.MODE_PRIVATE)
-    /** Posiciones de reproducción que guarda el reproductor (PlayerActivity). */
-    private val progress = context.getSharedPreferences("vod_progress", Context.MODE_PRIVATE)
-    private val ns = accountKey.hashCode().toString()
+    /** Archivo de posiciones de este perfil (lo usa también el reproductor). */
+    val progressFile = ProfileStore.progressFile(accountKey, profileId)
+    private val progress = context.getSharedPreferences(progressFile, Context.MODE_PRIVATE)
+    private val ns = ProfileStore.libraryNs(accountKey, profileId)
 
     val favorites = mutableStateListOf<SavedItem>().apply { addAll(load("fav")) }
     val recentChannels = mutableStateListOf<SavedItem>().apply { addAll(load("recent")) }

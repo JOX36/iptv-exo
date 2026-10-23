@@ -122,6 +122,10 @@ class Nav(private val stack: MutableList<Route>, private val beforeDetail: () ->
     fun back() { if (stack.size > 1) stack.removeAt(stack.size - 1) }
 }
 
+/** Perfil activo y cómo volver a "¿Quién está viendo?". */
+class ProfileCtx(val profile: com.jox3.iptvexo.tv.data.Profile?, val switch: () -> Unit)
+val LocalProfile = androidx.compose.runtime.staticCompositionLocalOf { ProfileCtx(null) {} }
+
 /** Lo que las pantallas pueden pedirle al marco: ocultar la barra lateral (En vivo compacto). */
 class ShellChrome { var railHidden by mutableStateOf(false) }
 val LocalShellChrome = androidx.compose.runtime.staticCompositionLocalOf { ShellChrome() }
@@ -138,18 +142,30 @@ fun TvApp(host: TvHost) {
         return
     }
     key(acc.key) {
-        val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
-        // Historial en la nube: se sincroniza mientras la app está en pantalla
-        val syncOwner = LocalLifecycleOwner.current
-        LaunchedEffect(repo) {
-            syncOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                com.jox3.iptvexo.tv.data.CloudSync.run(context.applicationContext, acc, repo.library)
+        val profiles = remember { com.jox3.iptvexo.tv.data.ProfileStore(context.applicationContext, acc) }
+        // La TV pregunta "¿Quién está viendo?" al abrir la app (si hay más de un perfil o tiene PIN)
+        var profile by remember { mutableStateOf(profiles.autoPick(tv = true)) }
+        var previous by remember { mutableStateOf<com.jox3.iptvexo.tv.data.Profile?>(null) }
+        val prof = profile
+        if (prof == null) {
+            com.jox3.iptvexo.tv.screens.ProfileGate(profiles, tv = true, onPick = { profile = it },
+                onCancel = previous?.let { p -> { profile = p } })
+        } else key(prof.id) {
+            val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key, prof.id)) }
+            // Historial en la nube: se sincroniza mientras la app está en pantalla
+            val syncOwner = LocalLifecycleOwner.current
+            LaunchedEffect(repo) {
+                syncOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                    com.jox3.iptvexo.tv.data.CloudSync.run(context.applicationContext, acc, repo.library, profiles)
+                }
+            }
+            host.player.repo = repo
+            CompositionLocalProvider(LocalProfile provides ProfileCtx(profiles.byId(prof.id) ?: prof) { previous = prof; profile = null }) {
+                MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
+                    onDelete = { accounts.delete(acc); account = null },
+                    onSwitch = { a -> accounts.use(a); account = a })
             }
         }
-        host.player.repo = repo
-        MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
-            onDelete = { accounts.delete(acc); account = null },
-            onSwitch = { a -> accounts.use(a); account = a })
     }
 }
 
@@ -471,6 +487,9 @@ private fun Rail(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text("J3", style = Type.H1, color = Jx.Accent, modifier = Modifier.padding(start = 12.dp, bottom = 10.dp))
+            // Perfil activo: OK vuelve a "¿Quién está viendo?"
+            val pc = LocalProfile.current
+            pc.profile?.let { ProfileRailButton(it, expanded, pc.switch) }
             // Servidor en uso: OK abre la lista de servidores
             ServerRailButton(accounts, account, expanded, onServers)
             Spacer(Modifier.height(8.dp))
@@ -541,6 +560,34 @@ private fun ServerRailButton(accounts: List<Account>, account: Account, expanded
             if (expanded) Column {
                 Text(ServerHub.name(accounts, account), style = Type.Label, maxLines = 1)
                 Text(if (accounts.size > 1) "Cambiar servidor" else "Servidores", style = Type.Small, maxLines = 1)
+            }
+        }
+    }
+}
+
+/** Botón del perfil activo (emoji sobre su color); desplegado muestra el nombre. */
+@Composable
+private fun ProfileRailButton(p: com.jox3.iptvexo.tv.data.Profile, expanded: Boolean, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth().height(48.dp),
+        shape = RoundedCornerShape(12.dp),
+        focusedScale = 1f,
+        container = Color.Transparent,
+        focusedContainer = Jx.Text,
+        content = Jx.TextSoft,
+        focusedContent = Jx.Bg,
+        ring = false,
+    ) {
+        Row(Modifier.fillMaxSize().padding(start = 9.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(30.dp).background(Color(p.color), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                androidx.compose.foundation.text.BasicText(p.emoji,
+                    style = androidx.compose.ui.text.TextStyle(fontSize = androidx.compose.ui.unit.TextUnit(15f, androidx.compose.ui.unit.TextUnitType.Sp)))
+            }
+            if (expanded) Column {
+                Text(p.name, style = Type.Label, maxLines = 1)
+                Text("Cambiar perfil", style = Type.Small, maxLines = 1)
             }
         }
     }

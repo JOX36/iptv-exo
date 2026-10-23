@@ -1,10 +1,11 @@
 // JOX3 Sync — guarda y reparte el historial de cada cuenta entre sus dispositivos.
 //
 // POST /v1/sync  { acc, profile, since, changes: [{ list, item, data, ts, deleted }] }
+//   profile = perfil de la casa ("principal", "p…"); "_perfiles" guarda la lista de perfiles.
 //   → guarda los cambios (gana el de ts más nuevo) y devuelve lo que cambió después de `since`.
 // GET  /         → estado del servidor.
 
-const LISTS = new Set(["fav", "recent", "resume"]);
+const LISTS = new Set(["fav", "recent", "resume", "profile"]);
 const MAX_CHANGES = 500;
 const MAX_BODY = 512 * 1024;
 const PAGE = 1000;
