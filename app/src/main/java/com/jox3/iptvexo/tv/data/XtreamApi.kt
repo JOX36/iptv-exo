@@ -113,7 +113,7 @@ class XtreamApi(val account: Account) {
         val arr = array(apiUrl(section.apiCategories))
         return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
-            Category(o.optString("category_id"), o.optString("category_name", "?").trim())
+            o.optString("category_name", "?").trim().let { raw -> Category(o.optString("category_id"), Names.clean(raw), raw) }
         }
     }
 
@@ -123,7 +123,7 @@ class XtreamApi(val account: Account) {
             val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Channel(
                 id = id,
-                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                name = Names.clean(o["name"]?.trim()?.ifBlank { null } ?: "?"),
                 logo = o["stream_icon"].orEmpty(),
                 categoryId = o["category_id"].orEmpty(),
                 num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
@@ -138,7 +138,7 @@ class XtreamApi(val account: Account) {
             val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Movie(
                 id = id,
-                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                name = Names.clean(o["name"]?.trim()?.ifBlank { null } ?: "?", titles = true),
                 poster = o["stream_icon"].orEmpty(),
                 rating = o["rating"].orEmpty().takeUnless { it == "0" || it == "null" }.orEmpty(),
                 ext = o["container_extension"]?.ifBlank { null } ?: "mp4",
@@ -154,7 +154,7 @@ class XtreamApi(val account: Account) {
             val id = o["series_id"].orEmpty().ifBlank { return@streamList null }
             Series(
                 id = id,
-                name = o["name"]?.trim()?.ifBlank { null } ?: "?",
+                name = Names.clean(o["name"]?.trim()?.ifBlank { null } ?: "?", titles = true),
                 poster = o["cover"].orEmpty(),
                 rating = o["rating"].orEmpty().takeUnless { it == "0" || it == "null" }.orEmpty(),
                 categoryId = o["category_id"].orEmpty(),
