@@ -49,6 +49,7 @@ import com.jox3.tvdesktop.data.Tmdb
 import com.jox3.tvdesktop.player.Aspect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import java.io.File
 
 /** Ajustes del programa: reproductor, En vivo, servidores, almacenamiento y ayuda. */
@@ -139,6 +140,28 @@ fun SettingsScreen(live: LiveController, version: String) {
                             Text(d, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp)
                         }
                     }
+                }
+
+                // ── Actualizaciones ──
+                Card("Actualizaciones") {
+                    val st = com.jox3.tvdesktop.core.Updater.state
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
+                    Label("Versión instalada: $version", when (st) {
+                        com.jox3.tvdesktop.core.Updater.State.Checking -> "Revisando…"
+                        com.jox3.tvdesktop.core.Updater.State.UpToDate -> "Ya tienes la última versión."
+                        is com.jox3.tvdesktop.core.Updater.State.Available -> "Hay una versión nueva: ${st.info.version}"
+                        is com.jox3.tvdesktop.core.Updater.State.Downloading -> "Descargando ${st.info.version}… ${st.percent} %"
+                        is com.jox3.tvdesktop.core.Updater.State.Installing -> "Instalando ${st.info.version}…"
+                        is com.jox3.tvdesktop.core.Updater.State.Error -> st.message
+                        else -> "El programa revisa solo al abrir y cada 6 horas."
+                    })
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (st is com.jox3.tvdesktop.core.Updater.State.Available) PillButton("Actualizar a ${st.info.version}") { startUpdate(scope, st.info) }
+                        GhostButton("Buscar actualizaciones") {
+                            scope.launch { com.jox3.tvdesktop.core.Updater.check(version, manual = true) }
+                        }
+                    }
+                    Toggle("update.auto", true, "Revisar automáticamente", "Al abrir el programa y cada 6 horas. Siempre te pregunta antes de instalar.")
                 }
 
                 // ── Ayuda ──

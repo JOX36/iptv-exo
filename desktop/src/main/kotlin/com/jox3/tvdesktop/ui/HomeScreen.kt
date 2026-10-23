@@ -183,6 +183,12 @@ fun HomeScreen(
         }
     }
 
+    // Al cerrar el programa (o al actualizarse) se guarda dónde va la película
+    androidx.compose.runtime.DisposableEffect(live) {
+        val remove = com.jox3.tvdesktop.core.Shutdown.add { live.saveVodProgress() }
+        onDispose { remove() }
+    }
+
     // Apagado automático
     LaunchedEffect(live.sleepAt) {
         val at = live.sleepAt ?: return@LaunchedEffect
