@@ -1,0 +1,50 @@
+name: Servidor de sincronización
+
+on:
+  push:
+    paths:
+      - "server/sync/**"
+      - ".github/workflows/sync-server.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: sync-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/sync
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Revisar el código
+        run: node --check src/index.js
+
+      - name: Crear tablas que falten
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server/sync
+          command: d1 execute jox3 --remote --file=schema.sql
+
+      - name: Publicar
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server/sync
+          command: deploy
+
+      - name: Probar que responde
+        run: |
+          sleep 5
+          curl -fsS https://jox3-sync.jox3.workers.dev/ ; echo
+          T=$(date +%s%3N)
+          curl -fsS -X POST https://jox3-sync.jox3.workers.dev/v1/sync -H 'content-type: application/json' \
+            -d "{\"acc\":\"$(printf '0%.0s' {1..64})\",\"profile\":\"prueba\",\"since\":0,\"changes\":[{\"list\":\"fav\",\"item\":\"movie:1\",\"data\":\"{}\",\"ts\":$T}]}" \
+            | tee /tmp/r.json ; echo
+          grep -q '"movie:1"' /tmp/r.json
