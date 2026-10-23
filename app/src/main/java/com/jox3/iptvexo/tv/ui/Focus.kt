@@ -57,5 +57,32 @@ fun Modifier.focusMemoryItem(mem: FocusMemory, key: Any): Modifier {
         .onFocusChanged { if (it.hasFocus) mem.key = key }
 }
 
+/**
+ * Destino de foco "seguro": un FocusRequester que sabe si su elemento está en pantalla.
+ * Se usa en los `enter = { … }` (p. ej. la barra lateral): si el elemento no existe en ese
+ * instante, el foco va al más cercano en vez de cerrar la app ("FocusRequester is not
+ * initialized").
+ */
+@Stable
+class SafeFocusTarget {
+    val req = FocusRequester()
+    internal var attached = 0
+    /** Para `focusProperties { enter = { target.orDefault() } }`. */
+    fun orDefault(): FocusRequester = if (attached > 0) req else FocusRequester.Default
+}
+
+@Composable
+fun rememberSafeFocusTarget(): SafeFocusTarget = remember { SafeFocusTarget() }
+
+/** Marca el elemento destino (solo uno a la vez). */
+@Composable
+fun Modifier.safeFocusTarget(t: SafeFocusTarget): Modifier {
+    DisposableEffect(t) {
+        t.attached++
+        onDispose { t.attached-- }
+    }
+    return this.focusRequester(t.req)
+}
+
 /** Fila sin memoria (sus elementos los ponen otras pantallas): entra al elemento más cercano. */
 fun Modifier.safeFocusRestorer(): Modifier = this.focusGroup()

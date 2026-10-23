@@ -11,6 +11,7 @@ import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.jox3.iptvexo.App
+import com.jox3.iptvexo.CrashReporter
 import com.jox3.iptvexo.PlayerSafety
 import com.jox3.iptvexo.NetClient
 import com.jox3.iptvexo.Updater
@@ -74,6 +75,21 @@ class TvActivity : ComponentActivity(), TvHost {
         super.onResume()
         updater.onResume()
         player.repo?.library?.refreshProgress()
+    }
+
+    /**
+     * Red de seguridad del foco: si Compose intenta mover el foco a un elemento que en ese
+     * instante no está en pantalla, lanza "FocusRequester is not initialized" y la app se
+     * cierra. Aquí se ignora esa pulsación (la siguiente funciona normal) en vez de cerrar.
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = try {
+        super.dispatchKeyEvent(event)
+    } catch (e: IllegalStateException) {
+        if (e.message?.contains("FocusRequester is not initialized") == true) {
+            android.util.Log.w("JOX3", "Foco perdido, se ignora la tecla", e)
+            CrashReporter.report(this, e, fatal = false)
+            true
+        } else throw e
     }
 
     override fun checkUpdates() = updater.checkNow()
