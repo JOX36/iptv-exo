@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -87,18 +88,33 @@ fun PhoneApp(act: PhoneActivity) {
         return
     }
     key(acc.key) {
-        val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key)) }
-        // Historial en la nube: se sincroniza mientras la app está en pantalla
-        val syncOwner = LocalLifecycleOwner.current
-        LaunchedEffect(repo) {
-            syncOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
-                com.jox3.iptvexo.tv.data.CloudSync.run(context.applicationContext, acc, repo.library)
+        val profiles = remember { com.jox3.iptvexo.tv.data.ProfileStore(context.applicationContext, acc) }
+        // En el celular entra directo si se marcó "Recordar en este celular"
+        var profile by remember { mutableStateOf(profiles.autoPick(tv = false)) }
+        var previous by remember { mutableStateOf<com.jox3.iptvexo.tv.data.Profile?>(null) }
+        val prof = profile
+        if (prof == null) {
+            com.jox3.iptvexo.tv.screens.ProfileGate(profiles, tv = false, onPick = { profile = it },
+                onCancel = previous?.let { p -> { profile = p } })
+        } else key(prof.id) {
+            val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key, prof.id)) }
+            // Historial en la nube: se sincroniza mientras la app está en pantalla
+            val syncOwner = LocalLifecycleOwner.current
+            LaunchedEffect(repo) {
+                syncOwner.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                    com.jox3.iptvexo.tv.data.CloudSync.run(context.applicationContext, acc, repo.library, profiles)
+                }
+            }
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.jox3.iptvexo.tv.LocalProfile provides com.jox3.iptvexo.tv.ProfileCtx(profiles.byId(prof.id) ?: prof) {
+                    previous = prof; profile = null
+                }) {
+                PhoneShell(act, repo, accounts, acc,
+                    onSwitch = { a -> accounts.use(a); account = a },
+                    onAdd = { adding = true },
+                    onLogout = { accounts.delete(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
             }
         }
-        PhoneShell(act, repo, accounts, acc,
-            onSwitch = { a -> accounts.use(a); account = a },
-            onAdd = { adding = true },
-            onLogout = { accounts.delete(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
     }
 }
 
@@ -319,6 +335,18 @@ private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account)
             }
         }
         Spacer(Modifier.weight(1f))
+        // Perfil activo: tocarlo lleva a "¿Quién está viendo?"
+        val pc = com.jox3.iptvexo.tv.LocalProfile.current
+        pc.profile?.let { p ->
+            Box(
+                Modifier.size(36.dp).clip(RoundedCornerShape(10.dp)).background(androidx.compose.ui.graphics.Color(p.color))
+                    .clickable(onClickLabel = "Cambiar perfil") { pc.switch() },
+                contentAlignment = Alignment.Center,
+            ) {
+                androidx.compose.foundation.text.BasicText(p.emoji, style = androidx.compose.ui.text.TextStyle(fontSize = 18.sp))
+            }
+            Spacer(Modifier.size(6.dp))
+        }
         RoundIcon(R.drawable.tv_ic_settings, "Ajustes y cuenta", tint = Jx.TextSoft, onClick = onSettings)
     }
 }

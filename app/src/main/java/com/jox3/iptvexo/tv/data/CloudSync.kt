@@ -26,7 +26,8 @@ import java.security.MessageDigest
  */
 object CloudSync {
     const val SERVER = "https://jox3-sync.jox3tv.workers.dev"
-    private const val PROFILE = "principal"
+    /** Espacio en el servidor donde se guarda la lista de perfiles de la cuenta. */
+    private const val PROFILES_SCOPE = "_perfiles"
     private const val EVERY_MS = 45_000L
     private const val PREFS = "tv_sync"
 
@@ -46,19 +47,22 @@ object CloudSync {
      * Sincroniza mientras la pantalla está abierta: al empezar, cada 45 s y un momento después
      * de cada cambio (favorito, canal, cerrar el reproductor). Al salir sube lo pendiente.
      */
-    suspend fun run(ctx: Context, acc: Account, lib: LibraryStore) {
+    suspend fun run(ctx: Context, acc: Account, lib: LibraryStore, profiles: ProfileStore? = null) {
         if (!enabled(ctx)) return
         val kick = Channel<Unit>(Channel.CONFLATED)
         lib.onLocalChange = { kick.trySend(Unit) }
+        profiles?.onChange = { kick.trySend(Unit) }
         val id = accountId(acc)
         try {
             while (true) {
                 syncOnce(id, lib)
+                if (profiles != null) syncProfiles(ctx, profiles)
                 // Espera hasta 45 s o hasta que haya un cambio (y junta los cambios de 3 s)
                 withTimeoutOrNull(EVERY_MS) { kick.receive() }?.let { delay(3_000) }
             }
         } finally {
             lib.onLocalChange = {}
+            profiles?.onChange = {}
             withContext(NonCancellable) { withTimeoutOrNull(8_000) { syncOnce(id, lib) } }
         }
     }
@@ -76,7 +80,7 @@ object CloudSync {
                     lib.collectProgress()
                     lib.pendingChanges() to lib.syncCursor
                 }
-                val res = post(id, (since - 10_000).coerceAtLeast(0), changes.take(400)) ?: return
+                val res = post(id, lib.profileId, (since - 10_000).coerceAtLeast(0), changes.take(400)) ?: return
                 withContext(Dispatchers.Main) {
                     lib.applyRemote(res.items)
                     lib.clearSent(changes.take(400))
@@ -89,17 +93,31 @@ object CloudSync {
     private suspend fun pull(id: String, lib: LibraryStore, from: Long) {
         var since = from
         repeat(10) {
-            val res = post(id, since, emptyList()) ?: return
+            val res = post(id, lib.profileId, since, emptyList()) ?: return
             withContext(Dispatchers.Main) { lib.applyRemote(res.items); lib.syncCursor = res.cursor }
             if (!res.more) return
             since = res.cursor
         }
     }
 
+    /** Perfiles de la cuenta: sube los cambios de este equipo y baja los de los demás. */
+    suspend fun syncProfiles(ctx: Context, store: ProfileStore) {
+        if (!enabled(ctx)) return
+        runCatching {
+            val (changes, since) = withContext(Dispatchers.Main) { store.pendingChanges() to store.cursor }
+            val res = post(accountId(store.account), PROFILES_SCOPE, (since - 10_000).coerceAtLeast(0), changes) ?: return
+            withContext(Dispatchers.Main) {
+                store.applyRemote(res.items)
+                store.clearSent(changes)
+                store.cursor = res.cursor
+            }
+        }.onFailure { Log.w("JOX3", "Perfiles: ${it.message}") }
+    }
+
     private class Result(val cursor: Long, val more: Boolean, val items: List<JSONObject>)
 
-    private suspend fun post(id: String, since: Long, changes: List<JSONObject>): Result? = withContext(Dispatchers.IO) {
-        val body = JSONObject().put("acc", id).put("profile", PROFILE).put("since", since)
+    private suspend fun post(id: String, profile: String, since: Long, changes: List<JSONObject>): Result? = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("acc", id).put("profile", profile).put("since", since)
             .put("changes", JSONArray(changes)).toString()
         val req = Request.Builder().url("$SERVER/v1/sync")
             .post(body.toRequestBody("application/json".toMediaType()))
