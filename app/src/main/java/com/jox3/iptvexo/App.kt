@@ -28,6 +28,7 @@ class App : Application() {
                 val version = try { packageManager.getPackageInfo(packageName, 0).versionName } catch (e: Exception) { "" }
                 val stamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
                 File(filesDir, CRASH_FILE).writeText("Versión $version · $stamp · hilo ${thread.name}\n${trace.take(8000)}")
+                CrashReporter.report(this, error, fatal = true, thread = thread.name)
                 if (trace.contains("ffmpeg", ignoreCase = true)) PlayerSafety.disableFfmpeg(this)
                 // Un cierre con error de Java (p. ej. memoria llena) NO es el fallo silencioso de
                 // FFmpeg: se borra la marca de "arrancando" para no apagar el audio avanzado por error.

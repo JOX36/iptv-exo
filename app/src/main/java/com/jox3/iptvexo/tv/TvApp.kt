@@ -62,6 +62,8 @@ import com.jox3.iptvexo.tv.data.Account
 import com.jox3.iptvexo.tv.data.AccountStore
 import com.jox3.iptvexo.tv.data.ServerHub
 import com.jox3.iptvexo.tv.screens.ServerPanel
+import com.jox3.iptvexo.tv.ui.rememberSafeFocusTarget
+import com.jox3.iptvexo.tv.ui.safeFocusTarget
 import com.jox3.iptvexo.tv.screens.statusColor
 import androidx.compose.foundation.shape.CircleShape
 import com.jox3.iptvexo.tv.data.LibraryStore
@@ -441,7 +443,8 @@ private fun Rail(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (expanded) RailExpanded else RailCollapsed, tween(180), label = "rail")
-    val currentReq = remember { FocusRequester() }
+    // Destino al entrar a la barra: la sección actual (si en ese instante no está, la más cercana)
+    val current0 = rememberSafeFocusTarget()
 
     Box(
         modifier
@@ -452,7 +455,7 @@ private fun Rail(
                 else Brush.horizontalGradient(listOf(Jx.Rail, Jx.Rail))
             )
             .onFocusChanged { expanded = it.hasFocus }
-            .focusProperties { enter = { currentReq } }
+            .focusProperties { enter = { current0.orDefault() } }
             .focusGroup()
     ) {
         Column(
@@ -465,12 +468,12 @@ private fun Rail(
             Spacer(Modifier.height(8.dp))
             railItems.forEach { item ->
                 RailButton(item.icon, item.label, item.route == current, expanded,
-                    if (item.route == current) Modifier.focusRequester(currentReq) else Modifier) { nav.open(item.route) }
+                    if (item.route == current) Modifier.safeFocusTarget(current0) else Modifier) { nav.open(item.route) }
             }
             Spacer(Modifier.weight(1f))
             val settingsSelected = current == Route.Settings
             RailButton(R.drawable.tv_ic_settings, "Ajustes y cuenta", settingsSelected, expanded,
-                if (settingsSelected) Modifier.focusRequester(currentReq) else Modifier) { nav.open(Route.Settings) }
+                if (settingsSelected) Modifier.safeFocusTarget(current0) else Modifier) { nav.open(Route.Settings) }
         }
     }
 }
