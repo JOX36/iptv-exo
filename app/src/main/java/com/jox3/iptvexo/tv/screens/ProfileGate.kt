@@ -51,7 +51,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.jox3.iptvexo.tv.data.Account
 import com.jox3.iptvexo.tv.data.CloudSync
+import com.jox3.iptvexo.tv.data.Vault
+import kotlinx.coroutines.launch
 import com.jox3.iptvexo.tv.data.Profile
 import com.jox3.iptvexo.tv.data.ProfileStore
 import com.jox3.iptvexo.tv.data.Profiles
@@ -66,6 +69,8 @@ private sealed interface Mode {
     data class Edit(val profile: Profile?) : Mode
     data class Pin(val profile: Profile, val thenEdit: Boolean) : Mode
     data class Forgot(val profile: Profile) : Mode
+    data class VaultSetup(val profile: Profile) : Mode
+    data class Unlock(val profile: Profile) : Mode
 }
 
 private val PgDisplay = com.jox3.iptvexo.tv.ui.Display
@@ -85,10 +90,20 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
     // Perfiles creados en otro equipo: se bajan al mostrar esta pantalla
     LaunchedEffect(Unit) { CloudSync.syncProfiles(ctx, store) }
 
-    fun choose(p: Profile) {
+    fun finish(p: Profile) {
         Profiles.chosenThisLaunch[store.account.key] = p.id
         if (!tv) store.remembered = if (rememberHere) p.id else null
-        onPick(p)
+        onPick(store.byId(p.id) ?: p)
+    }
+
+    fun choose(p: Profile) {
+        // Su perfil guarda servidores con un código JOX3 y este equipo aún no los tiene: ofrecer agregarlos
+        val v = p.vaultId
+        if (v.isNotEmpty() && com.jox3.iptvexo.tv.data.Vault.localCode(ctx, v) == null &&
+            !com.jox3.iptvexo.tv.data.Vault.dismissed(ctx, v) && v !in com.jox3.iptvexo.tv.data.Vault.skippedThisLaunch) {
+            mode = Mode.Unlock(p); return
+        }
+        finish(p)
     }
 
     BackHandler(enabled = mode != Mode.Pick || onCancel != null) {
@@ -110,7 +125,10 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
                 onAdd = { mode = Mode.Edit(null) },
                 onManage = { mode = if (m == Mode.Manage) Mode.Pick else Mode.Manage },
             )
-            is Mode.Edit -> EditScreen(store, tv, m.profile, onDone = { mode = Mode.Manage })
+            is Mode.Edit -> EditScreen(store, tv, m.profile, onDone = { mode = Mode.Manage },
+                onVault = { p -> mode = Mode.VaultSetup(p) })
+            is Mode.VaultSetup -> VaultScreen(store, tv, m.profile, onDone = { mode = Mode.Manage })
+            is Mode.Unlock -> UnlockPrompt(store, tv, m.profile, onFinish = { finish(m.profile) })
             is Mode.Pin -> {
                 var error by remember(m) { mutableStateOf("") }
                 PinPad(tv, title = "PIN de ${m.profile.name}", subtitle = "Escribe los 4 números", error = error,
@@ -232,7 +250,7 @@ private fun Avatar(emoji: String, color: Long, size: Dp, ring: Boolean = false, 
 // ───────────────────────── Crear / editar ─────────────────────────
 
 @Composable
-private fun EditScreen(store: ProfileStore, tv: Boolean, profile: Profile?, onDone: () -> Unit) {
+private fun EditScreen(store: ProfileStore, tv: Boolean, profile: Profile?, onDone: () -> Unit, onVault: (Profile) -> Unit) {
     var name by remember { mutableStateOf(profile?.name.orEmpty()) }
     var emoji by remember { mutableStateOf(profile?.emoji ?: Profiles.EMOJIS.shuffled().first()) }
     var color by remember { mutableStateOf(profile?.color ?: Profiles.COLORS.shuffled().first()) }
@@ -311,6 +329,12 @@ private fun EditScreen(store: ProfileStore, tv: Boolean, profile: Profile?, onDo
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Btn(tv, if (hasPin) "Cambiar PIN" else "Poner PIN") { pinStep = 1; pinError = "" }
                 if (hasPin) Btn(tv, "Quitar PIN") { newPin = null; removePin = true }
+            }
+
+            if (profile != null) {
+                val withVault = (store.byId(profile.id) ?: profile).vaultId.isNotEmpty()
+                Txt(if (withVault) "☁️ Sus servidores se guardan con un código JOX3" else "☁️ Lleva tus servidores a cualquier equipo con un código", 13, Jx.TextSoft)
+                Btn(tv, if (withVault) "Mis servidores en la nube" else "Guardar mis servidores en la nube") { onVault(profile) }
             }
 
             Spacer(Modifier.height(4.dp))
@@ -465,6 +489,257 @@ private fun ForgotScreen(store: ProfileStore, tv: Boolean, p: Profile, onDone: (
             Btn(tv, "Cancelar", onClick = onDone)
         }
     }
+}
+
+// ───────────────────────── Código JOX3 ─────────────────────────
+
+/** Activar, ver y cambiar los servidores que viajan con el perfil. */
+@Composable
+private fun VaultScreen(store: ProfileStore, tv: Boolean, profile: Profile, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val accounts = remember { com.jox3.iptvexo.tv.data.AccountStore(ctx) }
+    val p = store.byId(profile.id) ?: profile
+    var code by remember { mutableStateOf(Vault.localCode(ctx, p.vaultId)) }
+    var device by remember { mutableStateOf(accounts.all()) }
+    var inVault by remember { mutableStateOf<List<Account>>(emptyList()) }
+    var checked by remember { mutableStateOf(device.map { it.key }.toSet()) }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    var info by remember { mutableStateOf("") }
+    var typed by remember { mutableStateOf("") }
+    var confirmOff by remember { mutableStateOf(false) }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (tv) { delay(150); runCatching { first.requestFocus() } } }
+
+    // Con el código en este equipo: traer lo que hay en la nube
+    LaunchedEffect(code) {
+        val c = code ?: return@LaunchedEffect
+        busy = true; error = ""
+        runCatching { Vault.fetch(c) }
+            .onSuccess { r ->
+                accounts.addAll(r.servers); device = accounts.all()
+                inVault = r.servers; checked = r.servers.map { it.key }.toSet()
+            }
+            .onFailure { e -> if (e !is Vault.NotFound) error = e.message ?: "No se pudo conectar" }
+        busy = false
+    }
+    val all = (inVault + device).distinctBy { it.key }
+
+    fun upload(c: String, isNew: Boolean) {
+        val chosen = all.filter { it.key in checked }
+        if (chosen.isEmpty()) { error = "Elige al menos un servidor"; return }
+        busy = true; error = ""; info = ""
+        scope.launch {
+            val ok = Vault.upload(c, chosen)
+            if (ok) {
+                val id = Vault.derive(c).id
+                Vault.saveLocal(ctx, id, c)
+                store.setVault(p, id, chosen.size)
+                inVault = chosen
+                if (isNew) code = c
+                info = "Guardado ✓ (${chosen.size} servidor${if (chosen.size == 1) "" else "es"})"
+            } else error = "No se pudo guardar. Revisa el internet"
+            busy = false
+        }
+    }
+
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            .padding(horizontal = if (tv) 80.dp else 20.dp, vertical = if (tv) 32.dp else 28.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Txt("☁️ Mis servidores en la nube", if (tv) 28 else 24, Jx.Text, display = true)
+        val c = code
+        when {
+            // 1. Aún no tiene código
+            p.vaultId.isEmpty() && c == null -> {
+                Txt("Tus servidores se guardan cifrados con un código que solo tú conoces. En otro equipo " +
+                    "escribes el código y se cargan solos. Nadie más puede verlos, ni siquiera desde la nube.", 14, Jx.Muted)
+                Txt("Elige qué servidores guardar:", 14, Jx.TextSoft, bold = true)
+                ServerChecklist(tv, all, checked, first) { k -> checked = if (k in checked) checked - k else checked + k }
+                Btn(tv, if (busy) "Guardando…" else "Crear mi código y guardar", primary = true) { if (!busy) upload(Vault.newCode(), isNew = true) }
+            }
+            // 2. Ya tiene código, creado en otro equipo
+            c == null -> {
+                Txt("Este perfil ya guarda ${p.vaultCount} servidor${if (p.vaultCount == 1) "" else "es"} con un código JOX3. " +
+                    "Escríbelo para verlos y cambiarlos desde aquí.", 14, Jx.Muted)
+                CodeField(tv, typed, { typed = it }, Modifier.focusRequester(first)) {}
+                Btn(tv, if (busy) "Revisando…" else "Continuar", primary = true) {
+                    val n = Vault.normalize(typed)
+                    if (n == null) { error = "El código tiene 10 letras y números (JX-XXXXX-XXXXX)"; return@Btn }
+                    busy = true; error = ""
+                    scope.launch {
+                        if (Vault.derive(n).id != p.vaultId) error = "Ese no es el código de este perfil"
+                        else { Vault.saveLocal(ctx, p.vaultId, n); code = n }
+                        busy = false
+                    }
+                }
+            }
+            // 3. Código en este equipo: verlo y elegir servidores
+            else -> {
+                Txt("Tu código JOX3", 14, Jx.TextSoft)
+                Box(Modifier.clip(RoundedCornerShape(14.dp)).background(Jx.Surface).border(2.dp, Jx.Accent, RoundedCornerShape(14.dp))
+                    .padding(horizontal = 22.dp, vertical = 14.dp)) {
+                    Txt(Vault.pretty(c), if (tv) 30 else 26, Jx.Accent, display = true)
+                }
+                Txt("Anótalo o tómale una foto. Si se pierde no se puede recuperar; desde un equipo donde ya " +
+                    "estés adentro lo puedes volver a ver aquí.", 13, Jx.Muted)
+                Txt("Servidores guardados:", 14, Jx.TextSoft, bold = true)
+                ServerChecklist(tv, all, checked, first) { k -> checked = if (k in checked) checked - k else checked + k }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Btn(tv, if (busy) "Guardando…" else "Guardar cambios", primary = true) { if (!busy) upload(c, isNew = false) }
+                    Btn(tv, if (confirmOff) "¿Seguro? Oprime otra vez" else "Dejar de guardar en la nube", danger = true) {
+                        if (!confirmOff) { confirmOff = true; return@Btn }
+                        busy = true
+                        scope.launch {
+                            if (Vault.delete(c)) {
+                                Vault.forgetLocal(ctx, p.vaultId); store.setVault(p, "", 0); onDone()
+                            } else error = "No se pudo. Revisa el internet"
+                            busy = false
+                        }
+                    }
+                }
+            }
+        }
+        if (error.isNotEmpty()) Txt(error, 13, Jx.Live)
+        if (info.isNotEmpty()) Txt(info, 13, Jx.Ok)
+        Btn(tv, "Volver", onClick = onDone)
+    }
+}
+
+@Composable
+private fun ServerChecklist(tv: Boolean, servers: List<Account>, checked: Set<String>, first: FocusRequester, onToggle: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (servers.isEmpty()) Txt("No hay servidores en este equipo", 13, Jx.Faint)
+        servers.forEachIndexed { i, a ->
+            val on = a.key in checked
+            Press(tv, { onToggle(a.key) }, if (i == 0) Modifier.focusRequester(first) else Modifier, shape = RoundedCornerShape(12.dp)) { f ->
+                Row(
+                    Modifier.widthIn(min = 320.dp).clip(RoundedCornerShape(12.dp)).background(if (f) Jx.SurfaceHi else Jx.Surface)
+                        .then(if (f) Modifier.border(2.dp, Jx.Accent, RoundedCornerShape(12.dp)) else Modifier)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(22.dp).clip(RoundedCornerShape(6.dp)).background(if (on) Jx.Accent else Jx.Line),
+                        contentAlignment = Alignment.Center) { if (on) Txt("✓", 15, Jx.OnAccent, bold = true) }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Txt(a.label, 15, Jx.Text, bold = true, maxLines = 1)
+                        Txt(a.user, 12, Jx.Muted, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Al elegir un perfil con código JOX3 en un equipo que aún no tiene sus servidores. */
+@Composable
+private fun UnlockPrompt(store: ProfileStore, tv: Boolean, p: Profile, onFinish: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var typed by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (tv) { delay(150); runCatching { first.requestFocus() } } }
+    fun go() {
+        val n = Vault.normalize(typed) ?: run { error = "El código tiene 10 letras y números (JX-XXXXX-XXXXX)"; return }
+        busy = true; error = ""
+        scope.launch {
+            try {
+                if (Vault.derive(n).id != p.vaultId) error = "Ese no es el código de ${p.name}"
+                else {
+                    val r = Vault.fetch(n)
+                    com.jox3.iptvexo.tv.data.AccountStore(ctx).addAll(r.servers)
+                    Vault.saveLocal(ctx, p.vaultId, n)
+                    onFinish()
+                }
+            } catch (e: Exception) { error = e.message ?: "No se pudo conectar" }
+            busy = false
+        }
+    }
+    Column(
+        Modifier.fillMaxSize().padding(horizontal = if (tv) 120.dp else 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Avatar(p.emoji, p.color, if (tv) 96.dp else 88.dp)
+        Spacer(Modifier.height(14.dp))
+        Txt("Hola, ${p.name}", if (tv) 28 else 26, Jx.Text, display = true, center = true)
+        Spacer(Modifier.height(6.dp))
+        Txt("Tu perfil tiene ${p.vaultCount} servidor${if (p.vaultCount == 1) "" else "es"} guardado${if (p.vaultCount == 1) "" else "s"}. " +
+            "Escribe tu código JOX3 para agregarlos a este equipo.", 14, Jx.Muted, center = true)
+        Spacer(Modifier.height(18.dp))
+        Box(Modifier.widthIn(max = 420.dp)) { CodeField(tv, typed, { typed = it }, Modifier.focusRequester(first)) { go() } }
+        Spacer(Modifier.height(8.dp))
+        Txt(error, 13, Jx.Live, center = true)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Btn(tv, if (busy) "Revisando…" else "Agregar servidores", primary = true) { if (!busy) go() }
+            Btn(tv, "Ahora no") { Vault.skippedThisLaunch.add(p.vaultId); onFinish() }
+        }
+        Spacer(Modifier.height(10.dp))
+        Btn(tv, "No volver a preguntar en este equipo") { Vault.dismiss(ctx, p.vaultId); onFinish() }
+    }
+}
+
+/**
+ * Entrar en un equipo nuevo con el código JOX3: se cargan todos los servidores guardados.
+ * Se usa desde la pantalla de inicio de sesión (TV y celular).
+ */
+@Composable
+fun VaultCodeLogin(tv: Boolean, onLogin: (Account) -> Unit, onCancel: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var typed by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf("") }
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { if (tv) { delay(150); runCatching { first.requestFocus() } } }
+    BackHandler(onBack = onCancel)
+    fun go() {
+        val n = Vault.normalize(typed) ?: run { error = "El código tiene 10 letras y números (JX-XXXXX-XXXXX)"; return }
+        busy = true; error = ""
+        scope.launch {
+            try {
+                val r = Vault.fetch(n)
+                if (r.servers.isEmpty()) error = "Ese código no tiene servidores guardados"
+                else {
+                    val accounts = com.jox3.iptvexo.tv.data.AccountStore(ctx)
+                    accounts.addAll(r.servers)
+                    Vault.saveLocal(ctx, Vault.derive(n).id, n)
+                    onLogin(r.servers.first())
+                }
+            } catch (e: Exception) { error = e.message ?: "No se pudo conectar" }
+            busy = false
+        }
+    }
+    Column(
+        Modifier.fillMaxSize().background(Jx.Bg).padding(horizontal = if (tv) 120.dp else 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+    ) {
+        Txt("Entrar con tu código JOX3", if (tv) 30 else 26, Jx.Text, display = true, center = true)
+        Spacer(Modifier.height(6.dp))
+        Txt("Se cargan los servidores que guardaste desde tu perfil en otro equipo.", 14, Jx.Muted, center = true)
+        Spacer(Modifier.height(20.dp))
+        Box(Modifier.widthIn(max = 420.dp)) { CodeField(tv, typed, { typed = it }, Modifier.focusRequester(first)) { go() } }
+        Spacer(Modifier.height(8.dp))
+        Txt(error, 13, Jx.Live, center = true)
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Btn(tv, if (busy) "Buscando…" else "Entrar", primary = true) { if (!busy) go() }
+            Btn(tv, "Volver", onClick = onCancel)
+        }
+    }
+}
+
+@Composable
+private fun CodeField(tv: Boolean, value: String, onChange: (String) -> Unit, modifier: Modifier = Modifier, onDone: () -> Unit) {
+    val clean: (String) -> Unit = { onChange(it.uppercase().take(16)) }
+    if (tv) TvTextField("Código JOX3", value, clean, modifier.fillMaxWidth(), placeholder = "JX-XXXXX-XXXXX",
+        keyboardType = KeyboardType.Ascii, onDone = onDone)
+    else PhoneField("Código JOX3", value, clean, placeholder = "JX-XXXXX-XXXXX")
 }
 
 // ───────────────────────── Piezas ─────────────────────────

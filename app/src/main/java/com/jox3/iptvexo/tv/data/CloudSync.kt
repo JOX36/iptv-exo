@@ -114,9 +114,9 @@ object CloudSync {
         }.onFailure { Log.w("JOX3", "Perfiles: ${it.message}") }
     }
 
-    private class Result(val cursor: Long, val more: Boolean, val items: List<JSONObject>)
+    internal class Result(val cursor: Long, val more: Boolean, val items: List<JSONObject>)
 
-    private suspend fun post(id: String, profile: String, since: Long, changes: List<JSONObject>): Result? = withContext(Dispatchers.IO) {
+    internal suspend fun post(id: String, profile: String, since: Long, changes: List<JSONObject>): Result? = withContext(Dispatchers.IO) {
         val body = JSONObject().put("acc", id).put("profile", profile).put("since", since)
             .put("changes", JSONArray(changes)).toString()
         val req = Request.Builder().url("$SERVER/v1/sync")

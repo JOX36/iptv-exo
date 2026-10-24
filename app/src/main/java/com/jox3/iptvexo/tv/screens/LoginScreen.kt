@@ -55,6 +55,8 @@ import kotlinx.coroutines.launch
 /** Inicio de sesión Xtream Codes + cuentas guardadas. */
 @Composable
 fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
+    var withCode by remember { mutableStateOf(false) }
+    if (withCode) { VaultCodeLogin(tv = true, onLogin = onLogin, onCancel = { withCode = false }); return }
     var saved by remember { mutableStateOf(accounts.all()) }
     var deleting by remember { mutableStateOf<String?>(null) }   // cuenta esperando confirmación
     val last = saved.firstOrNull()
@@ -123,6 +125,8 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
             Spacer(Modifier.height(22.dp))
             ActionButton(if (busy) "Conectando…" else "Entrar", ::submit, Modifier.fillMaxWidth(),
                 icon = R.drawable.tv_ic_play, primary = true)
+            Spacer(Modifier.height(10.dp))
+            ActionButton("Tengo un código JOX3", { withCode = true }, Modifier.fillMaxWidth())
             if (error.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
                 Text(error, style = Type.Label, color = Jx.Live)

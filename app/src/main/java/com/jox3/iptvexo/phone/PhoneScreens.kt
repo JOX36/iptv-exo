@@ -671,6 +671,13 @@ private fun InfoLine(label: String, value: String, color: Color = Jx.Text) {
 
 @Composable
 fun PhoneLogin(accounts: AccountStore, onLogin: (Account) -> Unit, onCancel: (() -> Unit)?) {
+    var withCode by remember { mutableStateOf(false) }
+    if (withCode) {
+        Box(Modifier.fillMaxSize().statusBarsPadding().imePadding()) {
+            com.jox3.iptvexo.tv.screens.VaultCodeLogin(tv = false, onLogin = onLogin, onCancel = { withCode = false })
+        }
+        return
+    }
     var saved by remember { mutableStateOf(accounts.all()) }
     var toDelete by remember { mutableStateOf<Account?>(null) }
     toDelete?.let { a ->
@@ -725,6 +732,12 @@ fun PhoneLogin(accounts: AccountStore, onLogin: (Account) -> Unit, onCancel: (()
                 shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
         }
         item { PButton(if (busy) "Conectando…" else "Entrar", Modifier.fillMaxWidth(), icon = R.drawable.ic_play) { submit() } }
+        item {
+            Text("Tengo un código JOX3", style = PType.Label, color = Jx.Accent,
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(Jx.Surface)
+                    .clickable { withCode = true }.padding(vertical = 14.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        }
         if (error.isNotEmpty()) item { Text(error, style = PType.Small, color = Jx.Live) }
         item { Text("Puedes pegar en Servidor el enlace completo de tu lista (get.php?username=…).", style = PType.Small, color = Jx.Faint) }
         if (saved.isNotEmpty()) {

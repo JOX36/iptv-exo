@@ -18,6 +18,10 @@ data class Profile(
     val created: Long = 0L,
     val ts: Long = 0L,
     val deleted: Boolean = false,
+    /** Casillero del código JOX3 de esta persona ("" = no guarda servidores en la nube). */
+    val vaultId: String = "",
+    /** Cuántos servidores tiene guardados (para avisar en otros equipos). */
+    val vaultCount: Int = 0,
 ) {
     val hasPin get() = pinHash.isNotEmpty()
     val isMain get() = id == Profiles.MAIN
@@ -101,8 +105,16 @@ class ProfileStore(context: Context, val account: Account) {
     }
 
     fun update(p: Profile, name: String, emoji: String, color: Long, pinHash: String) {
-        put(p.copy(name = name.trim().ifBlank { p.name }, emoji = emoji, color = color, pinHash = pinHash,
+        val cur = all[p.id] ?: p
+        put(cur.copy(name = name.trim().ifBlank { cur.name }, emoji = emoji, color = color, pinHash = pinHash,
             ts = System.currentTimeMillis()), dirty = true)
+        refresh()
+    }
+
+    /** Marca que el perfil guarda (o deja de guardar) sus servidores con un código JOX3. */
+    fun setVault(p: Profile, vaultId: String, count: Int) {
+        val cur = all[p.id] ?: p
+        put(cur.copy(vaultId = vaultId, vaultCount = count, ts = System.currentTimeMillis()), dirty = true)
         refresh()
     }
 
@@ -129,7 +141,9 @@ class ProfileStore(context: Context, val account: Account) {
     /** Perfil con el que se entra sin preguntar (o null para mostrar "¿Quién está viendo?"). */
     fun autoPick(tv: Boolean): Profile? {
         Profiles.chosenThisLaunch[account.key]?.let { byId(it) }?.let { return it }
-        if (!tv) remembered?.let { byId(it) }?.let { return it }
+        // La TV siempre pregunta "¿Quién está viendo?" al abrir la app
+        if (tv) return null
+        remembered?.let { byId(it) }?.let { return it }
         return list.singleOrNull()?.takeIf { !it.hasPin }
     }
 
@@ -181,11 +195,13 @@ class ProfileStore(context: Context, val account: Account) {
 
     private fun toJson(p: Profile) = JSONObject().put("id", p.id).put("name", p.name).put("emoji", p.emoji)
         .put("color", p.color).put("pin", p.pinHash).put("created", p.created).put("ts", p.ts).put("deleted", p.deleted)
+        .put("vault", p.vaultId).put("vaultN", p.vaultCount)
 
     private fun fromJson(o: JSONObject) = Profile(
         id = o.optString("id"), name = o.optString("name").take(20), emoji = o.optString("emoji").ifBlank { "😎" }.take(8),
         color = o.optLong("color", Profiles.COLORS[4]), pinHash = o.optString("pin"),
         created = o.optLong("created"), ts = o.optLong("ts"), deleted = o.optBoolean("deleted"),
+        vaultId = o.optString("vault").filter { it in "0123456789abcdef" }.take(64), vaultCount = o.optInt("vaultN"),
     )
 
     companion object {
