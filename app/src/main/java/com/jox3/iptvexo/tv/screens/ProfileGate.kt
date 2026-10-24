@@ -91,7 +91,7 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
     LaunchedEffect(Unit) { CloudSync.syncProfiles(ctx, store) }
 
     fun finish(p: Profile) {
-        Profiles.chosenThisLaunch[store.account.key] = p.id
+        Profiles.current = store.byId(p.id) ?: p
         if (!tv) store.remembered = if (rememberHere) p.id else null
         onPick(store.byId(p.id) ?: p)
     }
