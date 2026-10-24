@@ -41,7 +41,6 @@ object ExternalEpg {
     @Volatile private var loadedCodes: Set<String> = emptySet()
     @Volatile private var loadedAt = 0L
     @Volatile private var pending: List<String>? = null
-    @Volatile private var pendingCb: (() -> Unit)? = null
     @Volatile var loading = false
         private set
     @Volatile var lastError = ""
@@ -50,34 +49,75 @@ object ExternalEpg {
     fun isReady() = chans.isNotEmpty()
     fun channelCount() = chans.size
 
-    /** Asegura que las guías de estos países estén descargadas y leídas. No bloquea. */
+    /** Avisos pendientes: TODOS los que pidieron la guía mientras se descargaba (no solo el último). */
+    private val callbacks = ArrayList<() -> Unit>()
+    @Volatile private var lastFailAt = 0L
+    @Volatile private var retries = 0
+    private val retryTimer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "epg-reintento").apply { isDaemon = true }
+    }
+
+    /**
+     * Asegura que las guías de estos países estén descargadas y leídas. No bloquea.
+     * [onReady] se llama siempre: al terminar la descarga, o enseguida si ya estaba lista.
+     * Si la descarga falla (por ejemplo, sin internet al abrir), se reintenta cada 61 s, hasta 5 veces.
+     * Misma lógica que la app Android.
+     */
     fun ensure(codes: List<String>, onReady: (() -> Unit)? = null) {
         val want = codes.map { it.trim().uppercase(Locale.ROOT) }.filter { it.matches(Regex("[A-Z0-9_]{2,20}")) }.distinct()
         if (want.isEmpty()) return
+        var callNow = false
         synchronized(this) {
-            val fresh = want.toSet() == loadedCodes && System.currentTimeMillis() - loadedAt < 3L * 3600 * 1000
-            if (fresh) return
-            // Si ya está descargando, se anota para repetir con los países nuevos al terminar.
-            if (loading) { pending = want; pendingCb = onReady; return }
-            loading = true
+            val now = System.currentTimeMillis()
+            val fresh = want.toSet() == loadedCodes && now - loadedAt < 3L * 3600 * 1000
+            when {
+                // Ya está: avisar igual, para que quien la pidió vuelva a consultar
+                fresh -> callNow = true
+                // Descargando: se anota (los países nuevos se bajan al terminar)
+                loading -> { pending = want; onReady?.let { if (it !in callbacks) callbacks.add(it) }; return }
+                // Falló hace menos de 1 minuto: esperar antes de reintentar
+                now - lastFailAt < 60_000 -> { onReady?.let { if (it !in callbacks) callbacks.add(it) }; return }
+                else -> { loading = true; onReady?.let { if (it !in callbacks) callbacks.add(it) } }
+            }
         }
+        if (callNow) { onReady?.let { runCatching(it) }; return }
         Thread {
             try {
                 val dir = File(AppDirs.data, "epg").apply { mkdirs() }
                 val files = want.mapNotNull { code -> download(dir, code)?.let { code to it } }
                 if (files.isNotEmpty()) parseAll(files)
-                loadedCodes = want.toSet()
-                loadedAt = System.currentTimeMillis()
-                Log.i("Guía de internet lista: ${chans.size} canales (${want.joinToString(",")})")
+                if (files.size == want.size) {
+                    loadedCodes = want.toSet()
+                    loadedAt = System.currentTimeMillis()
+                    lastFailAt = 0L
+                    Log.i("Guía de internet lista: ${chans.size} canales (${want.joinToString(",")})")
+                } else {
+                    // Faltó algún país (sin internet, servidor caído…): se reintenta pronto, no en 3 horas
+                    loadedCodes = emptySet()
+                    lastFailAt = System.currentTimeMillis()
+                    Log.w("Guía de internet incompleta (${files.size} de ${want.size}): se reintenta en 1 minuto")
+                }
             } catch (e: Throwable) {
                 lastError = e.message ?: "error"
+                loadedCodes = emptySet()
+                lastFailAt = System.currentTimeMillis()
                 Log.w("Falló la guía de internet", e)
             } finally {
                 loading = false
             }
-            runCatching { onReady?.invoke() }
+            val failed = loadedCodes.isEmpty()
+            if (failed && retries < 5) {
+                // Reintento solo en 1 minuto (los avisos pendientes esperan a que salga bien)
+                retries++
+                retryTimer.schedule({ ensure(want, null) }, 61, java.util.concurrent.TimeUnit.SECONDS)
+            } else if (!failed) retries = 0
+            // Aviso a todos los que esperaban (si falló, ven lo que haya de una copia anterior)
+            val cbs = synchronized(this) {
+                if (failed && retries in 1..4 && !isReady()) emptyList() else callbacks.toList().also { callbacks.clear() }
+            }
+            cbs.forEach { runCatching(it) }
             val next = synchronized(this) { val n = pending; pending = null; n }
-            if (next != null) ensure(next, pendingCb)
+            if (next != null && next.toSet() != loadedCodes) ensure(next, null)
         }.apply { priority = Thread.MIN_PRIORITY; isDaemon = true; name = "epg-internet" }.start()
     }
 

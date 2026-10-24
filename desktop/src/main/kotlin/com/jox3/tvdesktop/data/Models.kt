@@ -30,7 +30,8 @@ enum class Section(val apiCategories: String) {
     SERIES("get_series_categories"),
 }
 
-data class Category(val id: String, val name: String)
+/** [name] es el nombre limpio para mostrar; [raw] el original del servidor (sirve para detectar el país de la guía). */
+data class Category(val id: String, val name: String, val raw: String = name)
 
 data class Channel(
     val id: String,

@@ -135,7 +135,9 @@ class LibraryStore(account: Account, dir: File = File(AppDirs.data, "library")) 
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             val id = o.optString("id").ifBlank { return@mapNotNull null }
             SavedItem(
-                kind = o.optString("kind"), id = id, name = o.optString("name"),
+                // Nombres guardados con versiones viejas: se limpian igual que los nuevos (como en Android)
+                kind = o.optString("kind"), id = id,
+                name = o.optString("name").let { n -> if (o.optString("kind") == "live") Names.channel(n) else Names.clean(n, titles = true) },
                 image = o.optString("image"), ext = o.optString("ext"), seriesId = o.optString("seriesId"),
                 categoryId = o.optString("categoryId"), ts = o.optLong("ts"),
             )
