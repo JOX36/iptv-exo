@@ -112,6 +112,12 @@ fun SettingsScreen(live: LiveController, version: String) {
                     Text("Los servidores y su estado están en Cuenta (arriba a la derecha).", color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp)
                 }
 
+                // ── Nube ──
+                Card("Historial en la nube") {
+                    Toggle("sync.enabled", true, "Compartir con mis otros equipos",
+                        "\"Seguir viendo\" (con el minuto exacto), favoritos y canales recientes se comparten con el TV Box y el celular que usan la misma cuenta. Solo sale una huella de la cuenta, nunca la contraseña.")
+                }
+
                 // ── Almacenamiento ──
                 Card("Almacenamiento") {
                     var tick by remember { mutableIntStateOf(0) }

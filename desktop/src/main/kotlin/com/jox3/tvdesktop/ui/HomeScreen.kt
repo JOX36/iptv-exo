@@ -184,10 +184,17 @@ fun HomeScreen(
     }
 
     // Al cerrar el programa (o al actualizarse) se guarda dónde va la película
+    // y lo pendiente se sube a la nube (como mucho 4 s)
     androidx.compose.runtime.DisposableEffect(live) {
-        val remove = com.jox3.tvdesktop.core.Shutdown.add { live.saveVodProgress() }
+        val remove = com.jox3.tvdesktop.core.Shutdown.add {
+            live.saveVodProgress()
+            com.jox3.tvdesktop.data.CloudSync.flushBlocking(account, repo.library)
+        }
         onDispose { remove() }
     }
+
+    // Historial en la nube: compartido con el TV Box y el celular de la misma cuenta
+    LaunchedEffect(repo) { com.jox3.tvdesktop.data.CloudSync.run(account, repo.library) }
 
     // Apagado automático
     LaunchedEffect(live.sleepAt) {
