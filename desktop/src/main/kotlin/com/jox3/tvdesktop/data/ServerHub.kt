@@ -12,7 +12,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -81,6 +83,49 @@ object ServerHub {
 
     /** Lo que se abre al entrar al otro servidor. */
     var pendingOpen by mutableStateOf<Copy?>(null)
+
+    // ── Lo que dan ahora (buscador y elegir servidor), igual que Android ──
+
+    private val nowCache = HashMap<String, Pair<Long, String>>()
+    private val nowPermits = Semaphore(3)
+
+    /**
+     * Programa que se emite ahora en ese canal de ESE servidor: primero su propia guía y,
+     * si no trae, la guía de internet. "" si no hay. Se guarda 3 minutos (sin guía: 1 minuto).
+     */
+    suspend fun nowOn(c: Copy): String {
+        if (c.kind != "live") return ""
+        val key = c.account.key + "|" + c.id
+        synchronized(nowCache) { nowCache[key] }?.let { (t, v) ->
+            if (System.currentTimeMillis() - t < if (v.isEmpty()) 60_000 else 180_000) return v
+        }
+        val nowMs = System.currentTimeMillis()
+        var items = nowPermits.withPermit {
+            withContext(Dispatchers.IO) { runCatching { XtreamApi(c.account).shortEpg(c.id, 4) }.getOrDefault(emptyList()) }
+        }
+        if (items.isEmpty() && ExternalEpg.isReady()) {
+            items = withContext(Dispatchers.Default) {
+                runCatching {
+                    ExternalEpg.match(c.name, null, null)?.progs
+                        ?.map { EpgItem(it.title, it.desc, it.start * 1000, it.stop * 1000) }.orEmpty()
+                }.getOrDefault(emptyList())
+            }
+        }
+        val cur = items.firstOrNull { nowMs in it.start until it.end } ?: items.firstOrNull { it.end > nowMs }
+        val title = cur?.title.orEmpty()
+        synchronized(nowCache) { nowCache[key] = System.currentTimeMillis() to title }
+        return title
+    }
+
+    /** Lo que dan ahora en un canal encontrado: del servidor actual si tiene guía; si no, del primero que la tenga. */
+    suspend fun nowForHit(h: Hit, current: Account): Pair<String, Account?> {
+        val copies = h.copies.distinctBy { it.account.key }.sortedBy { if (it.account.key == current.key) 0 else 1 }
+        for (c in copies) {
+            val t = nowOn(c)
+            if (t.isNotEmpty()) return t to c.account
+        }
+        return "" to null
+    }
 
     // ── Preferencias ──
     fun searchAllEnabled() = Settings.bool("servers.searchAll", true)

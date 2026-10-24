@@ -70,6 +70,7 @@ import kotlinx.coroutines.delay
 fun SearchScreen(live: LiveController, onOpen: (ServerHub.Copy) -> Unit) {
     val repo = live.repo
     val lib = repo.library
+    val epgV by repo.epgVersion
     val servers = LocalServers.current ?: return
     var query by remember { mutableStateOf("") }
     var only by remember { mutableStateOf<String?>(null) }
@@ -165,7 +166,7 @@ fun SearchScreen(live: LiveController, onOpen: (ServerHub.Copy) -> Unit) {
                     val r = results!!
                     if (r.channels.isNotEmpty()) {
                         item { SectionTitle("Canales", r.channels.size) }
-                        items(r.channels, key = { "c" + it.key }) { h -> ChannelHit(h, servers) { open(h) } }
+                        items(r.channels, key = { "c" + it.key }) { h -> ChannelHit(h, servers, epgV) { open(h) } }
                     }
                     if (r.movies.isNotEmpty()) {
                         item { SectionTitle("Películas", r.movies.size) }
@@ -201,6 +202,12 @@ fun SearchScreen(live: LiveController, onOpen: (ServerHub.Copy) -> Unit) {
                                 Column(Modifier.weight(1f)) {
                                     Text(c.name, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(ServerHub.name(servers.all, c.account) + if (here) " (en uso)" else "", color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp)
+                                    if (c.kind == "live") {
+                                        val now by produceState<String?>(null, c) { value = ServerHub.nowOn(c) }
+                                        Text(when (now) { null -> "Buscando la guía…"; "" -> "Sin guía en este servidor"; else -> "▶ Ahora: $now" },
+                                            color = if (now.isNullOrEmpty()) Jx.Faint else Jx.Accent, fontFamily = Exo2, fontSize = 12.sp,
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    }
                                 }
                                 if (c.tag.isNotBlank()) Pill(c.tag, Jx.Accent)
                             }
@@ -257,12 +264,21 @@ private fun SectionTitle(title: String, count: Int) {
 }
 
 @Composable
-private fun ChannelHit(h: ServerHub.Hit, servers: ServerCtx, onClick: () -> Unit) {
+private fun ChannelHit(h: ServerHub.Hit, servers: ServerCtx, epgVersion: Int, onClick: () -> Unit) {
+    // Lo que dan ahora: de la guía de este servidor; si no tiene, de otro ("B · título") o de internet
+    val now by produceState("", h.key, epgVersion) {
+        val (t, from) = ServerHub.nowForHit(h, servers.account)
+        value = if (t.isEmpty()) "" else if (servers.all.size > 1 && from != null && from.key != servers.account.key)
+            "${ServerHub.letter(servers.all, from)} · $t" else t
+    }
     ListRow(false, onClick) {
         Row(Modifier.padding(horizontal = 10.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             RemoteImage(h.image, h.name, Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)))
             Spacer(Modifier.width(12.dp))
-            Text(h.name, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text(h.name, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (now.isNotEmpty()) Text("▶ $now", color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             ServerLetters(h, servers)
         }
     }
