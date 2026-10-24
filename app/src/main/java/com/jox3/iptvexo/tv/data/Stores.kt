@@ -20,6 +20,9 @@ class AccountStore(context: Context) {
         }
     }
 
+    /** Servidores que ve el perfil en uso (los de otra persona no aparecen). */
+    fun shown(): List<Account> = ServerAccess.visible(app, all(), Profiles.current)
+
     fun current(): Account? {
         val key = prefs.getString("current", null) ?: return null
         return all().firstOrNull { it.key == key }
@@ -58,6 +61,7 @@ class AccountStore(context: Context) {
         remove(acc)
         ServerHub.forget(acc)
         ProfileStore.wipeAccount(app, acc)
+        ServerAccess.forget(app, acc.key)
         val lib = app.getSharedPreferences("tv_library", Context.MODE_PRIVATE)
         val ns = acc.key.hashCode().toString() + "."
         val ed = lib.edit()

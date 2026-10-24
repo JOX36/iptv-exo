@@ -690,10 +690,10 @@ fun PhoneLogin(accounts: AccountStore, onLogin: (Account) -> Unit, onCancel: (()
         }
         return
     }
-    var saved by remember { mutableStateOf(accounts.all()) }
+    var saved by remember { mutableStateOf(accounts.shown()) }
     var toDelete by remember { mutableStateOf<Account?>(null) }
     toDelete?.let { a ->
-        DeleteAccountDialog(a, onConfirm = { accounts.delete(a); saved = accounts.all(); toDelete = null }, onDismiss = { toDelete = null })
+        DeleteAccountDialog(a, onConfirm = { accounts.delete(a); saved = accounts.shown(); toDelete = null }, onDismiss = { toDelete = null })
     }
     var host by remember { mutableStateOf("") }
     var user by remember { mutableStateOf("") }
@@ -847,13 +847,13 @@ private fun LiveCard(c: Channel, repo: TvRepo, onClick: () -> Unit) {
 fun PhoneServers(accounts: AccountStore, current: Account, onSwitch: (Account) -> Unit, onAdd: () -> Unit,
                  onDeleted: (Account) -> Unit, onBack: () -> Unit) {
     val ctx = LocalContext.current
-    var all by remember { mutableStateOf(accounts.all()) }
+    var all by remember { mutableStateOf(accounts.shown()) }
     var searchAll by remember { mutableStateOf(ServerHub.searchAllEnabled(ctx)) }
     var toDelete by remember { mutableStateOf<Account?>(null) }
     LaunchedEffect(Unit) { ServerHub.refresh(all, force = true) }
     toDelete?.let { a ->
         DeleteAccountDialog(a, onConfirm = {
-            accounts.delete(a); all = accounts.all(); toDelete = null; onDeleted(a)
+            accounts.delete(a); all = accounts.shown(); toDelete = null; onDeleted(a)
         }, onDismiss = { toDelete = null })
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),

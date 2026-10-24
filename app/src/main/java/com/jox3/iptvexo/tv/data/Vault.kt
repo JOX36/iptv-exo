@@ -27,7 +27,7 @@ object Vault {
     private val SALT = "jox3-vault-v1".toByteArray()
 
     class Keys(val id: String, val key: ByteArray)
-    class Content(val servers: List<Account>, val updated: Long)
+    class Content(val servers: List<Account>, val updated: Long, val profileId: String = "")
     class NotFound : Exception("No hay servidores guardados con ese código")
 
     fun newCode(): String {
@@ -104,15 +104,15 @@ object Vault {
             arr.optJSONObject(i)?.let { s -> Account(s.optString("host"), s.optString("user"), s.optString("pass")) }
                 ?.takeIf { it.host.isNotBlank() && it.user.isNotBlank() }
         }
-        return Content(servers, o.optLong("updated"))
+        return Content(servers, o.optLong("updated"), o.optString("profile"))
     }
 
-    suspend fun upload(code: String, servers: List<Account>): Boolean {
+    suspend fun upload(code: String, servers: List<Account>, profileId: String = ""): Boolean {
         val keys = derive(code)
         val now = System.currentTimeMillis()
         val arr = JSONArray()
         servers.forEach { arr.put(JSONObject().put("host", it.host).put("user", it.user).put("pass", it.pass)) }
-        val data = encrypt(keys, JSONObject().put("v", 1).put("servers", arr).put("updated", now).toString())
+        val data = encrypt(keys, JSONObject().put("v", 1).put("servers", arr).put("updated", now).put("profile", profileId).toString())
         val change = JSONObject().put("list", "vault").put("item", "v").put("ts", now).put("data", data)
         return CloudSync.post(keys.id, SCOPE, now, listOf(change)) != null
     }
@@ -156,13 +156,19 @@ object Vault {
     suspend fun refresh(ctx: Context, profile: Profile, accounts: AccountStore) {
         val code = localCode(ctx, profile.vaultId) ?: return
         runCatching {
-            val remote = fetch(code).servers
-            // Lo guardado desde otro equipo también queda en este
+            val content = fetch(code)
+            val remote = content.servers
+            // Lo guardado desde otro equipo también queda en este (como servidor de esta persona)
+            val before = accounts.all().map { it.key }.toSet()
             accounts.addAll(remote)
-            // Si aquí cambió la contraseña de alguno, se actualiza en la nube
+            ServerAccess.claimFromVault(ctx, profile, remote, remote.map { it.key }.toSet() - before, accounts)
+            // Contraseñas cambiadas aquí y servidores nuevos que agregó en este equipo
             val local = accounts.all()
-            val updated = remote.map { r -> local.firstOrNull { it.key == r.key } ?: r }
-            if (updated != remote) upload(code, updated)
+            val extra = local.filter { ServerAccess.owner(ctx, it.key) == profile.id && remote.none { r -> r.key == it.key } }
+            val updated = remote.map { r -> local.firstOrNull { it.key == r.key } ?: r } + extra
+            if (updated != remote || content.profileId != profile.id) {
+                if (upload(code, updated, profile.id)) ServerAccess.setVaultKeys(ctx, profile.id, updated.map { it.key }.toSet())
+            }
         }
     }
 }

@@ -83,7 +83,12 @@ fun PhoneApp(act: PhoneActivity) {
     var adding by remember { mutableStateOf(false) }
     val acc = account
     if (acc == null || adding) {
-        PhoneLogin(accounts, onLogin = { a -> accounts.use(a); account = a; adding = false },
+        PhoneLogin(accounts, onLogin = { a ->
+                val isNew = accounts.all().none { it.key == a.key }
+                accounts.use(a)
+                if (isNew) com.jox3.iptvexo.tv.data.ServerAccess.claimNew(context, accounts, a)
+                account = a; adding = false
+            },
             onCancel = if (acc != null) ({ adding = false }) else null)
         BackHandler(enabled = acc != null) { adding = false }
         return
@@ -117,11 +122,12 @@ fun PhoneApp(act: PhoneActivity) {
                 com.jox3.iptvexo.tv.LocalProfile provides com.jox3.iptvexo.tv.ProfileCtx(profiles.byId(prof.id) ?: prof) {
                     previous = prof; profile = null
                 }) {
-                com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = false, profileId = prof.id) {
+                com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = false, profileId = prof.id,
+                    onSwitch = { a -> accounts.use(a); account = a }) {
                     PhoneShell(act, repo, accounts, acc,
                         onSwitch = { a -> accounts.use(a); account = a },
                         onAdd = { adding = true },
-                        onLogout = { accounts.delete(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
+                        onLogout = { accounts.delete(acc); account = accounts.shown().firstOrNull()?.also { accounts.use(it) } })
                 }
             }
         }
@@ -222,7 +228,7 @@ private fun PhoneShell(
 
     // ── Varios servidores ──
     LaunchedEffect(account.key) {
-        val all = accounts.all()
+        val all = accounts.shown()
         ServerHub.refresh(all)
         if (all.size > 1 && ServerHub.searchAllEnabled(context) && !ServerHub.lowMemory(context)) {
             kotlinx.coroutines.delay(4000)
@@ -252,7 +258,7 @@ private fun PhoneShell(
     }
 
     val serverCtx = remember(account) {
-        com.jox3.iptvexo.tv.data.ServerCtx(account, accounts.all()) { c -> ServerHub.pendingOpen = c; onSwitch(c.account) }
+        com.jox3.iptvexo.tv.data.ServerCtx(account, accounts.shown()) { c -> ServerHub.pendingOpen = c; onSwitch(c.account) }
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalCast provides cast, com.jox3.iptvexo.tv.data.LocalServers provides serverCtx) {
     Box(Modifier.fillMaxSize().background(if (fullscreen || act.inPip) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
@@ -299,7 +305,7 @@ private fun PhoneShell(
                                 Tab.Movies -> PhoneCatalog(repo, Section.VOD, ::openMovie, ::openSeries)
                                 Tab.Series -> PhoneCatalog(repo, Section.SERIES, ::openMovie, ::openSeries)
                                 Tab.Search -> PhoneSearch(repo, ::openMovie, ::openSeries, ::playChannel,
-                                    account = account, accounts = accounts.all(), onSwitch = onSwitch)
+                                    account = account, accounts = accounts.shown(), onSwitch = onSwitch)
                                 Tab.Live -> Unit
                             }
                         }
@@ -329,7 +335,7 @@ private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account)
                 Icon(painterResource(R.drawable.ic_chevron_down), "Cambiar de cuenta", Modifier.size(14.dp), tint = Jx.Muted)
             }
             DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = Jx.Surface) {
-                accounts.all().forEach { a ->
+                accounts.shown().forEach { a ->
                     DropdownMenuItem(
                         text = {
                             Column {
