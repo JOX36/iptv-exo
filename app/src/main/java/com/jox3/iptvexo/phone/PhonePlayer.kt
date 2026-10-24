@@ -400,6 +400,7 @@ internal fun vodOptions(vod: VodPlayback): List<Triple<String, String, Int>> = b
     add(Triple("sleep", if (vod.sleepAt != 0L) "Apagado activo" else "Apagado", R.drawable.ic_stop))
     add(Triple("picture", "Imagen", R.drawable.ic_resize))
     add(Triple("info", "Información", R.drawable.tv_ic_info))
+    add(Triple("together", "Ver juntos", R.drawable.ic_together))
 }
 
 /** Pastilla translúcida sobre el video (pantalla completa). */
@@ -456,6 +457,7 @@ fun VodSheets(vod: VodPlayback, sheet: String?, onDismiss: () -> Unit) {
             title = if (cur.season == 0 && vod.queue.size == 1) cur.title else cur.subtitle,
             subtitle = listOf(if (cur.season == 0 && vod.queue.size == 1) "Película" else cur.title, vod.metaOf(cur)).filter { it.isNotBlank() }.joinToString(" · "),
             body = vod.plotOf(cur), tech = techInfo(ctx, vod.player, cur.url), onDismiss = onDismiss)
+        "together" -> PhoneTogetherSheet(vod, onDismiss)
         else -> VodChoiceSheets(vod, sheet, onDismiss)
     }
 }

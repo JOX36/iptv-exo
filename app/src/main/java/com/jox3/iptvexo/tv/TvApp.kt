@@ -230,6 +230,7 @@ private fun MainShell(
         com.jox3.iptvexo.tv.data.ServerAccess.visible(context, accounts.all(), com.jox3.iptvexo.tv.data.Profiles.current)
     }
     var serverPanel by remember { mutableStateOf(false) }
+    var togetherPanel by remember { mutableStateOf(false) }
     LaunchedEffect(account.key) {
         ServerHub.refresh(allAccounts)
         // El catálogo de los otros servidores se prepara en segundo plano para el buscador universal
@@ -238,6 +239,11 @@ private fun MainShell(
             ServerHub.ensureIndexes(allAccounts.filter { it.key != account.key })
         }
     }
+    // ── Ver juntos: escuchar el reproductor y abrir lo que ve la sala ──
+    com.jox3.iptvexo.tv.player.WatchTogether.opener = { m -> com.jox3.iptvexo.tv.player.WatchTogether.openHere(m, repo, host.player) }
+    LaunchedEffect(vod.open, vod.index) { com.jox3.iptvexo.tv.player.WatchTogether.bind(vod) }
+    // Al abrir el video de la sala se cierra el panel de unirse
+    LaunchedEffect(vod.open) { if (vod.open) togetherPanel = false }
     // ── "Porque viste…" al terminar una película o serie ──
     var because by remember { mutableStateOf<SavedItem?>(null) }
     vod.onFinished = { because = it }
@@ -385,7 +391,7 @@ private fun MainShell(
             }
         }) {
         // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
-        val covered = detail != null || live.fullscreen || vod.full || because != null
+        val covered = detail != null || live.fullscreen || vod.full || because != null || togetherPanel
         Box(
             Modifier
                 .fillMaxSize()
@@ -411,7 +417,8 @@ private fun MainShell(
                     }
                 }
             }
-            if (!chrome.railHidden) Rail(section, nav, allAccounts, account, { serverPanel = true }, Modifier.zIndex(2f))
+            if (!chrome.railHidden) Rail(section, nav, allAccounts, account, { serverPanel = true }, Modifier.zIndex(2f),
+                onTogether = { togetherPanel = true })
           }
         }
 
@@ -452,6 +459,13 @@ private fun MainShell(
                     onClose = { because = null; nav.open(Route.Home) })
             }
         }
+
+        // Ver juntos: unirse con un código (desde la barra lateral)
+        if (togetherPanel) {
+            Box(Modifier.fillMaxSize().zIndex(6.5f)) { com.jox3.iptvexo.tv.screens.TogetherJoin(onDismiss = { togetherPanel = false }) }
+        }
+        // Aviso de la sala (código, personas, reacciones): encima de todo, sin foco
+        com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 24.dp).zIndex(9f))
 
         // Panel de servidores (desde la barra lateral)
         if (serverPanel) {
@@ -498,7 +512,7 @@ private val railItems = listOf(
 @Composable
 private fun Rail(
     current: Route, nav: Nav, accounts: List<Account>, account: Account, onServers: () -> Unit,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier, onTogether: () -> Unit = {},
 ) {
     var expanded by remember { mutableStateOf(false) }
     val width by animateDpAsState(if (expanded) RailExpanded else RailCollapsed, tween(180), label = "rail")
@@ -532,6 +546,8 @@ private fun Rail(
                 RailButton(item.icon, item.label, item.route == current, expanded,
                     if (item.route == current) Modifier.safeFocusTarget(current0) else Modifier) { nav.open(item.route) }
             }
+            // Ver juntos (unirse a una sala con un código)
+            RailButton(R.drawable.ic_together, "Ver juntos", false, expanded, Modifier) { onTogether() }
             Spacer(Modifier.weight(1f))
             val settingsSelected = current == Route.Settings
             RailButton(R.drawable.tv_ic_settings, "Ajustes y cuenta", settingsSelected, expanded,

@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
@@ -70,6 +71,7 @@ private enum class VOpt(val label: String, val panel: Boolean, val enter: Boolea
     Sleep("Apagado", true),
     Picture("Imagen", true),
     Info("Información", true, enter = false),
+    Together("Ver juntos", true),
     Favorite("Favorito", false),
     Close("Cerrar", false),
 }
@@ -280,6 +282,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                         }
                     }
                     VOpt.Info -> InfoPanel(vod)
+                    VOpt.Together -> TogetherPanel(vod, panelReq)
                     else -> Unit
                 }
             }
@@ -298,7 +301,8 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                     up = FocusRequester.Cancel
                     down = optReqs.getValue(option ?: VOpt.Play)
                 }, onFocused = { option = null }, onActivity = { activity = System.currentTimeMillis() })
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Con muchas opciones la fila se desplaza (la opción enfocada siempre se ve)
+                Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     VOpt.values().filter { op -> op != VOpt.Next || vod.hasNext }.forEach { opt ->
                         OptionTab(
                             label = when (opt) {
@@ -316,6 +320,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                                 VOpt.Sleep -> R.drawable.ic_stop
                                 VOpt.Picture -> R.drawable.ic_resize
                                 VOpt.Info -> R.drawable.tv_ic_info
+                                VOpt.Together -> R.drawable.ic_together
                                 VOpt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
                                 VOpt.Close -> R.drawable.ic_close
                             },
