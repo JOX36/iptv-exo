@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -261,21 +262,43 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
                 if (prefill?.key == acc.key) prefill = null
             },
         )
-        is Screen.Home -> HomeScreen(
-            account = s.account,
-            api = s.api,
-            info = s.info,
-            player = player,
-            accounts = store.accounts,
-            onSwitchServer = { acc -> scope.launch { connect(acc) } },
-            version = APP_VERSION,
-            onLogout = {
-                store.logout()
-                prefill = null; error = null
-                screen = Screen.Login
-            },
-            onOpenLogs = { Crash.openLogs() },
-        )
+        is Screen.Home -> {
+            // ¿Quién está viendo? — se pregunta siempre al abrir (como en el TV Box). El perfil elegido
+            // se mantiene al cambiar de servidor, sin volver a preguntar.
+            val profiles = remember(s.account.key) { com.jox3.tvdesktop.data.ProfileStore(s.account) }
+            var backTo by remember { mutableStateOf<com.jox3.tvdesktop.data.Profile?>(null) }
+            val cur = com.jox3.tvdesktop.data.Profiles.current
+            if (cur == null) {
+                com.jox3.tvdesktop.ui.ProfileGate(
+                    profiles,
+                    onPick = { backTo = null },
+                    onCancel = backTo?.let { p -> { com.jox3.tvdesktop.data.Profiles.current = p; backTo = null } },
+                )
+            } else {
+                // Perfil elegido con otro servidor: se agrega a la lista de este si aún no estaba
+                LaunchedEffect(s.account.key, cur.id) { profiles.adopt(cur) }
+                key(s.account.key, cur.id) {
+                    HomeScreen(
+                        account = s.account,
+                        api = s.api,
+                        info = s.info,
+                        player = player,
+                        accounts = store.accounts,
+                        profiles = profiles,
+                        profile = profiles.byId(cur.id) ?: cur,
+                        onSwitchServer = { acc -> scope.launch { connect(acc) } },
+                        onSwitchProfile = { backTo = cur; com.jox3.tvdesktop.data.Profiles.current = null },
+                        version = APP_VERSION,
+                        onLogout = {
+                            store.logout()
+                            prefill = null; error = null
+                            screen = Screen.Login
+                        },
+                        onOpenLogs = { Crash.openLogs() },
+                    )
+                }
+            }
+        }
     }
     // Aviso arriba (por ejemplo, si no se pudo cambiar de servidor)
     banner?.let { text ->
