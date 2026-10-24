@@ -46,18 +46,32 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     val epgVersion = androidx.compose.runtime.mutableIntStateOf(0)
     private val catCountry = HashMap<String, String>()
 
+    @Volatile private var epgCodes: List<String> = emptyList()
+
+    /** Un solo aviso por pantalla (aunque se pida muchas veces mientras descarga). */
+    private val onExternalReady: () -> Unit = {
+        // Los canales que quedaron sin guía se vuelven a consultar
+        synchronized(epg) { epg.entries.removeAll { it.value.second.isEmpty() } }
+        android.os.Handler(android.os.Looper.getMainLooper()).post { epgVersion.intValue++ }
+    }
+
     private fun startExternalEpg(liveCats: List<Category>) {
         synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.raw) } }
-        ExternalEpg.ensure(context, EpgCountries.filesFor(liveCats)) {
-            // Los canales que quedaron sin guía se vuelven a consultar
-            synchronized(epg) { epg.entries.removeAll { it.value.second.isEmpty() } }
-            android.os.Handler(android.os.Looper.getMainLooper()).post { epgVersion.intValue++ }
-        }
+        epgCodes = EpgCountries.filesFor(liveCats)
+        requestExternal()
+    }
+
+    /** Pide (o vuelve a pedir) la guía de internet; al estar lista, la interfaz la consulta otra vez. */
+    private fun requestExternal() {
+        val codes = epgCodes.ifEmpty { return }
+        ExternalEpg.ensure(context, codes, onExternalReady)
     }
 
     fun cachedEpg(ch: Channel): List<EpgItem>? {
         val hit = synchronized(epg) { epg[ch.id] } ?: return null
-        return if (System.currentTimeMillis() - hit.first < 5 * 60_000) hit.second else null
+        // Con guía: 5 minutos. Sin guía: solo 1 minuto (puede que aún se esté descargando)
+        val ttl = if (hit.second.isEmpty()) 60_000 else 5 * 60_000
+        return if (System.currentTimeMillis() - hit.first < ttl) hit.second else null
     }
 
     suspend fun epg(ch: Channel): List<EpgItem> {
@@ -66,6 +80,8 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         var list = epgPermits.withPermit {
             try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
         }
+        // La guía de internet aún no está (falló o no ha terminado): se vuelve a pedir
+        if (list.isEmpty() && !ExternalEpg.isReady() && !ExternalEpg.loading) requestExternal()
         if (list.isEmpty() && ExternalEpg.isReady()) {
             val now = System.currentTimeMillis() / 1000
             val hint = synchronized(catCountry) { catCountry[ch.categoryId] }
