@@ -203,6 +203,8 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
 
     var banner by remember { mutableStateOf<String?>(null) }
 
+    var withCode by remember { mutableStateOf(false) }
+
     /**
      * Comprueba la cuenta con el servidor; si responde bien, la guarda y entra.
      * Al cambiar de servidor desde el inicio, si el otro no responde se queda en el actual.
@@ -214,7 +216,10 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
         try {
             val api = XtreamApi(acc)
             val info = api.serverInfo()
+            val isNew = store.accounts.none { it.key == acc.key }
             store.use(acc)
+            // Servidor nuevo agregado estando en un perfil con servidores propios: queda como suyo
+            if (isNew) com.jox3.tvdesktop.data.ServerAccess.claimNew(store, acc)
             Log.i("Sesión iniciada en ${acc.label} (${info.status}, en vivo .${api.liveExt})")
             screen = Screen.Home(acc, api, info)
         } catch (e: Exception) {
@@ -241,8 +246,14 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
     Box(Modifier.fillMaxSize()) {
     when (val s = screen) {
         Screen.Starting -> Splash()
-        Screen.Login -> LoginScreen(
-            saved = store.accounts,
+        Screen.Login -> if (withCode) com.jox3.tvdesktop.ui.VaultCodeLogin(
+            store,
+            onLogin = { acc -> withCode = false; scope.launch { connect(acc) } },
+            onCancel = { withCode = false },
+        ) else LoginScreen(
+            // Solo los servidores que ve el perfil (los de otra persona no aparecen)
+            saved = com.jox3.tvdesktop.data.ServerAccess.visible(store.accounts.toList(), com.jox3.tvdesktop.data.Profiles.current),
+            onCode = { withCode = true },
             busy = busy,
             error = error,
             prefill = prefill,
@@ -259,6 +270,7 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
             },
             onDeleteSaved = { acc ->
                 store.remove(acc)
+                com.jox3.tvdesktop.data.ServerAccess.forget(acc.key)
                 if (prefill?.key == acc.key) prefill = null
             },
         )
@@ -270,7 +282,7 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
             val cur = com.jox3.tvdesktop.data.Profiles.current
             if (cur == null) {
                 com.jox3.tvdesktop.ui.ProfileGate(
-                    profiles,
+                    profiles, store,
                     onPick = { backTo = null },
                     onCancel = backTo?.let { p -> { com.jox3.tvdesktop.data.Profiles.current = p; backTo = null } },
                 )
@@ -278,12 +290,15 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
                 // Perfil elegido con otro servidor: se agrega a la lista de este si aún no estaba
                 LaunchedEffect(s.account.key, cur.id) { profiles.adopt(cur) }
                 key(s.account.key, cur.id) {
+                  // Código JOX3 y servidores de cada perfil: si este servidor no es suyo, pasa a uno de los suyos
+                  com.jox3.tvdesktop.ui.VaultUnlockGate(profiles, store, cur.id, onSwitch = { acc -> scope.launch { connect(acc) } }) {
                     HomeScreen(
                         account = s.account,
                         api = s.api,
                         info = s.info,
                         player = player,
-                        accounts = store.accounts,
+                        // Cada perfil ve solo sus servidores (o los de la casa)
+                        accounts = com.jox3.tvdesktop.data.ServerAccess.visible(store.accounts.toList(), profiles.byId(cur.id) ?: cur),
                         profiles = profiles,
                         profile = profiles.byId(cur.id) ?: cur,
                         onSwitchServer = { acc -> scope.launch { connect(acc) } },
@@ -296,6 +311,7 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
                         },
                         onOpenLogs = { Crash.openLogs() },
                     )
+                  }
                 }
             }
         }

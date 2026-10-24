@@ -65,6 +65,7 @@ fun LoginScreen(
     onLogin: (host: String, user: String, pass: String) -> Unit,
     onPickSaved: (Account) -> Unit,
     onDeleteSaved: (Account) -> Unit,
+    onCode: () -> Unit = {},
 ) {
     var host by remember(prefill) { mutableStateOf(prefill?.host.orEmpty()) }
     var user by remember(prefill) { mutableStateOf(prefill?.user.orEmpty()) }
@@ -136,6 +137,11 @@ fun LoginScreen(
                         Text("Conectando…")
                     } else Text("Entrar")
                 }
+                Spacer(Modifier.height(18.dp))
+                Text("¿Ya usas JOX3 en otro equipo? Entra con tu código y se cargan tus servidores.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+                GhostButton("Tengo un código JOX3", onCode)
             }
 
             // ── Cuentas guardadas ──

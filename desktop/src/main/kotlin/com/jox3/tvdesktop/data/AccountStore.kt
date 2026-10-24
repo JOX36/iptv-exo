@@ -12,7 +12,7 @@ import java.io.File
 
 /**
  * Cuentas guardadas y la cuenta activa, en accounts.json (carpeta de datos del programa).
- * Mismo comportamiento que AccountStore de Android: la más reciente primero, máximo 10.
+ * Mismo comportamiento que AccountStore de Android: la más reciente primero, máximo 20.
  * Las contraseñas se guardan cifradas con Windows ([Secrets]). Si una no se puede
  * descifrar, la cuenta se conserva y solo se pide escribir la contraseña otra vez.
  */
@@ -33,6 +33,24 @@ class AccountStore(private val file: File = File(AppDirs.data, "accounts.json"))
         currentKey.value = acc.key
         save()
     }
+
+    /** Agrega cuentas sin cambiar la que está en uso (las repetidas se ignoran). Devuelve cuántas eran nuevas. */
+    fun addAll(accs: List<Account>): Int {
+        val fresh = accs.filter { a -> accounts.none { it.key == a.key } }.distinctBy { it.key }
+        // Si una que ya estaba llegó con otra contraseña (la cambiaron en otro equipo), se actualiza
+        var changed = false
+        accs.forEach { a ->
+            val i = accounts.indexOfFirst { it.key == a.key }
+            if (i >= 0 && accounts[i].pass != a.pass && a.pass.isNotEmpty()) { accounts[i] = a; changed = true }
+        }
+        if (fresh.isEmpty() && !changed) return 0
+        val list = (accounts + fresh).take(MAX)
+        accounts.clear(); accounts.addAll(list)
+        save()
+        return fresh.size
+    }
+
+    fun all(): List<Account> = accounts.toList()
 
     fun remove(acc: Account) {
         accounts.removeAll { it.key == acc.key }
@@ -70,5 +88,5 @@ class AccountStore(private val file: File = File(AppDirs.data, "accounts.json"))
         }
     }
 
-    companion object { const val MAX = 10 }
+    companion object { const val MAX = 20 }
 }
