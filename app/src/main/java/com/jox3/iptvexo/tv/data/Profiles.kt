@@ -42,8 +42,11 @@ object Profiles {
         "🌸", "⚽", "🎮", "🎸", "🍕", "🚀", "👑", "🔥",
     )
 
-    /** Perfil elegido en esta sesión de la app (la TV pregunta solo al abrirla). */
-    internal val chosenThisLaunch = HashMap<String, String>()
+    /**
+     * Perfil en uso mientras la app está abierta. Es el mismo para TODOS los servidores:
+     * al cambiar de servidor (o abrir un resultado de otro) se sigue con el mismo perfil.
+     */
+    @Volatile var current: Profile? = null
 }
 
 /** Perfiles de una cuenta, guardados en el equipo y compartidos por la nube. */
@@ -68,7 +71,35 @@ class ProfileStore(context: Context, val account: Account) {
             // ts = 1: si otro equipo ya le cambió el nombre, gana el de la nube
             put(Profile(Profiles.MAIN, "Principal", "😎", Profiles.COLORS[4], created = 1L, ts = 1L), dirty = true)
         }
+        mergeFromDevice()
         refresh()
+    }
+
+    /**
+     * Una sola lista de perfiles para todos los servidores del equipo: lo que se creó,
+     * cambió o borró con otro servidor se copia aquí (gana el cambio más reciente), y
+     * así también se sube a la nube de este servidor.
+     */
+    private fun mergeFromDevice() {
+        val best = HashMap<String, Profile>()
+        prefs.all.forEach { (k, v) ->
+            if (!k.endsWith(".list") || k == "$ns.list" || v !is String) return@forEach
+            runCatching {
+                val o = JSONObject(v)
+                o.keys().forEach { id ->
+                    val p = o.optJSONObject(id)?.let(::fromJson) ?: return@forEach
+                    if (p.id != id) return@forEach
+                    if ((best[id]?.ts ?: -1L) < p.ts) best[id] = p
+                }
+            }
+        }
+        best.values.forEach { p ->
+            val local = all[p.id]
+            if (local != null && local.ts >= p.ts) return@forEach
+            if (p.deleted) {
+                if (local != null && !local.deleted) { put(p, dirty = true); wipeLibrary(app, account.key, p.id) }
+            } else put(p, dirty = true)
+        }
     }
 
     private fun refresh() {
@@ -127,11 +158,26 @@ class ProfileStore(context: Context, val account: Account) {
         refresh()
     }
 
-    fun hashPin(id: String, pin: String): String =
-        MessageDigest.getInstance("SHA-256").digest("jox3pin|${CloudSync.accountId(account)}|$id|$pin".toByteArray())
-            .joinToString("") { "%02x".format(it) }
+    /** El PIN sirve igual en todos los servidores (no depende de la cuenta). */
+    fun hashPin(id: String, pin: String): String = "v2:" + sha256("jox3pin2|$id|$pin")
 
-    fun checkPin(p: Profile, pin: String) = !p.hasPin || hashPin(p.id, pin) == p.pinHash
+    private fun legacyHash(acc: Account, id: String, pin: String) = sha256("jox3pin|${CloudSync.accountId(acc)}|$id|$pin")
+
+    fun checkPin(p: Profile, pin: String): Boolean {
+        if (!p.hasPin) return true
+        if (p.pinHash.startsWith("v2:")) return hashPin(p.id, pin) == p.pinHash
+        // PIN puesto con la versión anterior (dependía del servidor): se prueba con cada servidor
+        // del equipo y, si coincide, se pasa al formato nuevo
+        val ok = (listOf(account) + AccountStore(app).all()).any { legacyHash(it, p.id, pin) == p.pinHash }
+        if (ok) {
+            val cur = all[p.id] ?: p
+            put(cur.copy(pinHash = hashPin(p.id, pin), ts = System.currentTimeMillis()), dirty = true)
+            refresh()
+        }
+        return ok
+    }
+
+    private fun sha256(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
     /** Celular: perfil con el que entra directo ("Recordar en este celular"). */
     var remembered: String?
@@ -140,11 +186,20 @@ class ProfileStore(context: Context, val account: Account) {
 
     /** Perfil con el que se entra sin preguntar (o null para mostrar "¿Quién está viendo?"). */
     fun autoPick(tv: Boolean): Profile? {
-        Profiles.chosenThisLaunch[account.key]?.let { byId(it) }?.let { return it }
+        // Ya se eligió perfil en esta sesión (con este u otro servidor): se sigue con ese
+        Profiles.current?.let { cur -> return adopt(cur) }
         // La TV siempre pregunta "¿Quién está viendo?" al abrir la app
         if (tv) return null
-        remembered?.let { byId(it) }?.let { return it }
-        return list.singleOrNull()?.takeIf { !it.hasPin }
+        val p = remembered?.let { byId(it) } ?: list.singleOrNull()?.takeIf { !it.hasPin } ?: return null
+        Profiles.current = p
+        return p
+    }
+
+    /** Usa en este servidor el perfil que se eligió con otro (lo crea aquí si aún no existe). */
+    fun adopt(p: Profile): Profile {
+        val local = all[p.id]
+        if (local == null || local.deleted || local.ts < p.ts) { put(p.copy(deleted = false), dirty = true); refresh() }
+        return byId(p.id) ?: p
     }
 
     // ── Sincronización (CloudSync) ──
