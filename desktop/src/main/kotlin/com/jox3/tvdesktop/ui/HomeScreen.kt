@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.jox3.tvdesktop.data.Account
 import com.jox3.tvdesktop.data.LibraryStore
 import com.jox3.tvdesktop.data.Section
+import com.jox3.tvdesktop.data.SavedItem
 import com.jox3.tvdesktop.data.ServerInfo
 import com.jox3.tvdesktop.data.ServerHub
 import com.jox3.tvdesktop.data.TvRepo
@@ -138,10 +139,15 @@ fun HomeScreen(
         live.mode = ViewMode.FULL
     }
 
+    /** "Porque viste…": el título que se terminó (se muestra encima de todo). */
+    var because by remember(repo) { mutableStateOf<SavedItem?>(null) }
+
     /** Sale de la película o episodio: guarda dónde quedó y vuelve a su ficha. */
     fun exitVod() {
         control?.setFullscreen(false); control?.switchMini(false)
         live.panel = com.jox3.tvdesktop.ui.Panel.NONE
+        // ¿La terminó y no queda otro episodio? → se cierra y salen las recomendaciones
+        live.finishedItem()?.let { done -> live.stop(); because = done; return }
         // Como en la TV y el celular: el video sigue en una ventanita mientras navegas
         if (com.jox3.tvdesktop.core.Settings.bool("player.pip", true) && live.vod?.item?.kind != "trailer") live.mode = ViewMode.PIP
         else live.stop()
@@ -250,6 +256,7 @@ fun HomeScreen(
             val isVod = live.vod != null
             when (ev.key) {
                 Key.Escape -> when {
+                    because != null && live.mode != ViewMode.FULL && live.mode != ViewMode.MINI -> because = null
                     live.panel != com.jox3.tvdesktop.ui.Panel.NONE -> live.panel = com.jox3.tvdesktop.ui.Panel.NONE
                     live.mode == ViewMode.FULL || live.mode == ViewMode.MINI -> leaveVideoMode()
                     showAccount -> showAccount = false
@@ -353,6 +360,16 @@ fun HomeScreen(
                     Tab.SETTINGS -> SettingsScreen(live, version)
                 }
             }
+        }
+        // "Porque viste…" (encima de la sección)
+        because?.let { b ->
+            BecauseScreen(repo, b, Modifier.fillMaxSize(),
+                onOpen = { r ->
+                    because = null
+                    if (r.kind == "series") { tab = Tab.SERIES; live.openRequest = OpenRequest("series", r.id, r.name, r.image, "", r.categoryId) }
+                    else { tab = Tab.MOVIES; live.openRequest = OpenRequest("movie", r.id, r.name, r.image, r.ext, r.categoryId) }
+                },
+                onClose = { because = null })
         }
         // Video en ventana completa o mini: va ENCIMA de la sección, así al volver todo sigue
         // donde estaba (la ficha abierta, la categoría, la posición de la lista).

@@ -151,7 +151,154 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
 
     fun cachedIndex(): Index? = index
 
+    // ── "Porque viste…" (igual que Android) ──
+
+    /**
+     * Películas parecidas: primero la misma saga (mismo comienzo del título) y luego del mismo
+     * género (por el nombre de la categoría); si el servidor no tiene categorías por género,
+     * de la misma carpeta.
+     */
+    suspend fun similarMovies(movie: Movie, genre: String, limit: Int = 21): List<Movie> {
+        val out = LinkedHashMap<String, Movie>()
+        // 1. Saga
+        val base = sagaKey(movie.name)
+        if (base.length >= 5) {
+            val idx = runCatching { searchIndex() }.getOrNull()
+            if (idx != null) {
+                val saga = withContext(Dispatchers.Default) {
+                    idx.movies.indices.filter { idx.movieKeys[it].startsWith(base) }.map { idx.movies[it] }
+                }
+                bestCopies(saga).filter { it.id != movie.id && titleKey(it.name) != titleKey(movie.name) }
+                    .sortedBy { normalize(it.name) }.take(12).forEach { out.putIfAbsent(it.id, it) }
+            }
+        }
+        // 2. Género
+        val words = genreWords(genre)
+        val cats = runCatching { categories(Section.VOD) }.getOrDefault(emptyList())
+        val matching = if (words.isEmpty()) emptyList() else cats.filter { c ->
+            words.any { w -> normalize(c.name).contains(w.take(6)) }
+        }.take(4)
+        val pool = LinkedHashMap<String, Movie>()
+        for (c in matching) {
+            runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+        }
+        if (matching.isEmpty() && movie.categoryId.isNotBlank()) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        val seen = out.values.map { titleKey(it.name) }.toMutableSet().apply { add(titleKey(movie.name)) }
+        bestCopies(pool.values.toList()).shuffled(java.util.Random(movie.id.hashCode().toLong()))
+            .forEach { if (seen.add(titleKey(it.name))) out.putIfAbsent(it.id, it) }
+        out.remove(movie.id)
+        return out.values.take(limit)
+    }
+
+    /**
+     * "Porque viste…": títulos para quien terminó [source] (película o serie).
+     * 1. Lo que TMDB recomienda a quien vio ese título, SOLO si existe en este servidor.
+     * 2. Se completa con la misma saga y el mismo género.
+     */
+    suspend fun becauseYouWatched(source: SavedItem, limit: Int = 14): List<SavedItem> {
+        val isSeries = source.kind == "series"
+        val out = LinkedHashMap<String, SavedItem>()
+        val srcKey = titleKey(source.name)
+        // 1. TMDB
+        val titles = runCatching { Tmdb.related(if (isSeries) "tv" else "movie", source.name) }.getOrDefault(emptyList())
+        if (titles.isNotEmpty()) {
+            val idx = runCatching { searchIndex() }.getOrNull()
+            if (idx != null) withContext(Dispatchers.Default) {
+                if (isSeries) {
+                    val byKey = HashMap<String, Series>()
+                    idx.series.forEach { sr ->
+                        byKey.putIfAbsent(titleKey(sr.name), sr)?.let { old ->
+                            if (!old.poster.startsWith("http") && sr.poster.startsWith("http")) byKey[titleKey(sr.name)] = sr
+                        }
+                    }
+                    titles.forEach { t ->
+                        val k = titleKey(t); if (k.isEmpty() || k == srcKey) return@forEach
+                        byKey[k]?.let { sr -> out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId)) }
+                    }
+                } else {
+                    val byKey = bestCopies(idx.movies).associateBy { titleKey(it.name) }
+                    titles.forEach { t ->
+                        val k = titleKey(t); if (k.isEmpty() || k == srcKey) return@forEach
+                        byKey[k]?.let { m -> out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId)) }
+                    }
+                }
+            }
+        }
+        // 2. Misma saga / mismo género
+        if (out.size < limit) {
+            if (isSeries) {
+                val genre = runCatching { seriesInfo(source.id).genre }.getOrDefault("")
+                similarSeries(source, genre, limit * 2).forEach { sr ->
+                    val k = titleKey(sr.name)
+                    if (k != srcKey) out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId))
+                }
+            } else {
+                val genre = runCatching { movieInfo(source.id).genre }.getOrDefault("")
+                val movie = Movie(source.id, source.name, source.image, "", source.ext, source.categoryId, 0L)
+                similarMovies(movie, genre, limit * 2).forEach { m ->
+                    val k = titleKey(m.name)
+                    if (k != srcKey) out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId))
+                }
+            }
+        }
+        return out.values.filter { it.id != source.id }.take(limit)
+    }
+
+    /** Series del mismo género (por el nombre de la categoría); si no hay, de la misma carpeta. */
+    private suspend fun similarSeries(source: SavedItem, genre: String, limit: Int): List<Series> {
+        val words = genreWords(genre)
+        val cats = runCatching { categories(Section.SERIES) }.getOrDefault(emptyList())
+        val matching = if (words.isEmpty()) emptyList() else cats.filter { c -> words.any { w -> normalize(c.name).contains(w.take(6)) } }.take(4)
+        val pool = LinkedHashMap<String, Series>()
+        for (c in matching) runCatching { series(c.id) }.getOrNull()?.sortedByDescending { it.updated }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+        if (pool.isEmpty() && source.categoryId.isNotBlank()) runCatching { series(source.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        return pool.values.filter { it.id != source.id }.shuffled(java.util.Random(source.id.hashCode().toLong())).take(limit)
+    }
+
     companion object {
+        /** Palabras de género ("Action, Comedy" → "accion", "comedia") para buscar categorías parecidas. */
+        internal fun genreWords(genre: String): List<String> =
+            genre.split(',', '/', '|', '&').map { normalize(it.trim()) }.filter { it.length >= 3 }
+                .map { GENRES[it] ?: it }.distinct()
+
+        /**
+         * Muchos servidores repiten la misma película en varias carpetas y algunas copias
+         * vienen sin carátula. De cada título se queda la copia que sí trae imagen.
+         */
+        internal fun bestCopies(list: List<Movie>): List<Movie> =
+            list.groupBy { titleKey(it.name) }.values.map { copies ->
+                copies.firstOrNull { it.poster.startsWith("http") } ?: copies.first()
+            }
+
+        /** Comienzo del título que identifica la saga: "harry potter", "rapidos y furiosos". */
+        internal fun sagaKey(name: String): String {
+            var n = normalize(name).replace(Regex("\\(\\d{4}\\)|\\[[^\\]]*\\]"), " ").replace(Regex("\\s+"), " ").trim()
+            val colon = n.indexOf(':')
+            n = if (colon >= 4) n.substring(0, colon) else {
+                val words = n.split(' ')
+                val keep = ArrayList<String>()
+                var significant = 0
+                for (w in words) {
+                    keep += w
+                    if (w !in STOP) significant++
+                    if (significant == 2) break
+                }
+                keep.joinToString(" ")
+            }
+            // Sin números ni romanos al final ("2", "III", "parte 1")
+            return n.replace(Regex("(\\s+(parte|part|capitulo|chapter))?\\s+(\\d+|i{1,3}|iv|v|vi{1,3})$"), "").trim()
+        }
+
+        private val STOP = setOf("el", "la", "los", "las", "the", "a", "an", "y", "e", "de", "del", "and", "of", "un", "una")
+        /** Géneros en inglés → como suelen llamarse las categorías en español. */
+        private val GENRES = mapOf(
+            "action" to "accion", "comedy" to "comedia", "adventure" to "aventura", "horror" to "terror",
+            "thriller" to "suspenso", "animation" to "animacion", "family" to "familia", "romance" to "romant",
+            "science fiction" to "ciencia", "sci-fi" to "ciencia", "ciencia ficcion" to "ciencia", "fantasy" to "fantasia",
+            "crime" to "crimen", "documentary" to "documental", "war" to "guerra", "mystery" to "misterio",
+            "history" to "historia", "music" to "musica", "kids" to "infantil", "romantica" to "romant",
+        )
+
         /** Título sin año ni etiquetas ([4K], (2023)…): para reconocer copias del mismo título. */
         fun titleKey(name: String): String =
             normalize(name).replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("[^a-z0-9]+"), " ")

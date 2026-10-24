@@ -78,6 +78,50 @@ object Tmdb {
         return url
     }
 
+    /**
+     * "Porque viste…": títulos que TMDB recomienda a quien vio [name] (recomendaciones y,
+     * si son pocas, similares). Igual que Android. Se guardan 7 días en el equipo.
+     */
+    suspend fun related(type: String, name: String): List<String> {
+        if (!enabled() || name.isBlank()) return emptyList()
+        val ck = "rel:" + type + ":" + TvRepo.titleKey(name) + "|" + yearOf(name)
+        cache.get(ck)?.let { raw ->
+            runCatching {
+                val o = JSONObject(raw)
+                if (System.currentTimeMillis() - o.optLong("t") < 7L * 86_400_000) {
+                    val a = o.optJSONArray("titles") ?: JSONArray()
+                    return (0 until a.length()).map { a.optString(it) }
+                }
+            }
+        }
+        val info = details(type, name) ?: return emptyList()
+        val k = key()
+        val titles = try {
+            gate.withPermit {
+                withContext(Dispatchers.IO) {
+                    val out = ArrayList<String>()
+                    fun collect(o: JSONObject) {
+                        val res = o.optJSONArray("results") ?: return
+                        for (i in 0 until res.length()) {
+                            val r = res.optJSONObject(i) ?: continue
+                            listOf("title", "name", "original_title", "original_name").forEach { f ->
+                                r.optString(f).takeIf { it.isNotBlank() && it != "null" }?.let { out += it }
+                            }
+                        }
+                    }
+                    collect(get(k, "$type/${info.id}/recommendations", "language=es-MX&page=1"))
+                    if (out.size < 30) collect(get(k, "$type/${info.id}/similar", "language=es-MX&page=1"))
+                    out.distinct()
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("TMDB: no llegaron recomendaciones para \"$name\": ${e.message}")
+            return emptyList()
+        }
+        cache.put(ck, JSONObject().put("t", System.currentTimeMillis()).put("titles", JSONArray(titles)).toString())
+        return titles
+    }
+
     private suspend fun details(type: String, name: String): Info? {
         if (!enabled() || name.isBlank()) return null
         val ck = type + ":" + TvRepo.titleKey(name) + "|" + yearOf(name)
