@@ -55,6 +55,7 @@ import com.jox3.tvdesktop.data.ServerHub
 import com.jox3.tvdesktop.data.TvRepo
 import com.jox3.tvdesktop.data.XtreamApi
 import com.jox3.tvdesktop.player.PlayState
+import com.jox3.tvdesktop.player.WatchTogether
 import com.jox3.tvdesktop.player.VideoPlayer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -95,6 +96,7 @@ fun HomeScreen(
     val control = LocalWindowControl.current
     var tab by remember { mutableStateOf(Tab.LIVE) }
     var showAccount by remember { mutableStateOf(false) }
+    var showJoin by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     /** Abre algo del buscador o de "También en" que está en ESTE servidor. */
@@ -193,6 +195,41 @@ fun HomeScreen(
         }
     }
 
+    // ── Ver juntos (misma sala que la TV y el celular) ──
+    /** Invitado: busca en este servidor lo que ve la sala y lo abre (por título; en series, temporada y episodio). */
+    suspend fun openTogether(m: WatchTogether.Media): Boolean {
+        val key = TvRepo.titleKey(m.title)
+        val idx = runCatching { repo.searchIndex() }.getOrNull() ?: return false
+        if (m.kind == "movie") {
+            val mv = idx.movies.filter { TvRepo.titleKey(it.name) == key }
+                .let { l -> l.firstOrNull { it.poster.startsWith("http") } ?: l.firstOrNull() } ?: return false
+            startVod(movieSession(repo, mv, mv.poster, mv.ext.ifBlank { "mp4" }), 0)
+            return true
+        }
+        val sr = idx.series.firstOrNull { TvRepo.titleKey(it.name) == key } ?: return false
+        val info = runCatching { repo.seriesInfo(sr.id) }.getOrNull() ?: return false
+        val all = info.seasons.toSortedMap().values.flatten()
+        val ep = all.firstOrNull { it.season == m.season && it.num == m.episode } ?: return false
+        startVod(episodeSession(repo, sr, info.poster.ifBlank { sr.poster }, all, ep, ::startVod), 0)
+        return true
+    }
+    val togetherHost = remember(live) {
+        object : WatchTogether.Host {
+            override val player: VideoPlayer get() = live.player
+            override fun now(): WatchTogether.Now? = live.vod?.takeIf { it.item.kind == "movie" || it.item.kind == "episode" }
+                ?.let { WatchTogether.Now(it.item.kind, it.item.name, it.title, it.image) }
+            override suspend fun open(m: WatchTogether.Media): Boolean = openTogether(m)
+        }
+    }
+    DisposableEffect(togetherHost) {
+        WatchTogether.attach(togetherHost)
+        onDispose { WatchTogether.attach(null) }
+    }
+    LaunchedEffect(live.vod) { WatchTogether.mediaChanged() }
+    LaunchedEffect(player.state) {
+        if (player.state == PlayState.Playing || player.state == PlayState.Paused) WatchTogether.playerReady()
+    }
+
     // Al cerrar el programa (o al actualizarse) se guarda dónde va la película
     // y lo pendiente se sube a la nube (como mucho 4 s)
     androidx.compose.runtime.DisposableEffect(live) {
@@ -256,6 +293,7 @@ fun HomeScreen(
             val isVod = live.vod != null
             when (ev.key) {
                 Key.Escape -> when {
+                    showJoin -> showJoin = false
                     because != null && live.mode != ViewMode.FULL && live.mode != ViewMode.MINI -> because = null
                     live.panel != com.jox3.tvdesktop.ui.Panel.NONE -> live.panel = com.jox3.tvdesktop.ui.Panel.NONE
                     live.mode == ViewMode.FULL || live.mode == ViewMode.MINI -> leaveVideoMode()
@@ -291,6 +329,10 @@ fun HomeScreen(
                     else -> return@handler false
                 }
                 Key.V -> if (isVod) live.cycleSpeed() else return@handler false
+                Key.J -> if (isVod && live.vod?.item?.kind != "trailer") {
+                    if (live.mode != ViewMode.FULL) toggleFull()
+                    live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.TOGETHER) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.TOGETHER
+                } else return@handler false
                 Key.N -> if (isVod && live.vod?.next != null) live.vod?.next?.invoke() else return@handler false
                 Key.Plus, Key.Equals, Key.NumPadAdd -> live.changeVolume(5)
                 Key.Minus, Key.NumPadSubtract -> live.changeVolume(-5)
@@ -348,6 +390,8 @@ fun HomeScreen(
                     Pill("EN VIVO", Jx.Live)
                     Spacer(Modifier.width(12.dp))
                 }
+                TabButton("Ver juntos", selected = showJoin, icon = Ico.USER) { showJoin = true }
+                Spacer(Modifier.width(8.dp))
                 ProfileChip(profile, account.label, selected = showAccount) { showAccount = !showAccount }
             }
             // ── Sección ──
@@ -385,6 +429,9 @@ fun HomeScreen(
                 PlayerView(live, Modifier.fillMaxSize(), ::expandPip, ::toggleMini, onExitVod = { live.stop() })
             }
         }
+        // Ver juntos: aviso de la sala (código, personas, reacciones) encima de todo
+        TogetherBadge(Modifier.align(Alignment.TopEnd).padding(top = 70.dp, end = 20.dp))
+        if (showJoin) TogetherJoin(onDismiss = { showJoin = false })
         if (showAccount && (live.mode == ViewMode.EMBEDDED || live.mode == ViewMode.PIP)) {
             Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,

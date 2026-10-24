@@ -402,13 +402,7 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
     val plot = i?.plot?.ifBlank { null } ?: t?.overview.orEmpty()
     val rating = t?.ratingText?.ifBlank { null } ?: i?.rating?.ifBlank { null } ?: movie.rating
 
-    fun session() = VodSession(
-        item = SavedItem("movie", movie.id, movie.name, poster, ext = ext, categoryId = movie.categoryId),
-        title = movie.name,
-        subtitle = listOf(year, genre).filter { it.isNotBlank() }.joinToString(" · "),
-        image = poster,
-        url = repo.api.movieUrl(movie.id, ext),
-    )
+    fun session() = movieSession(repo, movie, poster, ext, listOf(year, genre).filter { it.isNotBlank() }.joinToString(" · "))
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -480,21 +474,7 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
     }
     val allEpisodes = remember(seasons) { seasons.values.flatten() }
 
-    fun session(ep: Episode): VodSession {
-        val idx = allEpisodes.indexOfFirst { it.id == ep.id }
-        val next = allEpisodes.getOrNull(idx + 1)
-        val label = "T${ep.season} E${ep.num}" + if (ep.title.isNotBlank() && !ep.title.contains(series.name, true)) " · ${ep.title}" else ""
-        return VodSession(
-            // Mismo nombre que guarda la app Android ("Serie · T1E2 - Título"): se comparte en la nube
-            item = SavedItem("episode", ep.id, episodeName(series.name, ep), poster, ext = ep.ext, seriesId = series.id, categoryId = series.categoryId),
-            title = series.name,
-            subtitle = label,
-            image = poster,
-            url = repo.api.episodeUrl(ep.id, ep.ext),
-            nextLabel = next?.let { n -> "T${n.season} E${n.num}" + if (n.title.isNotBlank()) " · ${n.title}" else "" },
-            next = next?.let { n -> { onPlay(session(n), lib.positionOf(n.id)?.takeUnless { it.finished }?.position ?: 0) } },
-        )
-    }
+    fun session(ep: Episode): VodSession = episodeSession(repo, series, poster, allEpisodes, ep, onPlay)
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -616,6 +596,33 @@ private fun playTrailer(live: LiveController, key: String, title: String, image:
 }
 
 /** Nombre del episodio en "Seguir viendo", igual que en Android (PlayerLauncher.episodeName). */
+/** Sesión de un episodio, con el siguiente encadenado (lo usan la ficha y "Ver juntos"). */
+fun episodeSession(repo: TvRepo, series: Series, poster: String, all: List<Episode>, ep: Episode,
+                   onPlay: (VodSession, Long) -> Unit): VodSession {
+    val idx = all.indexOfFirst { it.id == ep.id }
+    val next = all.getOrNull(idx + 1)
+    val label = "T${ep.season} E${ep.num}" + if (ep.title.isNotBlank() && !ep.title.contains(series.name, true)) " · ${ep.title}" else ""
+    return VodSession(
+        // Mismo nombre que guarda la app Android ("Serie · T1E2 - Título"): se comparte en la nube
+        item = SavedItem("episode", ep.id, episodeName(series.name, ep), poster, ext = ep.ext, seriesId = series.id, categoryId = series.categoryId),
+        title = series.name,
+        subtitle = label,
+        image = poster,
+        url = repo.api.episodeUrl(ep.id, ep.ext),
+        nextLabel = next?.let { n -> "T${n.season} E${n.num}" + if (n.title.isNotBlank()) " · ${n.title}" else "" },
+        next = next?.let { n -> { onPlay(episodeSession(repo, series, poster, all, n, onPlay), repo.library.positionOf(n.id)?.takeUnless { it.finished }?.position ?: 0) } },
+    )
+}
+
+/** Sesión de una película (la usan la ficha y "Ver juntos"). */
+fun movieSession(repo: TvRepo, movie: Movie, poster: String, ext: String, subtitle: String = ""): VodSession = VodSession(
+    item = SavedItem("movie", movie.id, movie.name, poster, ext = ext, categoryId = movie.categoryId),
+    title = movie.name,
+    subtitle = subtitle,
+    image = poster,
+    url = repo.api.movieUrl(movie.id, ext),
+)
+
 fun episodeName(series: String, e: Episode) =
     "$series · T${e.season}E${e.num}" + if (e.title.isNotBlank() && !e.title.contains(series, true)) " - ${e.title}" else ""
 

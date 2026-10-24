@@ -157,11 +157,17 @@ class VideoPlayer {
         }
     }
 
+    /**
+     * Avisa cuando la PERSONA pausa, reanuda o adelanta (no cuando lo hace el programa):
+     * (reproduciendo después del cambio, posición en ms). Lo usa "Ver juntos".
+     */
+    @Volatile var onUserAction: ((Boolean, Long) -> Unit)? = null
+
     fun togglePause() {
         val player = mp ?: return
         when (state) {
-            PlayState.Playing -> ctl.execute { runCatching { player.controls().setPause(true) } }
-            PlayState.Paused -> ctl.execute { runCatching { player.controls().setPause(false) } }
+            PlayState.Playing -> { ctl.execute { runCatching { player.controls().setPause(true) } }; if (!isLive) onUserAction?.invoke(false, timeMs) }
+            PlayState.Paused -> { ctl.execute { runCatching { player.controls().setPause(false) } }; if (!isLive) onUserAction?.invoke(true, timeMs) }
             PlayState.Ended, is PlayState.Failed -> if (url.isNotEmpty()) play(url, title, isLive)
             else -> {}
         }
@@ -192,11 +198,19 @@ class VideoPlayer {
         mp?.let { p -> ctl.execute { runCatching { p.subpictures().setTrack(id) }; refreshTracks(p) } }
     }
 
-    fun seekTo(ms: Long) {
+    fun seekTo(ms: Long, fromUser: Boolean = true) {
         if (isLive) return
         val target = ms.coerceIn(0, (lengthMs - 1000).coerceAtLeast(0))
         timeMs = target
         mp?.let { p -> ctl.execute { runCatching { p.controls().setTime(target) } } }
+        if (fromUser) onUserAction?.invoke(state != PlayState.Paused, target)
+    }
+
+    /** Pausa o reanuda sin contarlo como acción de la persona (lo usa "Ver juntos"). */
+    fun setPaused(paused: Boolean) {
+        val player = mp ?: return
+        if (state == PlayState.Ended || state is PlayState.Failed || state == PlayState.Idle) return
+        ctl.execute { runCatching { player.controls().setPause(paused) } }
     }
 
     fun seekBy(deltaMs: Long) = seekTo(timeMs + deltaMs)
