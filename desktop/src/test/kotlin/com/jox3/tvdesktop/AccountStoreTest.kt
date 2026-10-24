@@ -29,9 +29,9 @@ class AccountStoreTest {
 
     @Test fun masRecientePrimeroYMaximoDiez() {
         val s = AccountStore(file("max"))
-        repeat(12) { s.use(Account("http://s$it.tv", "u", "p")) }
+        repeat(AccountStore.MAX + 2) { s.use(Account("http://s$it.tv", "u", "p")) }
         assertEquals(AccountStore.MAX, s.accounts.size)
-        assertEquals("http://s11.tv", s.accounts.first().host)
+        assertEquals("http://s${AccountStore.MAX + 1}.tv", s.accounts.first().host)
     }
 
     @Test fun repetirCuentaNoDuplica() {

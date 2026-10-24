@@ -64,19 +64,20 @@ private sealed interface GateMode {
     data class Edit(val profile: Profile?) : GateMode
     data class Pin(val profile: Profile, val thenEdit: Boolean) : GateMode
     data class Forgot(val profile: Profile) : GateMode
+    data class VaultSetup(val profile: Profile) : GateMode
 }
 
 /**
  * "¿Quién está viendo?": se muestra siempre al abrir el programa (como en el TV Box).
  * Perfiles con emoji, color y PIN opcional de 4 números. Hasta 5. [onCancel] (si hay) vuelve
- * al perfil que estaba. [extra] agrega contenido (por ejemplo, el código JOX3 en la etapa siguiente).
+ * al perfil que estaba. Desde "Editar perfil" se guardan sus servidores con un código JOX3.
  */
 @Composable
 fun ProfileGate(
     store: ProfileStore,
+    accounts: com.jox3.tvdesktop.data.AccountStore,
     onPick: (Profile) -> Unit,
     onCancel: (() -> Unit)? = null,
-    onEditExtra: (@Composable (Profile) -> Unit)? = null,
 ) {
     var mode by remember { mutableStateOf<GateMode>(GateMode.Pick) }
 
@@ -95,7 +96,7 @@ fun ProfileGate(
         KeyRouter.handler = { ev ->
             if (ev.type == KeyEventType.KeyDown && ev.key == Key.Escape && !(mode is GateMode.Pin)) {
                 when {
-                    mode != GateMode.Pick -> { mode = if (mode is GateMode.Edit) GateMode.Manage else GateMode.Pick; true }
+                    mode != GateMode.Pick -> { mode = if (mode is GateMode.Edit || mode is GateMode.VaultSetup) GateMode.Manage else GateMode.Pick; true }
                     onCancel != null -> { onCancel(); true }
                     else -> false
                 }
@@ -119,7 +120,8 @@ fun ProfileGate(
                 onManage = { mode = if (m == GateMode.Manage) GateMode.Pick else GateMode.Manage },
                 onCancel = onCancel,
             )
-            is GateMode.Edit -> EditScreen(store, m.profile, onDone = { mode = GateMode.Manage }, extra = onEditExtra)
+            is GateMode.Edit -> EditScreen(store, m.profile, onDone = { mode = GateMode.Manage }, onVault = { p -> mode = GateMode.VaultSetup(p) })
+            is GateMode.VaultSetup -> VaultScreen(store, accounts, m.profile, onDone = { mode = GateMode.Manage })
             is GateMode.Pin -> {
                 var error by remember(m) { mutableStateOf("") }
                 PinPad(
@@ -227,7 +229,7 @@ fun Avatar(emoji: String, color: Long, size: Dp, ring: Boolean = false, lock: Bo
 // ───────────────────────── Crear / editar ─────────────────────────
 
 @Composable
-private fun EditScreen(store: ProfileStore, profile: Profile?, onDone: () -> Unit, extra: (@Composable (Profile) -> Unit)?) {
+private fun EditScreen(store: ProfileStore, profile: Profile?, onDone: () -> Unit, onVault: (Profile) -> Unit) {
     var name by remember { mutableStateOf(profile?.name.orEmpty()) }
     var emoji by remember { mutableStateOf(profile?.emoji ?: Profiles.EMOJIS.shuffled().first()) }
     var color by remember { mutableStateOf(profile?.color ?: Profiles.COLORS.shuffled().first()) }
@@ -308,7 +310,12 @@ private fun EditScreen(store: ProfileStore, profile: Profile?, onDone: () -> Uni
                 GhostButton(if (hasPin) "Cambiar PIN" else "Poner PIN") { pinStep = 1; pinError = "" }
                 if (hasPin) GhostButton("Quitar PIN") { newPin = null; removePin = true }
             }
-            if (profile != null && extra != null) extra(store.byId(profile.id) ?: profile)
+            if (profile != null) {
+                val withVault = (store.byId(profile.id) ?: profile).vaultId.isNotEmpty()
+                Text(if (withVault) "☁️ Sus servidores se guardan con un código JOX3" else "☁️ Lleva tus servidores a cualquier equipo con un código",
+                    color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp)
+                GhostButton(if (withVault) "Mis servidores en la nube" else "Guardar mis servidores en la nube") { onVault(store.byId(profile.id) ?: profile) }
+            }
             Spacer(Modifier.height(4.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 PillButton("Guardar") { save() }
