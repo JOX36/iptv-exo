@@ -214,14 +214,17 @@ class LibraryStore(
             val deleted = r.optBoolean("deleted")
             val data = if (deleted) null else runCatching { JSONObject(r.optString("data")) }.getOrNull()
             if (!deleted && data == null) return@forEach
+            // El id puede faltar en "data": se toma del item ("tipo:id"), igual que lo guarda Android
+            val remote = data?.let { fromJson(if (it.optString("id").isBlank()) JSONObject(it.toString()).put("id", id).put("kind", kind) else it) }
+            if (!deleted && remote == null) return@forEach
             when (list) {
                 "fav" -> {
                     val i = favorites.indexOfFirst { it.kind == kind && it.id == id }
                     if (deleted) { if (i >= 0) { favorites.removeAt(i); fav = true } }
-                    else if (i < 0) { favorites.add(0, fromJson(data!!)); fav = true }
+                    else if (i < 0) { favorites.add(0, remote!!); fav = true }
                 }
                 "recent" -> if (!deleted) {
-                    val item = fromJson(data!!)
+                    val item = remote!!
                     val old = recentChannels.firstOrNull { it.id == id }
                     if (old == null || old.ts < item.ts) {
                         recentChannels.removeAll { it.id == id }; recentChannels.add(item); rec = true
@@ -235,7 +238,7 @@ class LibraryStore(
                     } else if (local == null || ts >= local.ts || local.position <= 0) {
                         val pos = data!!.optLong("pos"); val dur = data.optLong("dur")
                         if (pos > 0 && dur > 0) {
-                            val item = fromJson(data).copy(ts = 0)
+                            val item = remote!!.copy(ts = 0)
                             progress.remove(id)
                             progress[id] = Resume(item, pos, dur, ts)
                             sent[id] = pos; res = true
