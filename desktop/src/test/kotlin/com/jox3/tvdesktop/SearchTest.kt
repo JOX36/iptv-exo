@@ -62,7 +62,7 @@ class SearchTest {
     }
 
     @Test fun historialSinPedazos() {
-        val lib = LibraryStore(a, TestDirs.fresh("search"))
+        val lib = LibraryStore(a, dir = TestDirs.fresh("search"))
         lib.addSearch("los"); lib.addSearch("los simps"); lib.addSearch("los simpson")
         assertEquals(listOf("los simpson"), lib.searchHistory.toList())
         lib.addSearch("x") // muy corta: no se guarda

@@ -48,7 +48,7 @@ class VodDataTest {
     }
 
     @Test fun continuarViendo() {
-        val lib = LibraryStore(Account("http://a.tv", "ana", "1"), TestDirs.fresh("cont"))
+        val lib = LibraryStore(Account("http://a.tv", "ana", "1"), dir = TestDirs.fresh("cont"))
         val peli = SavedItem("movie", "m1", "Peli", "")
         lib.saveProgress(peli, 30 * 60_000, 100 * 60_000)
         lib.saveProgress(SavedItem("movie", "m2", "Terminada", ""), 99 * 60_000, 100 * 60_000)
@@ -61,14 +61,14 @@ class VodDataTest {
     @Test fun ultimoEpisodioDeLaSerie() {
         val dir = TestDirs.fresh("ep")
         val acc = Account("http://a.tv", "ana", "1")
-        val lib = LibraryStore(acc, dir)
+        val lib = LibraryStore(acc, dir = dir)
         lib.saveProgress(SavedItem("episode", "e1", "S · T1 E1", "", seriesId = "s9"), 10_000, 60_000)
         Thread.sleep(5)
         lib.saveProgress(SavedItem("episode", "e2", "S · T1 E2", "", seriesId = "s9"), 20_000, 60_000)
         assertEquals("e2", lib.lastEpisodeOf("s9")?.item?.id)
         assertNull(lib.lastEpisodeOf("otra"))
         Thread.sleep(400)
-        assertEquals("e2", LibraryStore(acc, dir).lastEpisodeOf("s9")?.item?.id) // se recuerda al reabrir
+        assertEquals("e2", LibraryStore(acc, dir = dir).lastEpisodeOf("s9")?.item?.id) // se recuerda al reabrir
     }
 
     @Test fun calidadDelVideo() {
