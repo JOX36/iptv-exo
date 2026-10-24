@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -221,6 +222,11 @@ private fun PhoneShell(
     // "Porque viste…" al terminar una película o serie
     var because by remember { mutableStateOf<SavedItem?>(null) }
     vod.onFinished = { because = it; act.exitLandscape() }
+    // Ver juntos: escuchar el reproductor y abrir lo que ve la sala
+    var joinTogether by remember { mutableStateOf(false) }
+    com.jox3.iptvexo.tv.player.WatchTogether.opener = { m -> com.jox3.iptvexo.tv.player.WatchTogether.openHere(m, repo, launcher) }
+    LaunchedEffect(vod.open, vod.index) { com.jox3.iptvexo.tv.player.WatchTogether.bind(vod) }
+    LaunchedEffect(vod.open) { if (vod.open) joinTogether = false }
     fun openSeries(id: String, name: String, poster: String) { pages.add(Page.SeriesDetail(id, name, poster)) }
     fun playChannel(list: List<com.jox3.iptvexo.tv.data.Channel>, i: Int) {
         val c = list.getOrNull(i) ?: return
@@ -274,8 +280,13 @@ private fun PhoneShell(
         if (fullscreen) {
             if (vod.open) VodFullscreenPhone(vod) { act.exitLandscape() }
             else LiveFullscreenPhone(live, repo) { act.exitLandscape() }
+            com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 18.dp), big = false)
             return@Box
         }
+        // Ver juntos: aviso de la sala (encima de todo) y ventana para unirse
+        com.jox3.iptvexo.tv.player.TogetherBadge(
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 12.dp).zIndex(10f), big = false)
+        if (joinTogether) PhoneTogetherJoin(onDismiss = { joinTogether = false })
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             val page = pages.lastOrNull()
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -310,7 +321,7 @@ private fun PhoneShell(
                     }
                     else -> Column(Modifier.statusBarsPadding()) {
                         Header(accounts, account, onSwitch, onAdd, onSettings = { pages.add(Page.Settings) },
-                            onServers = { pages.add(Page.Servers) })
+                            onServers = { pages.add(Page.Servers) }, onTogether = { joinTogether = true })
                         Box(Modifier.weight(1f)) {
                             when (tab) {
                                 Tab.Home -> PhoneHome(repo, launcher, ::openMovie, ::openSeries, ::playChannel)
@@ -332,7 +343,7 @@ private fun PhoneShell(
 
 @Composable
 private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account) -> Unit, onAdd: () -> Unit, onSettings: () -> Unit,
-                   onServers: () -> Unit) {
+                   onServers: () -> Unit, onTogether: () -> Unit = {}) {
     var menu by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Text("J3", style = PType.H1, color = Jx.Accent)
@@ -359,6 +370,7 @@ private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account)
                     )
                 }
                 DropdownMenuItem(text = { Text("Mis servidores", style = PType.Label, color = Jx.Text) }, onClick = { menu = false; onServers() })
+                DropdownMenuItem(text = { Text("👥 Ver juntos (unirme)", style = PType.Label, color = Jx.Text) }, onClick = { menu = false; onTogether() })
                 DropdownMenuItem(text = { Text("+ Agregar servidor", style = PType.Label, color = Jx.Accent) }, onClick = { menu = false; onAdd() })
             }
         }

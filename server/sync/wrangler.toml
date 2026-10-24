@@ -9,3 +9,12 @@ workers_dev = true
 binding = "DB"
 database_name = "jox3"
 database_id = "e75537aa-f2a5-440a-bd99-6264d76a48d8"
+
+# Salas de "Ver juntos" (una por código, con WebSocket)
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
