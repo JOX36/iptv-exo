@@ -17,7 +17,7 @@ import com.jox3.tvdesktop.player.VideoPlayer
 enum class ViewMode { EMBEDDED, FULL, MINI, PIP }
 
 /** Panel de opciones abierto sobre el video. */
-enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO }
+enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO, TOGETHER }
 
 /**
  * Película o episodio en reproducción. [next] = siguiente episodio (para "Siguiente" y

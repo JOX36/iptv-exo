@@ -358,6 +358,7 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }
                 if (vod != null) RoundButton(Ico.CLOCK, "Velocidad (V)", selected = live.panel == Panel.SPEED) { live.toggle(Panel.SPEED) }
+                if (vod != null && vod.item.kind != "trailer") RoundButton(Ico.USER, "Ver juntos (J)", selected = live.panel == Panel.TOGETHER) { live.toggle(Panel.TOGETHER) }
                 RoundButton(Ico.SLEEP, "Apagado automático", selected = live.panel == Panel.SLEEP) { live.toggle(Panel.SLEEP) }
                 RoundButton(Ico.INFO, "Información técnica (I)", selected = live.panel == Panel.INFO) { live.toggle(Panel.INFO) }
                 Spacer(Modifier.width(6.dp))
@@ -494,6 +495,7 @@ private fun SidePanel(live: LiveController) {
             Panel.SPEED -> "Velocidad"
             Panel.SLEEP -> "Apagado automático"
             Panel.INFO -> "Información técnica"
+            Panel.TOGETHER -> "👥 Ver juntos"
             Panel.NONE -> ""
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -555,6 +557,7 @@ private fun SidePanel(live: LiveController) {
                     }
                 }
             }
+            Panel.TOGETHER -> TogetherPanel()
             Panel.NONE -> {}
         }
     }
