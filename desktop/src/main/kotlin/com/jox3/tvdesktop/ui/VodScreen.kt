@@ -475,7 +475,8 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
         val next = allEpisodes.getOrNull(idx + 1)
         val label = "T${ep.season} E${ep.num}" + if (ep.title.isNotBlank() && !ep.title.contains(series.name, true)) " · ${ep.title}" else ""
         return VodSession(
-            item = SavedItem("episode", ep.id, "${series.name} · $label", poster, ext = ep.ext, seriesId = series.id, categoryId = series.categoryId),
+            // Mismo nombre que guarda la app Android ("Serie · T1E2 - Título"): se comparte en la nube
+            item = SavedItem("episode", ep.id, episodeName(series.name, ep), poster, ext = ep.ext, seriesId = series.id, categoryId = series.categoryId),
             title = series.name,
             subtitle = label,
             image = poster,
@@ -603,6 +604,10 @@ private fun playTrailer(live: LiveController, key: String, title: String, image:
         url = "https://www.youtube.com/watch?v=$key",
     ), 0)
 }
+
+/** Nombre del episodio en "Seguir viendo", igual que en Android (PlayerLauncher.episodeName). */
+fun episodeName(series: String, e: Episode) =
+    "$series · T${e.season}E${e.num}" + if (e.title.isNotBlank() && !e.title.contains(series, true)) " - ${e.title}" else ""
 
 /** Reparto con fotos (de TMDB). */
 @Composable

@@ -62,17 +62,17 @@ class LiveDataTest {
     @Test fun favoritosYRecientesPorCuenta() {
         val dir = TestDirs.fresh("library")
         val acc = Account("http://a.tv", "ana", "1")
-        val lib = LibraryStore(acc, dir)
+        val lib = LibraryStore(acc, dir = dir)
         val ch = SavedItem("live", "10", "Canal 10", "")
         assertTrue(lib.toggleFavorite(ch))
         repeat(25) { lib.addRecentChannel(SavedItem("live", "$it", "C$it", "")) }
         assertEquals(LibraryStore.MAX_RECENT, lib.recentChannels.size)
         Thread.sleep(400) // se guarda en segundo plano
-        val again = LibraryStore(acc, dir)
+        val again = LibraryStore(acc, dir = dir)
         assertTrue(again.isFavorite("live", "10"))
         assertEquals("24", again.recentChannels.first().id)
         // Otra cuenta no ve esos favoritos
-        assertFalse(LibraryStore(Account("http://b.tv", "bob", "2"), dir).isFavorite("live", "10"))
+        assertFalse(LibraryStore(Account("http://b.tv", "bob", "2"), dir = dir).isFavorite("live", "10"))
         assertFalse(lib.toggleFavorite(ch))
     }
 }
