@@ -173,6 +173,68 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     }
 
     /**
+     * "Porque viste…": títulos para quien terminó [source] (película o serie).
+     * 1. Lo que TMDB recomienda a quien vio ese título, SOLO si existe en este servidor.
+     * 2. Se completa con la misma saga y el mismo género (como "Películas similares").
+     */
+    suspend fun becauseYouWatched(ctx: android.content.Context, source: SavedItem, limit: Int = 14): List<SavedItem> {
+        val isSeries = source.kind == "series"
+        val out = LinkedHashMap<String, SavedItem>()
+        val srcKey = titleKey(source.name)
+        // 1. TMDB
+        val titles = runCatching { Tmdb.related(ctx, if (isSeries) "tv" else "movie", source.name) }.getOrDefault(emptyList())
+        if (titles.isNotEmpty() && !ServerHub.lowMemory(ctx)) {
+            val idx = runCatching { searchIndex() }.getOrNull()
+            if (idx != null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                if (isSeries) {
+                    val byKey = HashMap<String, Series>()
+                    idx.series.forEach { sr -> byKey.putIfAbsent(titleKey(sr.name), sr)?.let { old -> if (!old.poster.startsWith("http") && sr.poster.startsWith("http")) byKey[titleKey(sr.name)] = sr } }
+                    titles.forEach { t ->
+                        val k = titleKey(t); if (k.isEmpty() || k == srcKey) return@forEach
+                        byKey[k]?.let { sr -> out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId)) }
+                    }
+                } else {
+                    val byKey = bestCopies(idx.movies).associateBy { titleKey(it.name) }
+                    titles.forEach { t ->
+                        val k = titleKey(t); if (k.isEmpty() || k == srcKey) return@forEach
+                        byKey[k]?.let { m -> out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId)) }
+                    }
+                }
+            }
+        }
+        // 2. Misma saga / mismo género
+        if (out.size < limit) {
+            if (isSeries) {
+                val genre = runCatching { api.seriesInfo(source.id).genre }.getOrDefault("")
+                similarSeries(source, genre, limit * 2).forEach { sr ->
+                    val k = titleKey(sr.name)
+                    if (k != srcKey) out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId))
+                }
+            } else {
+                val genre = runCatching { api.movieInfo(source.id).genre }.getOrDefault("")
+                val movie = Movie(source.id, source.name, source.image, "", source.ext, source.categoryId, 0L)
+                similarMovies(movie, genre, limit * 2).forEach { m ->
+                    val k = titleKey(m.name)
+                    if (k != srcKey) out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId))
+                }
+            }
+        }
+        return out.values.filter { it.id != source.id }.take(limit)
+    }
+
+    /** Series del mismo género (por el nombre de la categoría); si no hay, de la misma carpeta. */
+    private suspend fun similarSeries(source: SavedItem, genre: String, limit: Int): List<Series> {
+        val words = genre.split(',', '/', '|', '&').map { normalize(it.trim()) }.filter { it.length >= 3 }
+            .map { GENRES[it] ?: it }.distinct()
+        val cats = runCatching { categories(Section.SERIES) }.getOrDefault(emptyList())
+        val matching = if (words.isEmpty()) emptyList() else cats.filter { c -> words.any { w -> normalize(c.name).contains(w.take(6)) } }.take(4)
+        val pool = LinkedHashMap<String, Series>()
+        for (c in matching) runCatching { series(c.id) }.getOrNull()?.sortedByDescending { it.updated }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+        if (pool.isEmpty() && source.categoryId.isNotBlank()) runCatching { series(source.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        return pool.values.filter { it.id != source.id }.shuffled(java.util.Random(source.id.hashCode().toLong())).take(limit)
+    }
+
+    /**
      * Muchos servidores repiten la misma película en varias carpetas y algunas copias
      * vienen sin carátula. De cada título se queda la copia que sí trae imagen.
      */

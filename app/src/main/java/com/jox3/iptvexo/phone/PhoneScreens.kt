@@ -130,6 +130,22 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
                 }
             }
         }
+        // ── Porque viste… (lo último que terminó) ──
+        lib.because.value?.let { (title, recs) ->
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionTitle("Porque viste $title")
+                    LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        items(recs, key = { "b" + it.kind + it.id }) { r ->
+                            PosterTile(r.name, r.image, Modifier.width(112.dp), favorite = lib.isFavorite(r.kind, r.id)) {
+                                if (r.kind == "series") onOpenSeries(r.id, r.name, r.image)
+                                else onOpenMovie(Movie(r.id, r.name, r.image, "", r.ext, r.categoryId, 0L))
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (recents.isNotEmpty()) item {
             val chans = recents.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

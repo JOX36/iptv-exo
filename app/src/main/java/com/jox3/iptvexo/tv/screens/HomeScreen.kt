@@ -129,6 +129,20 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
 
         // ── Canales recientes ──
         val recents = lib.recentChannels.toList()
+        // ── Porque viste… (lo último que terminó) ──
+        lib.because.value?.let { (title, recs) ->
+            item(key = "because") {
+                ShelfRow("Porque viste $title") {
+                    items(recs, key = { "b" + it.kind + it.id }) { r ->
+                        PosterCard(r.name, r.image, onClick = {
+                            if (r.kind == "series") nav.open(Route.SeriesDetail(r.id, r.name, r.image))
+                            else nav.open(Route.MovieDetail(com.jox3.iptvexo.tv.data.Movie(r.id, r.name, r.image, "", r.ext, r.categoryId, 0L)))
+                        }, subtitle = if (r.kind == "series") "Serie" else "Película",
+                            favorite = lib.isFavorite(r.kind, r.id))
+                    }
+                }
+            }
+        }
         if (recents.isNotEmpty()) item(key = "recent") {
             val chans = recents.mapIndexed { i, s -> Channel(s.id, s.name, s.image, s.categoryId, i + 1) }
             ShelfRow("Canales recientes") {

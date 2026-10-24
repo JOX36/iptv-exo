@@ -186,6 +186,23 @@ class LibraryStore(context: Context, accountKey: String, val profileId: String =
         refreshProgress()
     }
 
+    // ── "Porque viste…" (última recomendación, para la fila del Inicio) ──
+    val because = mutableStateOf(loadBecause())
+
+    private fun loadBecause(): Pair<String, List<SavedItem>>? = runCatching {
+        val o = JSONObject(prefs.getString("$ns.because", null) ?: return null)
+        val arr = o.optJSONArray("items") ?: return null
+        val items = (0 until arr.length()).mapNotNull { arr.optJSONObject(it)?.let(::fromJson) }
+        if (items.isEmpty()) null else o.optString("title") to items
+    }.getOrNull()
+
+    fun setBecause(title: String, items: List<SavedItem>) {
+        if (items.isEmpty()) return
+        val arr = JSONArray(); items.forEach { arr.put(toJson(it)) }
+        prefs.edit().putString("$ns.because", JSONObject().put("title", title).put("items", arr).toString()).apply()
+        because.value = title to items
+    }
+
     // ── Sincronización en la nube (ver CloudSync) ──
     // Los cambios que aún no llegan al servidor se guardan en "pendientes"; lo que llega del
     // servidor se aplica solo si es más nuevo que lo del equipo. Todo se llama en el hilo principal.

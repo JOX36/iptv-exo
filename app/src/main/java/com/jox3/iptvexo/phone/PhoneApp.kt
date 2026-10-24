@@ -218,6 +218,9 @@ private fun PhoneShell(
     LaunchedEffect(fullscreen) { act.setFullscreenMode(fullscreen) }
 
     fun openMovie(m: Movie) { pages.add(Page.MovieDetail(m)) }
+    // "Porque viste…" al terminar una película o serie
+    var because by remember { mutableStateOf<SavedItem?>(null) }
+    vod.onFinished = { because = it; act.exitLandscape() }
     fun openSeries(id: String, name: String, poster: String) { pages.add(Page.SeriesDetail(id, name, poster)) }
     fun playChannel(list: List<com.jox3.iptvexo.tv.data.Channel>, i: Int) {
         val c = list.getOrNull(i) ?: return
@@ -280,6 +283,15 @@ private fun PhoneShell(
                     vod.open -> Box(Modifier.statusBarsPadding()) {
                         VodScreen(vod, repo.library, onFullscreen = { act.enterLandscape() }, onClose = { vod.close() }, repo = repo,
                             onPlayMovie = { m -> launcher.playMovie(m.id, m.name, m.poster, m.ext, m.categoryId) })
+                    }
+                    because != null -> because?.let { b ->
+                        PhoneBecause(repo, b,
+                            onOpen = { r ->
+                                because = null
+                                if (r.kind == "series") openSeries(r.id, r.name, r.image)
+                                else openMovie(Movie(r.id, r.name, r.image, "", r.ext, r.categoryId, 0L))
+                            },
+                            onClose = { because = null; pages.clear(); tab = Tab.Home })
                     }
                     page is Page.MovieDetail -> key(page.movie.id) {
                         PhoneMovieDetail(repo, launcher, page.movie, onOpenMovie = ::openMovie) { pages.removeAt(pages.lastIndex) }
