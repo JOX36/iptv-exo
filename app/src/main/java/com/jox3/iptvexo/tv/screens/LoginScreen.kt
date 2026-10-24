@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
     var withCode by remember { mutableStateOf(false) }
     if (withCode) { VaultCodeLogin(tv = true, onLogin = onLogin, onCancel = { withCode = false }); return }
-    var saved by remember { mutableStateOf(accounts.all()) }
+    var saved by remember { mutableStateOf(accounts.shown()) }
     var deleting by remember { mutableStateOf<String?>(null) }   // cuenta esperando confirmación
     val last = saved.firstOrNull()
     var host by remember { mutableStateOf(last?.host.orEmpty()) }
@@ -163,7 +163,7 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
                             // Papelera: la primera pulsación pide confirmar, la segunda elimina
                             FocusSurface(
                                 onClick = {
-                                    if (confirm) { accounts.delete(acc); saved = accounts.all(); deleting = null }
+                                    if (confirm) { accounts.delete(acc); saved = accounts.shown(); deleting = null }
                                     else deleting = acc.key
                                 },
                                 modifier = Modifier.size(60.dp).onFocusChanged { if (!it.isFocused && deleting == acc.key) deleting = null },

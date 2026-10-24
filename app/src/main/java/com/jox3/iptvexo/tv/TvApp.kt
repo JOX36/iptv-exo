@@ -138,7 +138,12 @@ fun TvApp(host: TvHost) {
 
     val acc = account
     if (acc == null) {
-        LoginScreen(accounts) { a -> accounts.use(a); account = a }
+        LoginScreen(accounts) { a ->
+            val isNew = accounts.all().none { it.key == a.key }
+            accounts.use(a)
+            if (isNew) com.jox3.iptvexo.tv.data.ServerAccess.claimNew(context, accounts, a)
+            account = a
+        }
         return
     }
     key(acc.key) {
@@ -168,7 +173,8 @@ fun TvApp(host: TvHost) {
             }
             host.player.repo = repo
             CompositionLocalProvider(LocalProfile provides ProfileCtx(profiles.byId(prof.id) ?: prof) { previous = prof; profile = null }) {
-                com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = true, profileId = prof.id) {
+                com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = true, profileId = prof.id,
+                    onSwitch = { a -> accounts.use(a); account = a }) {
                     MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
                         onDelete = { accounts.delete(acc); account = null },
                         onSwitch = { a -> accounts.use(a); account = a })
@@ -218,7 +224,10 @@ private fun MainShell(
     LaunchedEffect(repo) { runCatching { repo.categories(com.jox3.iptvexo.tv.data.Section.LIVE) } }
 
     // ── Varios servidores ──
-    val allAccounts = remember(account) { accounts.all() }
+    // Solo los servidores de este perfil (los de otra persona no se mezclan)
+    val allAccounts = remember(account) {
+        com.jox3.iptvexo.tv.data.ServerAccess.visible(context, accounts.all(), com.jox3.iptvexo.tv.data.Profiles.current)
+    }
     var serverPanel by remember { mutableStateOf(false) }
     LaunchedEffect(account.key) {
         ServerHub.refresh(allAccounts)

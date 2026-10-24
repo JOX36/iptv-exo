@@ -494,7 +494,7 @@ private fun VaultScreen(store: ProfileStore, tv: Boolean, profile: Profile, onDo
     val accounts = remember { com.jox3.iptvexo.tv.data.AccountStore(ctx) }
     val p = store.byId(profile.id) ?: profile
     var code by remember { mutableStateOf(Vault.localCode(ctx, p.vaultId)) }
-    var device by remember { mutableStateOf(accounts.all()) }
+    var device by remember { mutableStateOf(com.jox3.iptvexo.tv.data.ServerAccess.candidates(ctx, accounts.all(), p)) }
     var inVault by remember { mutableStateOf<List<Account>>(emptyList()) }
     var checked by remember { mutableStateOf(device.map { it.key }.toSet()) }
     var busy by remember { mutableStateOf(false) }
@@ -511,7 +511,10 @@ private fun VaultScreen(store: ProfileStore, tv: Boolean, profile: Profile, onDo
         busy = true; error = ""
         runCatching { Vault.fetch(c) }
             .onSuccess { r ->
-                accounts.addAll(r.servers); device = accounts.all()
+                val before = accounts.all().map { it.key }.toSet()
+                accounts.addAll(r.servers)
+                com.jox3.iptvexo.tv.data.ServerAccess.claimFromVault(ctx, p, r.servers, r.servers.map { it.key }.toSet() - before, accounts)
+                device = com.jox3.iptvexo.tv.data.ServerAccess.candidates(ctx, accounts.all(), p)
                 inVault = r.servers; checked = r.servers.map { it.key }.toSet()
             }
             .onFailure { e -> if (e !is Vault.NotFound) error = e.message ?: "No se pudo conectar" }
@@ -524,11 +527,12 @@ private fun VaultScreen(store: ProfileStore, tv: Boolean, profile: Profile, onDo
         if (chosen.isEmpty()) { error = "Elige al menos un servidor"; return }
         busy = true; error = ""; info = ""
         scope.launch {
-            val ok = Vault.upload(c, chosen)
+            val ok = Vault.upload(c, chosen, p.id)
             if (ok) {
                 val id = Vault.derive(c).id
                 Vault.saveLocal(ctx, id, c)
                 store.setVault(p, id, chosen.size)
+                com.jox3.iptvexo.tv.data.ServerAccess.setVaultKeys(ctx, p.id, chosen.map { it.key }.toSet())
                 inVault = chosen
                 if (isNew) code = c
                 info = "Guardado ✓ (${chosen.size} servidor${if (chosen.size == 1) "" else "es"})"
@@ -589,7 +593,8 @@ private fun VaultScreen(store: ProfileStore, tv: Boolean, profile: Profile, onDo
                         busy = true
                         scope.launch {
                             if (Vault.delete(c)) {
-                                Vault.forgetLocal(ctx, p.vaultId); store.setVault(p, "", 0); onDone()
+                                Vault.forgetLocal(ctx, p.vaultId); store.setVault(p, "", 0)
+                                com.jox3.iptvexo.tv.data.ServerAccess.release(ctx, p); onDone()
                             } else error = "No se pudo. Revisa el internet"
                             busy = false
                         }
@@ -635,11 +640,18 @@ private fun ServerChecklist(tv: Boolean, servers: List<Account>, checked: Set<St
  * (o cuando no hace falta).
  */
 @Composable
-fun VaultUnlockGate(store: ProfileStore, tv: Boolean, profileId: String, content: @Composable () -> Unit) {
+fun VaultUnlockGate(store: ProfileStore, tv: Boolean, profileId: String, onSwitch: (Account) -> Unit = {}, content: @Composable () -> Unit) {
     val ctx = LocalContext.current
     var ask by remember(profileId) { mutableStateOf<Profile?>(null) }
+    /** Si este servidor no es de los que ve el perfil, se pasa al primero de los suyos. */
+    fun checkVisible() {
+        val p = store.byId(profileId) ?: return
+        val vis = com.jox3.iptvexo.tv.data.ServerAccess.visible(ctx, com.jox3.iptvexo.tv.data.AccountStore(ctx).all(), p)
+        if (vis.isNotEmpty() && vis.none { it.key == store.account.key }) onSwitch(vis.first())
+    }
     LaunchedEffect(profileId) {
         fun needs(p: Profile?) = p != null && Vault.needsUnlock(ctx, p)
+        checkVisible()
         if (needs(store.byId(profileId))) { ask = store.byId(profileId); return@LaunchedEffect }
         // Puede que el código se haya creado en otro equipo hace poco: traer los perfiles y revisar otra vez
         CloudSync.syncProfiles(ctx, store)
@@ -649,7 +661,7 @@ fun VaultUnlockGate(store: ProfileStore, tv: Boolean, profileId: String, content
         CloudSync.syncAllProfiles(ctx, except = store.account)
     }
     val a = ask
-    if (a != null) Box(Modifier.fillMaxSize().background(Jx.Bg)) { UnlockPrompt(store, tv, a, onFinish = { ask = null }) }
+    if (a != null) Box(Modifier.fillMaxSize().background(Jx.Bg)) { UnlockPrompt(store, tv, a, onFinish = { ask = null; checkVisible() }) }
     else content()
 }
 
@@ -671,7 +683,11 @@ private fun UnlockPrompt(store: ProfileStore, tv: Boolean, p: Profile, onFinish:
                 if (Vault.derive(n).id != p.vaultId) error = "Ese no es el código de ${p.name}"
                 else {
                     val r = Vault.fetch(n)
-                    com.jox3.iptvexo.tv.data.AccountStore(ctx).addAll(r.servers)
+                    val accounts = com.jox3.iptvexo.tv.data.AccountStore(ctx)
+                    val before = accounts.all().map { it.key }.toSet()
+                    accounts.addAll(r.servers)
+                    // Los que llegaron con el código son de esta persona: no se mezclan con los de la casa
+                    com.jox3.iptvexo.tv.data.ServerAccess.claimFromVault(ctx, p, r.servers, r.servers.map { it.key }.toSet() - before, accounts)
                     Vault.saveLocal(ctx, p.vaultId, n)
                     onFinish()
                 }
@@ -726,7 +742,12 @@ fun VaultCodeLogin(tv: Boolean, onLogin: (Account) -> Unit, onCancel: () -> Unit
                 if (r.servers.isEmpty()) error = "Ese código no tiene servidores guardados"
                 else {
                     val accounts = com.jox3.iptvexo.tv.data.AccountStore(ctx)
+                    val before = accounts.all().map { it.key }.toSet()
                     accounts.addAll(r.servers)
+                    if (r.profileId.isNotEmpty()) {
+                        com.jox3.iptvexo.tv.data.ServerAccess.setVaultKeys(ctx, r.profileId, r.servers.map { it.key }.toSet())
+                        r.servers.filter { it.key !in before }.forEach { com.jox3.iptvexo.tv.data.ServerAccess.setOwner(ctx, it.key, r.profileId) }
+                    }
                     Vault.saveLocal(ctx, Vault.derive(n).id, n)
                     onLogin(r.servers.first())
                 }
