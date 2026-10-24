@@ -60,6 +60,7 @@ import com.jox3.iptvexo.tv.player.VodPlayback
 import androidx.tv.material3.Text
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.data.Account
+import com.jox3.iptvexo.tv.data.SavedItem
 import com.jox3.iptvexo.tv.data.AccountStore
 import com.jox3.iptvexo.tv.data.ServerHub
 import com.jox3.iptvexo.tv.screens.ServerPanel
@@ -237,6 +238,9 @@ private fun MainShell(
             ServerHub.ensureIndexes(allAccounts.filter { it.key != account.key })
         }
     }
+    // ── "Porque viste…" al terminar una película o serie ──
+    var because by remember { mutableStateOf<SavedItem?>(null) }
+    vod.onFinished = { because = it }
     // ── Inicio de Android TV / Google TV ──
     vod.onClosed = { GoogleTv.syncContinue(context, account, repo.library) }
     LaunchedEffect(account.key) { delay(2500); GoogleTv.syncContinue(context, account, repo.library) }
@@ -381,7 +385,7 @@ private fun MainShell(
             }
         }) {
         // Sección (queda debajo mientras hay un detalle o pantalla completa, sin recibir foco)
-        val covered = detail != null || live.fullscreen || vod.full
+        val covered = detail != null || live.fullscreen || vod.full || because != null
         Box(
             Modifier
                 .fillMaxSize()
@@ -434,6 +438,19 @@ private fun MainShell(
             }
         } else if (vod.open) {
             VodMini(vod, Modifier.align(Alignment.TopEnd).padding(end = 28.dp, top = 20.dp).zIndex(4.5f))
+        }
+
+        // "Porque viste…"
+        because?.let { b ->
+            Box(Modifier.fillMaxSize().zIndex(5.5f)) {
+                com.jox3.iptvexo.tv.screens.BecauseScreen(repo, b,
+                    onOpen = { r ->
+                        because = null
+                        if (r.kind == "series") nav.open(Route.SeriesDetail(r.id, r.name, r.image))
+                        else nav.open(Route.MovieDetail(com.jox3.iptvexo.tv.data.Movie(r.id, r.name, r.image, "", r.ext, r.categoryId, 0L)))
+                    },
+                    onClose = { because = null; nav.open(Route.Home) })
+            }
         }
 
         // Panel de servidores (desde la barra lateral)

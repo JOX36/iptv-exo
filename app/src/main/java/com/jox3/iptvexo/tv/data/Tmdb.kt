@@ -130,6 +130,50 @@ object Tmdb {
         return info
     }
 
+    /**
+     * Títulos que TMDB recomienda a quien vio [name] ("recommendations" y, si son pocos,
+     * "similar"), en español y en su idioma original, en orden de relevancia.
+     * Se guardan 7 días. Lista vacía si no hay TMDB o no se encontró.
+     */
+    suspend fun related(ctx: Context, type: String, name: String): List<String> {
+        if (!enabled(ctx) || name.isBlank()) return emptyList()
+        val ck = "rel:" + type + ":" + TvRepo.titleKey(name) + "|" + yearOf(name)
+        val prefs = ctx.getSharedPreferences(CACHE, Context.MODE_PRIVATE)
+        prefs.getString(ck, null)?.let { raw ->
+            runCatching {
+                val o = JSONObject(raw)
+                if (System.currentTimeMillis() - o.optLong("t") < 7L * 86_400_000) {
+                    val a = o.optJSONArray("titles") ?: org.json.JSONArray()
+                    return (0 until a.length()).map { a.optString(it) }
+                }
+            }
+        }
+        val info = details(ctx, type, name) ?: return emptyList()
+        val k = key(ctx)
+        val titles = try {
+            gate.withPermit {
+                withContext(Dispatchers.IO) {
+                    val out = ArrayList<String>()
+                    fun collect(o: JSONObject) {
+                        val res = o.optJSONArray("results") ?: return
+                        for (i in 0 until res.length()) {
+                            val r = res.optJSONObject(i) ?: continue
+                            listOf("title", "name", "original_title", "original_name").forEach { f ->
+                                r.optString(f).takeIf { it.isNotBlank() && it != "null" }?.let { out += it }
+                            }
+                        }
+                    }
+                    collect(get(k, "$type/${info.id}/recommendations", "language=es-MX&page=1"))
+                    if (out.size < 30) collect(get(k, "$type/${info.id}/similar", "language=es-MX&page=1"))
+                    out.distinct()
+                }
+            }
+        } catch (e: Exception) { return emptyList() }
+        val arr = org.json.JSONArray(); titles.forEach { arr.put(it) }
+        prefs.edit().putString(ck, JSONObject().put("t", System.currentTimeMillis()).put("titles", arr).toString()).apply()
+        return titles
+    }
+
     /** Primer resultado de la búsqueda, usando el año del nombre si lo trae. */
     private fun search(k: String, type: String, name: String): JSONObject? {
         val clean = cleanTitle(name)

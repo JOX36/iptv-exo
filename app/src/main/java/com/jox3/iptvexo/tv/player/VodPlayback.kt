@@ -128,6 +128,14 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
 
     fun close() {
         if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
+        // ¿La terminó (o vio más del 90 %) y no hay otro episodio en cola? → "Porque viste…"
+        val finished = item?.let { cur ->
+            val p = exo
+            val dur = p?.duration ?: 0L
+            val pos = p?.currentPosition ?: 0L
+            val done = ended || (dur > 0 && pos.toFloat() / dur >= 0.9f)
+            if (done && !hasNext) (if (cur.resume.kind == "episode") cur.fav else cur.resume) else null
+        }
         saveProgress()
         main.removeCallbacks(ticker)
         exo?.stop()
@@ -139,7 +147,11 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         frameRate = 0f
         lib.refreshProgress()
         onClosed()
+        finished?.let { onFinished(it) }
     }
+
+    /** Se terminó una película (o la serie): la interfaz muestra "Porque viste…". */
+    var onFinished: (SavedItem) -> Unit = {}
 
     /** Lo pone la interfaz de TV: actualizar "Seguir viendo" en la pantalla de inicio. */
     var onClosed: () -> Unit = {}
