@@ -126,6 +126,9 @@ fun LoginScreen(accounts: AccountStore, onLogin: (Account) -> Unit) {
             ActionButton(if (busy) "Conectando…" else "Entrar", ::submit, Modifier.fillMaxWidth(),
                 icon = R.drawable.tv_ic_play, primary = true)
             Spacer(Modifier.height(10.dp))
+            Text("¿Ya usas JOX3 en otro equipo? Entra con tu código y se cargan tus servidores.",
+                style = Type.Small, color = Jx.TextSoft)
+            Spacer(Modifier.height(6.dp))
             ActionButton("Tengo un código JOX3", { withCode = true }, Modifier.fillMaxWidth())
             if (error.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))

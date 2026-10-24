@@ -114,6 +114,21 @@ object CloudSync {
         }.onFailure { Log.w("JOX3", "Perfiles: ${it.message}") }
     }
 
+    /**
+     * Sube y baja los perfiles de TODOS los servidores del equipo. Así un cambio hecho con un
+     * servidor (por ejemplo crear el código JOX3) llega también a la nube de los demás, y otro
+     * equipo que solo tenga el servidor de la familia se entera.
+     */
+    suspend fun syncAllProfiles(ctx: Context, except: Account? = null) {
+        if (!enabled(ctx)) return
+        // [except]: el servidor en uso (su lista ya está abierta en pantalla y se sincroniza aparte)
+        val accounts = withContext(Dispatchers.Main) { AccountStore(ctx).all().filter { it.key != except?.key } }
+        accounts.forEach { acc ->
+            val store = withContext(Dispatchers.Main) { ProfileStore(ctx.applicationContext, acc) }
+            syncProfiles(ctx, store)
+        }
+    }
+
     internal class Result(val cursor: Long, val more: Boolean, val items: List<JSONObject>)
 
     internal suspend fun post(id: String, profile: String, since: Long, changes: List<JSONObject>): Result? = withContext(Dispatchers.IO) {

@@ -117,10 +117,12 @@ fun PhoneApp(act: PhoneActivity) {
                 com.jox3.iptvexo.tv.LocalProfile provides com.jox3.iptvexo.tv.ProfileCtx(profiles.byId(prof.id) ?: prof) {
                     previous = prof; profile = null
                 }) {
-                PhoneShell(act, repo, accounts, acc,
-                    onSwitch = { a -> accounts.use(a); account = a },
-                    onAdd = { adding = true },
-                    onLogout = { accounts.delete(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
+                com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = false, profileId = prof.id) {
+                    PhoneShell(act, repo, accounts, acc,
+                        onSwitch = { a -> accounts.use(a); account = a },
+                        onAdd = { adding = true },
+                        onLogout = { accounts.delete(acc); account = accounts.all().firstOrNull()?.also { accounts.use(it) } })
+                }
             }
         }
     }

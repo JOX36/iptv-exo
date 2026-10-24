@@ -138,6 +138,12 @@ object Vault {
         prefs(ctx).edit().remove("code.$vaultId").apply()
     }
 
+    /** El perfil guarda servidores con código y este equipo aún no los tiene (ni dijo "no preguntar"). */
+    fun needsUnlock(ctx: Context, p: Profile): Boolean {
+        val v = p.vaultId
+        return v.isNotEmpty() && localCode(ctx, v) == null && !dismissed(ctx, v) && v !in skippedThisLaunch
+    }
+
     /** "No volver a preguntar en este equipo". */
     fun dismissed(ctx: Context, vaultId: String) = prefs(ctx).getBoolean("skip.$vaultId", false)
     fun dismiss(ctx: Context, vaultId: String) { prefs(ctx).edit().putBoolean("skip.$vaultId", true).apply() }
