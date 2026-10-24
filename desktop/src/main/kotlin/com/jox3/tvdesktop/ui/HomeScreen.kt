@@ -81,11 +81,15 @@ fun HomeScreen(
     version: String,
     player: VideoPlayer,
     accounts: List<Account>,
+    profiles: com.jox3.tvdesktop.data.ProfileStore,
+    profile: com.jox3.tvdesktop.data.Profile,
     onSwitchServer: (Account) -> Unit,
+    onSwitchProfile: () -> Unit,
     onLogout: () -> Unit,
     onOpenLogs: () -> Unit,
 ) {
-    val repo = remember(account.key) { TvRepo(api, LibraryStore(account)) }
+    // Cada perfil tiene su historial, favoritos, recientes y búsquedas (separados por cuenta y perfil)
+    val repo = remember(account.key, profile.id) { TvRepo(api, LibraryStore(account, profile.id)) }
     val live = remember(repo) { LiveController(repo, player) }
     val control = LocalWindowControl.current
     var tab by remember { mutableStateOf(Tab.LIVE) }
@@ -194,7 +198,12 @@ fun HomeScreen(
     }
 
     // Historial en la nube: compartido con el TV Box y el celular de la misma cuenta
-    LaunchedEffect(repo) { com.jox3.tvdesktop.data.CloudSync.run(account, repo.library) }
+    LaunchedEffect(repo) { com.jox3.tvdesktop.data.CloudSync.run(account, repo.library, profiles) }
+    // Los perfiles se comparten entre todos los servidores del equipo: se suben y bajan también los de los demás
+    LaunchedEffect(account.key) {
+        delay(6000)
+        com.jox3.tvdesktop.data.CloudSync.syncAllProfiles(accounts, except = account)
+    }
 
     // Apagado automático
     LaunchedEffect(live.sleepAt) {
@@ -332,7 +341,7 @@ fun HomeScreen(
                     Pill("EN VIVO", Jx.Live)
                     Spacer(Modifier.width(12.dp))
                 }
-                TabButton(account.label, selected = showAccount, icon = Ico.USER) { showAccount = !showAccount }
+                ProfileChip(profile, account.label, selected = showAccount) { showAccount = !showAccount }
             }
             // ── Sección ──
             Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -364,6 +373,8 @@ fun HomeScreen(
                 interactionSource = remember { MutableInteractionSource() }, indication = null,
             ) { showAccount = false })
             AccountPanel(account, accounts, info, version, Modifier.align(Alignment.TopEnd).padding(top = 60.dp, end = 20.dp),
+                profile = profile,
+                onSwitchProfile = { showAccount = false; live.stop(); onSwitchProfile() },
                 onUse = { acc -> showAccount = false; open(acc, null) },
                 onLogout = { showAccount = false; live.stop(); onLogout() }, onOpenLogs = onOpenLogs)
         }
@@ -400,6 +411,7 @@ private fun TabButton(label: String, selected: Boolean, soon: Boolean = false, i
 @Composable
 private fun AccountPanel(
     account: Account, accounts: List<Account>, info: ServerInfo, version: String, modifier: Modifier,
+    profile: com.jox3.tvdesktop.data.Profile, onSwitchProfile: () -> Unit,
     onUse: (Account) -> Unit, onLogout: () -> Unit, onOpenLogs: () -> Unit,
 ) {
     Column(
@@ -409,6 +421,19 @@ private fun AccountPanel(
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { }
             .padding(22.dp)
     ) {
+        // ── Perfil ──
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Avatar(profile.emoji, profile.color, 44.dp, lock = profile.hasPin)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(profile.name, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, maxLines = 1)
+                Text("Perfil en uso", color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp)
+            }
+            GhostButton("Cambiar de perfil", onSwitchProfile)
+        }
+        Spacer(Modifier.height(16.dp))
+        Box(Modifier.fillMaxWidth().height(1.dp).background(Jx.Line))
+        Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Tu cuenta", style = MaterialTheme.typography.titleLarge)
             Spacer(Modifier.width(12.dp))
@@ -477,3 +502,24 @@ private fun InfoRow(label: String, value: String) {
 
 private fun fmtDate(ms: Long): String =
     SimpleDateFormat("d 'de' MMMM 'de' yyyy", Locale.forLanguageTag("es")).format(Date(ms))
+
+/** Perfil en uso (emoji y nombre) y el servidor, arriba a la derecha. */
+@Composable
+private fun ProfileChip(profile: com.jox3.tvdesktop.data.Profile, server: String, selected: Boolean, onClick: () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val hovered by source.collectIsHoveredAsState()
+    Row(
+        Modifier.clip(RoundedCornerShape(12.dp))
+            .background(when { selected -> Jx.SurfaceHi; hovered -> Jx.Surface; else -> Color.Transparent })
+            .hoverable(source).clickable(onClick = onClick).pointerHoverIcon(PointerIcon.Hand)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Avatar(profile.emoji, profile.color, 30.dp)
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text(profile.name, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, maxLines = 1)
+            Text(server, color = Jx.Faint, fontFamily = Exo2, fontSize = 11.sp, maxLines = 1)
+        }
+    }
+}

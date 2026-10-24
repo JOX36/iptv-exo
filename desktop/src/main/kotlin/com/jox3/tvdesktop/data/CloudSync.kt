@@ -27,6 +27,8 @@ import java.util.concurrent.TimeUnit
  */
 object CloudSync {
     const val SERVER = "https://jox3-sync.jox3tv.workers.dev"
+    /** Espacio en el servidor donde se guarda la lista de perfiles de la cuenta. */
+    const val PROFILES_SCOPE = "_perfiles"
     private const val EVERY_MS = 45_000L
     private const val BATCH = 400
 
@@ -52,19 +54,24 @@ object CloudSync {
      * Sincroniza mientras el programa está abierto: al empezar, cada 45 s y 3 s después de cada
      * cambio (favorito, canal, cerrar la película). Se llama desde el hilo de la ventana.
      */
-    suspend fun run(acc: Account, lib: LibraryStore) {
+    suspend fun run(acc: Account, lib: LibraryStore, profiles: ProfileStore? = null) {
         if (!enabled()) return
         val kick = Channel<Unit>(Channel.CONFLATED)
         lib.onLocalChange = { kick.trySend(Unit) }
+        profiles?.onChange = { kick.trySend(Unit) }
         val id = accountId(acc)
         try {
             while (true) {
-                if (enabled()) syncOnce(id, lib)
+                if (enabled()) {
+                    syncOnce(id, lib)
+                    if (profiles != null) syncProfiles(profiles)
+                }
                 // Espera hasta 45 s o hasta que haya un cambio (y junta los cambios de 3 s)
                 withTimeoutOrNull(EVERY_MS) { kick.receive() }?.let { delay(3_000) }
             }
         } finally {
             lib.onLocalChange = {}
+            profiles?.onChange = {}
             withContext(NonCancellable) { withTimeoutOrNull(8_000) { syncOnce(id, lib) } }
         }
     }
@@ -99,6 +106,27 @@ object CloudSync {
             if (!res.more) return
             since = res.cursor
         }
+    }
+
+    /** Perfiles de la cuenta: sube los cambios de este equipo y baja los de los demás. */
+    suspend fun syncProfiles(store: ProfileStore) {
+        if (!enabled()) return
+        runCatching {
+            val changes = store.pendingChanges()
+            val res = post(accountId(store.account), PROFILES_SCOPE, (store.cursor - 10_000).coerceAtLeast(0), changes) ?: return
+            store.applyRemote(res.items)
+            store.clearSent(changes)
+            store.updateCursor(res.cursor)
+        }.onFailure { Log.w("Nube (perfiles): ${it.message}") }
+    }
+
+    /**
+     * Sube y baja los perfiles de TODOS los servidores del equipo. Así un cambio hecho con un
+     * servidor llega también a la nube de los demás. [except]: el servidor en uso (va aparte).
+     */
+    suspend fun syncAllProfiles(accounts: List<Account>, except: Account? = null) {
+        if (!enabled()) return
+        accounts.filter { it.key != except?.key }.forEach { acc -> syncProfiles(ProfileStore(acc)) }
     }
 
     /**
