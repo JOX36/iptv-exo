@@ -13,8 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -77,38 +80,46 @@ fun BecauseScreen(repo: TvRepo, source: SavedItem, onOpen: (SavedItem) -> Unit, 
         RemoteImage(source.image, source.name, Modifier.fillMaxSize().alpha(0.18f), scale = ContentScale.Crop)
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0x99070A0F), Jx.Bg))))
 
-        Column(Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 40.dp)) {
-            Text("TERMINASTE", style = Type.Eyebrow, color = Jx.Accent)
-            Spacer(Modifier.height(6.dp))
-            Text("Porque viste ${source.name}", style = Type.Hero, color = Jx.Text, maxLines = 2)
-            Spacer(Modifier.height(6.dp))
+        Column(Modifier.fillMaxSize().padding(start = 56.dp, end = 56.dp, top = 32.dp)) {
             val r = recs
-            Text(
-                when {
-                    r == null -> "Preparando recomendaciones…"
-                    r.isEmpty() -> "Esta vez no encontré títulos parecidos en tu servidor."
-                    else -> "Te preparé estos títulos que puedes ver aquí"
-                },
-                style = Type.Body, color = Jx.Muted,
-            )
-            Spacer(Modifier.height(22.dp))
+            Row(verticalAlignment = Alignment.Top) {
+                Column(Modifier.weight(1f)) {
+                    Text("TERMINASTE", style = Type.Eyebrow, color = Jx.Accent)
+                    Spacer(Modifier.height(4.dp))
+                    Text("Porque viste ${source.name}", style = Type.H1, color = Jx.Text, maxLines = 2)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        when {
+                            r == null -> "Preparando recomendaciones…"
+                            r.isEmpty() -> "Esta vez no encontré títulos parecidos en tu servidor."
+                            else -> "Te preparé estos títulos que puedes ver aquí"
+                        },
+                        style = Type.Body, color = Jx.Muted,
+                    )
+                }
+                Spacer(Modifier.width(24.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    ActionButton("Volver al inicio", onClose, Modifier.then(if (r.isNullOrEmpty()) Modifier.focusRequester(firstReq) else Modifier))
+                    if (r != null) Text("Se cierra en $left s", style = Type.Small, color = Jx.Faint,
+                        modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            // Cuadrícula: llena toda la pantalla hacia abajo (sin espacio vacío)
             if (!r.isNullOrEmpty()) {
-                LazyRow(
-                    contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 112.dp),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(top = 10.dp, bottom = 28.dp, start = 4.dp, end = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     itemsIndexed(r, key = { _, it -> it.kind + it.id }) { i, it ->
-                        PosterCard(it.name, it.image, onClick = { onOpen(it) }, width = 120.dp,
+                        PosterCard(it.name, it.image, onClick = { onOpen(it) }, width = 112.dp,
                             subtitle = if (it.kind == "series") "Serie" else "Película",
                             modifier = if (i == 0) Modifier.focusRequester(firstReq) else Modifier)
                     }
                 }
-            }
-            Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                ActionButton("Volver al inicio", onClose, Modifier.then(if (r.isNullOrEmpty()) Modifier.focusRequester(firstReq) else Modifier))
-                if (r != null) Text("Se cierra en $left s", style = Type.Small, color = Jx.Faint,
-                    modifier = Modifier.padding(top = 12.dp))
             }
         }
     }

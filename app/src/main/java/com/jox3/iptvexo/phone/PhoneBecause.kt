@@ -13,8 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,17 +61,23 @@ fun PhoneBecause(repo: TvRepo, source: SavedItem, onOpen: (SavedItem) -> Unit, o
                     style = PType.Body, color = Jx.Muted,
                 )
             }
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(16.dp))
             val r = recs
             if (!r.isNullOrEmpty()) {
-                LazyRow(contentPadding = PaddingValues(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Cuadrícula de 3 columnas que llena la pantalla
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
                     items(r, key = { it.kind + it.id }) { it ->
-                        PosterTile(it.name, it.image, Modifier.width(124.dp),
+                        PosterTile(it.name, it.image, Modifier.fillMaxWidth(),
                             subtitle = if (it.kind == "series") "Serie" else "Película") { onOpen(it) }
                     }
                 }
-            }
-            Spacer(Modifier.weight(1f))
+            } else Spacer(Modifier.weight(1f))
             PButton("Volver al inicio", Modifier.fillMaxWidth().padding(horizontal = 20.dp), primary = false) { onClose() }
         }
     }
