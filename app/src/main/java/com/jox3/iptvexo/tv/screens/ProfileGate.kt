@@ -96,15 +96,8 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
         onPick(store.byId(p.id) ?: p)
     }
 
-    fun choose(p: Profile) {
-        // Su perfil guarda servidores con un código JOX3 y este equipo aún no los tiene: ofrecer agregarlos
-        val v = p.vaultId
-        if (v.isNotEmpty() && com.jox3.iptvexo.tv.data.Vault.localCode(ctx, v) == null &&
-            !com.jox3.iptvexo.tv.data.Vault.dismissed(ctx, v) && v !in com.jox3.iptvexo.tv.data.Vault.skippedThisLaunch) {
-            mode = Mode.Unlock(p); return
-        }
-        finish(p)
-    }
+    // El aviso del código JOX3 lo hace la app al entrar al perfil (VaultUnlockGate), siempre
+    fun choose(p: Profile) = finish(p)
 
     BackHandler(enabled = mode != Mode.Pick || onCancel != null) {
         if (mode == Mode.Pick) onCancel?.invoke() else mode = Mode.Pick
@@ -539,6 +532,8 @@ private fun VaultScreen(store: ProfileStore, tv: Boolean, profile: Profile, onDo
                 inVault = chosen
                 if (isNew) code = c
                 info = "Guardado ✓ (${chosen.size} servidor${if (chosen.size == 1) "" else "es"})"
+                // Que el aviso del código llegue a la nube de todos los servidores de este equipo
+                CloudSync.syncAllProfiles(ctx, except = store.account)
             } else error = "No se pudo guardar. Revisa el internet"
             busy = false
         }
@@ -632,6 +627,30 @@ private fun ServerChecklist(tv: Boolean, servers: List<Account>, checked: Set<St
             }
         }
     }
+}
+
+/**
+ * Al entrar a un perfil: si guarda servidores con un código JOX3 y este equipo aún no los
+ * tiene, primero se trae lo último de la nube y se pide el código. Muestra [content] mientras tanto
+ * (o cuando no hace falta).
+ */
+@Composable
+fun VaultUnlockGate(store: ProfileStore, tv: Boolean, profileId: String, content: @Composable () -> Unit) {
+    val ctx = LocalContext.current
+    var ask by remember(profileId) { mutableStateOf<Profile?>(null) }
+    LaunchedEffect(profileId) {
+        fun needs(p: Profile?) = p != null && Vault.needsUnlock(ctx, p)
+        if (needs(store.byId(profileId))) { ask = store.byId(profileId); return@LaunchedEffect }
+        // Puede que el código se haya creado en otro equipo hace poco: traer los perfiles y revisar otra vez
+        CloudSync.syncProfiles(ctx, store)
+        if (needs(store.byId(profileId))) ask = store.byId(profileId)
+        // Que el resto de servidores de este equipo también se enteren (perfiles, códigos…)
+        delay(3000)
+        CloudSync.syncAllProfiles(ctx, except = store.account)
+    }
+    val a = ask
+    if (a != null) Box(Modifier.fillMaxSize().background(Jx.Bg)) { UnlockPrompt(store, tv, a, onFinish = { ask = null }) }
+    else content()
 }
 
 /** Al elegir un perfil con código JOX3 en un equipo que aún no tiene sus servidores. */

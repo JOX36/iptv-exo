@@ -168,9 +168,11 @@ fun TvApp(host: TvHost) {
             }
             host.player.repo = repo
             CompositionLocalProvider(LocalProfile provides ProfileCtx(profiles.byId(prof.id) ?: prof) { previous = prof; profile = null }) {
-                MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
-                    onDelete = { accounts.delete(acc); account = null },
-                    onSwitch = { a -> accounts.use(a); account = a })
+                com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = true, profileId = prof.id) {
+                    MainShell(repo, host, acc, accounts, onLogout = { accounts.logout(); account = null },
+                        onDelete = { accounts.delete(acc); account = null },
+                        onSwitch = { a -> accounts.use(a); account = a })
+                }
             }
         }
     }
