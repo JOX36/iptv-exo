@@ -53,4 +53,15 @@ jobs:
             -d "{\"acc\":\"$(printf '0%.0s' {1..64})\",\"profile\":\"prueba\",\"since\":0,\"changes\":[{\"list\":\"fav\",\"item\":\"movie:1\",\"data\":\"{}\",\"ts\":$T}]}" \
             | tee /tmp/r.json ; echo
           grep -q '"movie:1"' /tmp/r.json
+          # Ver juntos: crear una sala
+          curl -fsS -X POST "$U/v1/room" | tee /tmp/room.json ; echo
+          grep -q '"code":"[0-9]\{6\}"' /tmp/room.json
+          echo "U=$U" >> "$GITHUB_ENV"
           echo "::notice::Servidor listo en $U"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Probar Ver juntos (dos equipos en una sala)
+        run: node test/room.mjs
