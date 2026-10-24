@@ -162,7 +162,7 @@ fun ServerChooser(
                 val isCurrent = c.account.key == current.key
                 FocusSurface(
                     onClick = { onPick(c) },
-                    modifier = Modifier.fillMaxWidth().height(58.dp).let { if (i == 0) it.focusRequester(firstReq) else it },
+                    modifier = Modifier.fillMaxWidth().height(if (c.kind == "live") 74.dp else 58.dp).let { if (i == 0) it.focusRequester(firstReq) else it },
                     focusedScale = 1.02f, container = Jx.Surface,
                 ) {
                     Row(Modifier.fillMaxSize().padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically,
@@ -175,6 +175,12 @@ fun ServerChooser(
                                 style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text((if (isCurrent) "Servidor actual · " else "Cambia a este servidor · ") + statusText(st),
                                 style = Type.Small, color = Jx.Muted, maxLines = 1)
+                            if (c.kind == "live") {
+                                val ctx = androidx.compose.ui.platform.LocalContext.current
+                                val now by androidx.compose.runtime.produceState<String?>(null, c) { value = ServerHub.nowOn(ctx, c) }
+                                Text(when (now) { null -> "Buscando la guía…"; "" -> "Sin guía en este servidor"; else -> "▶ Ahora: $now" },
+                                    style = Type.Small, color = if (now.isNullOrEmpty()) Jx.Faint else Jx.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                         Box(Modifier.size(8.dp).background(statusColor(st), CircleShape))
                         JxIcon(R.drawable.tv_ic_play, 14.dp)

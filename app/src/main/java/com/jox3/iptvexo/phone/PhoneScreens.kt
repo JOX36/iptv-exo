@@ -496,6 +496,12 @@ fun PhoneSearch(
                                 (if (c.tag.isNotBlank()) " · ${c.tag}" else ""), style = PType.Label, color = fg, maxLines = 1)
                             Text((if (cur) "Servidor actual · " else "Cambia a este servidor · ") + com.jox3.iptvexo.tv.screens.statusText(st),
                                 style = PType.Tiny, color = if (i == 0) Jx.Line else Jx.Muted, maxLines = 1)
+                            if (c.kind == "live") {
+                                val now by produceState<String?>(null, c) { value = ServerHub.nowOn(ctx, c) }
+                                Text(when (now) { null -> "Buscando la guía…"; "" -> "Sin guía en este servidor"; else -> "▶ Ahora: $now" },
+                                    style = PType.Tiny, color = if (now.isNullOrEmpty()) (if (i == 0) Jx.Line else Jx.Faint) else (if (i == 0) Jx.Bg else Jx.Accent),
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                         Box(Modifier.size(9.dp).clip(CircleShape).background(com.jox3.iptvexo.tv.screens.statusColor(st)))
                     }
@@ -551,8 +557,14 @@ fun PhoneSearch(
                         SectionTitle("En vivo · ${r.channels.size}")
                         LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(r.channels, key = { it.key }) { h ->
+                                val epgV by repo.epgVersion
+                                val now by produceState("", h.key, epgV) {
+                                    val (t, from) = ServerHub.nowForHit(ctx, h, me)
+                                    value = if (t.isEmpty()) "" else if (multi && from != null && from.key != me.key)
+                                        "${ServerHub.letter(accounts, from)} · $t" else t
+                                }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    ChannelBubble(h.name, h.image) { open(h) }
+                                    ChannelBubble(h.name, h.image, Modifier.width(96.dp), now = now) { open(h) }
                                     BadgeRow(letters(h))
                                 }
                             }
