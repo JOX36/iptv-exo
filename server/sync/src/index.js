@@ -5,7 +5,7 @@
 //   → guarda los cambios (gana el de ts más nuevo) y devuelve lo que cambió después de `since`.
 // GET  /         → estado del servidor.
 
-const LISTS = new Set(["fav", "recent", "resume", "profile"]);
+const LISTS = new Set(["fav", "recent", "resume", "profile", "vault"]);
 const MAX_CHANGES = 500;
 const MAX_BODY = 512 * 1024;
 const PAGE = 1000;
@@ -53,7 +53,8 @@ async function sync(req, env) {
     const deleted = c.deleted ? 1 : 0;
     const data = deleted ? null : (c.data == null ? null : String(c.data));
     if (!LISTS.has(list) || !item || item.length > 100 || ts <= 0 || ts > now + 86400000) continue;
-    if (data && data.length > 4000) continue;
+    // "vault": servidores cifrados en el equipo (el servidor nunca ve las contraseñas)
+    if (data && data.length > (list === "vault" ? 16000 : 4000)) continue;
     stmts.push(env.DB.prepare(
       `INSERT INTO items (acc, profile, list, item, data, ts, deleted, seq) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
        ON CONFLICT (acc, profile, list, item) DO UPDATE SET

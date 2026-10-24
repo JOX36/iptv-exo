@@ -29,8 +29,19 @@ class AccountStore(context: Context) {
     fun use(acc: Account) {
         val list = listOf(acc) + all().filter { it.key != acc.key }
         val arr = JSONArray()
-        list.take(10).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
+        list.take(20).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
         prefs.edit().putString("list", arr.toString()).putString("current", acc.key).apply()
+    }
+
+    /** Agrega cuentas sin cambiar la que está en uso (las repetidas se ignoran). Devuelve cuántas eran nuevas. */
+    fun addAll(accs: List<Account>): Int {
+        val current = all()
+        val fresh = accs.filter { a -> current.none { it.key == a.key } }.distinctBy { it.key }
+        if (fresh.isEmpty()) return 0
+        val arr = JSONArray()
+        (current + fresh).take(20).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
+        prefs.edit().putString("list", arr.toString()).apply()
+        return fresh.size
     }
 
     fun remove(acc: Account) {

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 import androidx.lifecycle.repeatOnLifecycle
 import com.jox3.iptvexo.R
 import com.jox3.iptvexo.tv.PlayerLauncher
@@ -98,6 +99,13 @@ fun PhoneApp(act: PhoneActivity) {
                 onCancel = previous?.let { p -> { profile = p } })
         } else key(prof.id) {
             val repo = remember { TvRepo(context.applicationContext, XtreamApi(acc), LibraryStore(context, acc.key, prof.id)) }
+            // Código JOX3 del perfil: trae servidores agregados en otros equipos y sube contraseñas cambiadas
+            LaunchedEffect(prof.id) {
+                delay(4000)
+                profiles.byId(prof.id)?.takeIf { it.vaultId.isNotEmpty() }?.let {
+                    com.jox3.iptvexo.tv.data.Vault.refresh(context.applicationContext, it, accounts)
+                }
+            }
             // Historial en la nube: se sincroniza mientras la app está en pantalla
             val syncOwner = LocalLifecycleOwner.current
             LaunchedEffect(repo) {
