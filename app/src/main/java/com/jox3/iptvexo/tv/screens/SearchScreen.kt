@@ -186,7 +186,14 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                     if (r.channels.isNotEmpty()) item(key = "ch") {
                         ShelfRow("En vivo · ${r.channels.size}") {
                             items(r.channels, key = { "c" + it.key }) { h ->
-                                ChannelTile(h.name, h.image, badges = letters(h), onClick = {
+                                val ctx = androidx.compose.ui.platform.LocalContext.current
+                                val epgV by repo.epgVersion
+                                val now by androidx.compose.runtime.produceState("", h.key, epgV) {
+                                    val (t, from) = ServerHub.nowForHit(ctx, h, account)
+                                    value = if (t.isEmpty()) "" else if (multi && from != null && from.key != account.key)
+                                        "${ServerHub.letter(accounts, from)} · $t" else t
+                                }
+                                ChannelTile(h.name, h.image, badges = letters(h), now = now, onClick = {
                                     open(h) { openCopy(h.copies.first(), here) }
                                 })
                             }

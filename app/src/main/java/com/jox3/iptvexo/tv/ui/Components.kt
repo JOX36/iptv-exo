@@ -244,7 +244,7 @@ fun LandscapeCard(
 /** Canal en filas del inicio: logo cuadrado + nombre. */
 @Composable
 fun ChannelTile(name: String, logo: String, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
-                badges: List<String> = emptyList()) {
+                badges: List<String> = emptyList(), now: String = "") {
     var focused by remember { mutableStateOf(false) }
     Column(modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(
@@ -258,6 +258,8 @@ fun ChannelTile(name: String, logo: String, onClick: () -> Unit, modifier: Modif
             ServerBadges(badges, Modifier.align(Alignment.BottomStart).padding(4.dp))
         }
         Text(name, style = Type.Small, color = if (focused) Jx.Text else Jx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Lo que están dando ahora (en el buscador)
+        if (now.isNotEmpty()) Text(now, style = Type.Small, color = Jx.Accent, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 
