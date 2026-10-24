@@ -2,6 +2,7 @@ package com.jox3.tvdesktop.data
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import com.jox3.tvdesktop.core.AppDirs
 import com.jox3.tvdesktop.core.Log
 import com.jox3.tvdesktop.core.SafeFile
@@ -56,6 +57,9 @@ class LibraryStore(
     /** Lo pone CloudSync: avisa que hay algo nuevo para subir pronto. */
     @Volatile internal var onLocalChange: () -> Unit = {}
 
+    /** "Porque viste…": título que se terminó y lo recomendado (para la fila en Películas y Series). */
+    val because = mutableStateOf<Pair<String, List<SavedItem>>?>(null)
+
     init {
         SafeFile.read(file) { JSONObject(it) }?.let { o ->
             favorites.addAll(load(o.optJSONArray("fav")))
@@ -73,6 +77,10 @@ class LibraryStore(
                 syncCursor = s.optLong("cursor")
                 s.optJSONObject("pending")?.let { p -> p.keys().forEach { k -> p.optJSONObject(k)?.let { pending[k] = it } } }
                 s.optJSONObject("sent")?.let { p -> p.keys().forEach { k -> sent[k] = p.optLong(k) } }
+            }
+            o.optJSONObject("because")?.let { b ->
+                val items = load(b.optJSONArray("items"))
+                if (items.isNotEmpty()) because.value = b.optString("title") to items
             }
         }
     }
@@ -256,6 +264,15 @@ class LibraryStore(
         save()
     }
 
+    // ═══ Porque viste… ═══
+
+    /** Guarda la última recomendación (igual que Android: solo en este equipo, no viaja a la nube). */
+    fun setBecause(title: String, items: List<SavedItem>) {
+        if (items.isEmpty()) return
+        because.value = title to items
+        save()
+    }
+
     // ═══ Guardado ═══
 
     private fun save() {
@@ -274,6 +291,9 @@ class LibraryStore(
                 .put("cursor", syncCursor)
                 .put("pending", JSONObject().apply { pending.forEach { (k, v) -> put(k, v) } })
                 .put("sent", JSONObject().apply { sent.forEach { (k, v) -> put(k, v) } }))
+        because.value?.let { (title, items) ->
+            o.put("because", JSONObject().put("title", title).put("items", JSONArray().apply { items.forEach { put(toJson(it)) } }))
+        }
         val text = o.toString()
         saver.execute {
             try { SafeFile.write(file, text) } catch (e: Exception) { Log.e("No se pudo guardar la biblioteca", e) }

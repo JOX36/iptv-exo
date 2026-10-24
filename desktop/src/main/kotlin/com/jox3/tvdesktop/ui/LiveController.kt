@@ -112,6 +112,23 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         repo.library.saveProgress(v.item, pos, len)
     }
 
+    /**
+     * ¿La terminó (o vio más del 90 %) y no hay otro episodio? → el título para "Porque viste…"
+     * (la película, o la serie si era su último episodio). Igual que Android.
+     */
+    fun finishedItem(): SavedItem? {
+        val v = vod ?: return null
+        if (v.item.kind == "trailer" || v.next != null) return null
+        val len = player.lengthMs
+        val ended = player.state == com.jox3.tvdesktop.player.PlayState.Ended
+        val done = ended || (len > 0 && player.timeMs.toFloat() / len >= 0.9f)
+        if (!done) return null
+        return if (v.item.kind == "episode") {
+            if (v.item.seriesId.isBlank()) null
+            else SavedItem("series", v.item.seriesId, v.title, v.image, categoryId = v.item.categoryId)
+        } else v.item
+    }
+
     /** Canal siguiente (+1) o anterior (-1) de la lista actual, dando la vuelta. */
     fun step(delta: Int) {
         val l = list

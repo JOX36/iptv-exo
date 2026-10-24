@@ -71,6 +71,7 @@ import kotlinx.coroutines.launch
 
 private const val CONTINUE_ID = "__continue"
 private const val FAV_ID = "__fav"
+private const val BECAUSE_ID = "__because"
 
 /** Elemento de la cuadrícula: película o serie con lo necesario para mostrarlo. */
 private data class Tile(val id: String, val name: String, val poster: String, val rating: String, val categoryId: String,
@@ -99,8 +100,12 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
     val scope = rememberCoroutineScope()
     val cats by produceState<Result<List<Category>>?>(null, section, reload) { value = runCatching { repo.categories(section) } }
     val catList = cats?.getOrNull()
-    val allCats = remember(catList) {
-        listOf(Category(CONTINUE_ID, "Continuar viendo"), Category(FAV_ID, "★  Favoritos")) + catList.orEmpty()
+    // "Porque viste…": lo recomendado al terminar el último título (como la fila del Inicio en Android)
+    val because by lib.because
+    val becauseHere = because?.let { (title, items) -> items.filter { it.kind == kind }.takeIf { it.isNotEmpty() }?.let { title to it } }
+    val allCats = remember(catList, becauseHere) {
+        listOf(Category(CONTINUE_ID, "Continuar viendo"), Category(FAV_ID, "★  Favoritos")) +
+            listOfNotNull(becauseHere?.let { Category(BECAUSE_ID, "Porque viste ${it.first}") }) + catList.orEmpty()
     }
     var selected by remember(section) { mutableStateOf<Category?>(null) }
     var detail by remember(section) { mutableStateOf<Detail?>(null) }
@@ -129,12 +134,17 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
     val progressV by lib.progressVersion
     val favKey = if (selected?.id == FAV_ID) lib.favorites.size else -1
     val contKey = if (selected?.id == CONTINUE_ID) progressV else -1
-    val tiles by produceState<Result<List<Tile>>?>(null, selected, favKey, contKey, reload) {
+    val becKey = if (selected?.id == BECAUSE_ID) becauseHere else null
+    val tiles by produceState<Result<List<Tile>>?>(null, selected, favKey, contKey, becKey, reload) {
         val cat = selected ?: return@produceState
         value = null
         value = runCatching {
             when (cat.id) {
                 CONTINUE_ID -> continueTiles(lib.continueWatching(if (isMovies) "movie" else "episode"), isMovies)
+                BECAUSE_ID -> becauseHere?.second.orEmpty().map { f ->
+                    if (isMovies) Tile(f.id, f.name, f.image, "", f.categoryId, 0, movie = Movie(f.id, f.name, f.image, "", f.ext.ifBlank { "mp4" }, f.categoryId, 0))
+                    else Tile(f.id, f.name, f.image, "", f.categoryId, 0, series = Series(f.id, f.name, f.image, "", f.categoryId, 0))
+                }
                 FAV_ID -> lib.favorites.filter { it.kind == kind }.map { f ->
                     if (isMovies) Tile(f.id, f.name, f.image, "", f.categoryId, f.ts, movie = Movie(f.id, f.name, f.image, "", f.ext, f.categoryId, 0))
                     else Tile(f.id, f.name, f.image, "", f.categoryId, f.ts, series = Series(f.id, f.name, f.image, "", f.categoryId, 0))
@@ -167,7 +177,7 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
             Spacer(Modifier.height(8.dp))
             val shownCats = remember(allCats, catFilter) {
                 val q = TvRepo.normalize(catFilter.trim())
-                if (q.isEmpty()) allCats else allCats.filter { it.id == CONTINUE_ID || it.id == FAV_ID || TvRepo.normalize(it.name).contains(q) }
+                if (q.isEmpty()) allCats else allCats.filter { it.id == CONTINUE_ID || it.id == FAV_ID || it.id == BECAUSE_ID || TvRepo.normalize(it.name).contains(q) }
             }
             val catState = rememberLazyListState()
             androidx.compose.runtime.DisposableEffect(shownCats) {
@@ -204,7 +214,7 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
                 is Detail.OfSeries -> SeriesDetail(live, d.series, d.season, onBack = { detail = null }, onPlay = onPlay)
                 null -> Column(Modifier.fillMaxSize().padding(top = 16.dp, start = 20.dp, end = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(selected?.name.orEmpty().removePrefix("★  "), color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold,
+                        Text((allCats.firstOrNull { it.id == selected?.id } ?: selected)?.name.orEmpty().removePrefix("★  "), color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold,
                             fontSize = 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         tiles?.getOrNull()?.let { Text("${shown.size}", color = Jx.Faint, fontFamily = Exo2, fontSize = 13.sp) }
                         Spacer(Modifier.width(12.dp))
@@ -300,7 +310,7 @@ private fun PosterGrid(live: LiveController, tiles: List<Tile>, kind: String, on
 }
 
 @Composable
-private fun PosterCard(name: String, poster: String, rating: String, favorite: Boolean, progress: Float?, onClick: () -> Unit) {
+internal fun PosterCard(name: String, poster: String, rating: String, favorite: Boolean, progress: Float?, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
     Column(Modifier.hoverable(source).clickable(onClick = onClick).pointerHoverIcon(PointerIcon.Hand)) {
