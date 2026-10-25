@@ -161,6 +161,9 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
         if (!anyFocus) runCatching { rootReq.requestFocus() }
     }
     BackHandler { goBack() }
+    // El aviso de Ver juntos aparece y se esconde junto con los controles
+    LaunchedEffect(bars) { WatchTogether.controlsVisible = bars }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { WatchTogether.controlsVisible = false } }
 
     Box(
         Modifier
@@ -309,6 +312,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                                 VOpt.Play -> if (vod.playing) "Pausa" else "Reproducir"
                                 VOpt.Favorite -> if (isFav) "En favoritos" else "Favorito"
                                 VOpt.Speed -> if (abs(vod.speed - 1f) > 0.01f) speedLabel(vod.speed) else opt.label
+                                VOpt.Together -> if (WatchTogether.phase == WatchTogether.Phase.On) "En la sala · ${prettyRoomCode(WatchTogether.code)}" else opt.label
                                 else -> opt.label
                             },
                             icon = when (opt) {

@@ -212,6 +212,9 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
              onOption: (String) -> Unit = {}) {
     var controls by remember { mutableStateOf(true) }
     var touched by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    // El aviso de Ver juntos aparece y se esconde junto con los controles
+    LaunchedEffect(controls) { com.jox3.iptvexo.tv.player.WatchTogether.controlsVisible = controls }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { com.jox3.iptvexo.tv.player.WatchTogether.controlsVisible = false } }
     LaunchedEffect(controls, touched, vod.playing) {
         if (controls && vod.playing) { delay(3500); controls = false }
     }
