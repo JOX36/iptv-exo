@@ -275,6 +275,9 @@ object ExternalEpg {
     private val QUALITY = setOf("hd", "fhd", "uhd", "4k", "sd", "hevc", "h265", "h264", "1080p", "720p", "1080", "720", "hq", "lq", "fullhd", "backup", "alt", "vip", "col")
     private val PREFIX = setOf("co", "col", "mx", "ar", "cl", "pe", "ec", "us", "usa", "es", "lat", "latam", "br", "uy", "py", "bo", "ve", "cr", "pa", "do", "pr", "sv", "gt", "hn", "ni", "cu", "int")
     private val STOP = setOf("en", "de", "del", "la", "el", "y", "the")
+    private val COUNTRY_WORDS = setOf("colombia", "mexico", "argentina", "chile", "peru", "ecuador", "venezuela", "uruguay",
+        "paraguay", "bolivia", "panama", "espana", "spain", "latam", "latino", "latinoamerica", "latin", "america", "internacional",
+        "international", "usa", "brasil", "brazil", "andina", "sur", "norte")
     private val ALIAS = listOf(
         "directvsports" to "dsports",
         "winsportspremium" to "winsportsplus",
@@ -339,6 +342,9 @@ object ExternalEpg {
         // "Canal RCN" → "RCN", pero "Canal 1" se queda igual.
         if (short.size > 1 && short[0] == "canal" && !short[1].all { it.isDigit() }) short = short.drop(1)
         if (short.isNotEmpty() && short != t) add(short)
+        // "ESPN COLOMBIA" → "ESPN", "FOX SPORTS ARGENTINA" → "FOX SPORTS": el país va aparte
+        val noCountry = short.filter { it !in COUNTRY_WORDS }
+        if (noCountry.isNotEmpty() && noCountry.size < short.size) add(noCountry)
         return out.distinct()
     }
 
