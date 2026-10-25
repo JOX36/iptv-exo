@@ -322,7 +322,7 @@ private fun ChannelRow(c: Channel, repo: TvRepo, playing: Boolean, favorite: Boo
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text("${c.num} · ${c.name}", style = PType.Label, color = if (playing) Jx.Accent else Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (now != null) {
-                Text(now.title, style = PType.Small, color = Jx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(now.label, style = PType.Small, color = Jx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Jx.Line)) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(now.progress()).background(if (playing) Jx.Accent else Jx.Muted))
                 }
@@ -358,7 +358,10 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
                         if (isNow) Text(clock(p.start), style = PType.Tiny, color = Jx.Muted)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(p.title, style = PType.Label, color = Jx.Text)
+                        Text(p.label, style = PType.Label, color = Jx.Text)
+                        if (p.meta.isNotBlank()) Text(p.meta, style = PType.Tiny, color = Jx.Accent)
+                        if (isNow && p.icon.isNotBlank()) com.jox3.iptvexo.tv.ui.RemoteImage(p.icon, p.cleanTitle,
+                            Modifier.padding(vertical = 4.dp).width(160.dp).height(90.dp).clip(RoundedCornerShape(10.dp)))
                         if (p.description.isNotBlank()) Text(p.description, style = PType.Small, color = Jx.Muted, maxLines = 3, overflow = TextOverflow.Ellipsis)
                         if (isNow) Box(Modifier.padding(top = 4.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Jx.Line)) {
                             Box(Modifier.fillMaxHeight().fillMaxWidth(p.progress()).background(Jx.Accent))
@@ -456,7 +459,7 @@ private fun FullscreenEpg(ch: Channel, repo: TvRepo, modifier: Modifier = Modifi
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("AHORA", style = PType.Eyebrow, color = Jx.Accent)
             Text("${clock(now.start)} – ${clock(now.end)}", style = PType.Tiny, color = Jx.TextSoft)
-            Text(now.title, style = PType.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(now.label, style = PType.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box(Modifier.width(300.dp).height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF))) {
             Box(Modifier.fillMaxHeight().fillMaxWidth(now.progress()).background(Jx.Accent))
@@ -464,7 +467,7 @@ private fun FullscreenEpg(ch: Channel, repo: TvRepo, modifier: Modifier = Modifi
         if (next != null) Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("DESPUÉS", style = PType.Eyebrow, color = Jx.Muted)
             Text(clock(next.start), style = PType.Tiny, color = Jx.TextSoft)
-            Text(next.title, style = PType.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(next.label, style = PType.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

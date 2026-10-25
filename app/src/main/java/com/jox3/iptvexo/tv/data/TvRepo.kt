@@ -58,7 +58,12 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     private fun startExternalEpg(liveCats: List<Category>) {
         synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.raw) } }
         epgCodes = EpgCountries.filesFor(liveCats)
+        ExternalEpg.lowMemory = ServerHub.lowMemory(context)
         requestExternal()
+        // Guía completa del servidor (si la tiene): solo los canales que existen en él
+        ServerEpg.ensure(context, api, ids = {
+            kotlinx.coroutines.runBlocking { runCatching { api.channels().map { it.epgId } }.getOrDefault(emptyList()).toSet() }
+        }, onReady = onExternalReady)
     }
 
     /** Pide (o vuelve a pedir) la guía de internet; al estar lista, la interfaz la consulta otra vez. */
@@ -76,9 +81,14 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
 
     suspend fun epg(ch: Channel): List<EpgItem> {
         cachedEpg(ch)?.let { return it }
-        // 14 programas: alcanza para la guía por horas
-        var list = epgPermits.withPermit {
-            try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
+        // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
+        val nowSec = System.currentTimeMillis() / 1000
+        val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 3600 }?.map { it.toItem() }.orEmpty()
+        // 2. Guía corta del servidor (14 programas: alcanza para la guía por horas)
+        var list = full.ifEmpty {
+            epgPermits.withPermit {
+                try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
+            }
         }
         // La guía de internet aún no está (falló o no ha terminado): se vuelve a pedir
         if (list.isEmpty() && !ExternalEpg.isReady() && !ExternalEpg.loading) requestExternal()
@@ -90,7 +100,7 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
                 try {
                     ExternalEpg.match(context, ch.name, ch.epgId.ifBlank { null }, hint?.ifBlank { null })
                         ?.progs?.filter { it.stop > now - 3600 && it.start < now + 12 * 3600 }
-                        ?.map { EpgItem(it.title, it.desc, it.start * 1000, it.stop * 1000) }
+                        ?.map { it.toItem() }
                         .orEmpty()
                 } catch (e: Exception) { emptyList() }
             }

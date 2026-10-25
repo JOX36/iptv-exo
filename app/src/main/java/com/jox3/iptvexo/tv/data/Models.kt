@@ -51,9 +51,66 @@ data class Series(
 )
 
 /** Programa de la guía (horas en milisegundos). */
-data class EpgItem(val title: String, val description: String, val start: Long, val end: Long) {
+data class EpgItem(
+    val title: String,
+    val description: String,
+    val start: Long,
+    val end: Long,
+    /** Imagen del programa (si la guía la trae). */
+    val icon: String = "",
+    /** Género o tipo ("Fútbol", "Película", "Noticias"…). */
+    val category: String = "",
+    /** EN VIVO según la guía. */
+    val liveFlag: Boolean = false,
+    /** ESTRENO / nuevo según la guía. */
+    val newFlag: Boolean = false,
+    /** Temporada y episodio ("T2 E5"). */
+    val episode: String = "",
+) {
     fun progress(now: Long = System.currentTimeMillis()): Float =
         if (end > start) ((now - start).toFloat() / (end - start)).coerceIn(0f, 1f) else 0f
+
+    /** EN VIVO: lo dice la guía o el título ("(EN VIVO)", "LIVE", "DIRECTO"). */
+    val isLive: Boolean get() = liveFlag || LIVE_RE.containsMatchIn(title)
+    /** ESTRENO: lo dice la guía o el título. */
+    val isNew: Boolean get() = newFlag || NEW_RE.containsMatchIn(title)
+
+    /** Título con sus etiquetas, para mostrar: "🔴 EN VIVO · Nacional vs. Junior". */
+    val label: String get() = buildString {
+        if (isLive) append("🔴 EN VIVO · ") else if (isNew) append("🆕 ESTRENO · ")
+        append(cleanTitle)
+    }
+
+    /** Título sin "(EN VIVO)" ni "ESTRENO" repetidos. */
+    val cleanTitle: String get() = title.replace(TAGS_RE, " ").replace(Regex("\\s{2,}"), " ").trim().trim('-', '·', ':', ' ').ifBlank { title }
+
+    /** "T2 E5 · ⚽ Fútbol" */
+    val meta: String get() = listOfNotNull(
+        episode.ifBlank { null },
+        category.ifBlank { null }?.let { c -> (categoryEmoji(c)?.let { "$it " } ?: "") + c },
+    ).joinToString(" · ")
+
+    companion object {
+        private val LIVE_RE = Regex("(?i)(\\ben vivo\\b|\\bvivo\\b\\)|\\(vivo|\\blive\\b|\\bdirecto\\b)")
+        private val NEW_RE = Regex("(?i)\\b(estreno|premiere|nuevo episodio)\\b")
+        // Solo la etiqueta entre paréntesis o al principio/final ("(EN VIVO)", "ESTRENO: …"), no palabras del título
+        private val TAGS_RE = Regex("(?i)[\\[(]\\s*(en vivo|vivo|live|directo|estreno|premiere)\\s*[\\])]|^\\s*(en vivo|estreno|live)\\s*[:|-]\\s*|\\s*[:|-]\\s*(en vivo|estreno|live)\\s*$")
+        fun categoryEmoji(c: String): String? {
+            val n = java.text.Normalizer.normalize(c.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
+            return when {
+                Regex("futbol|soccer|football").containsMatchIn(n) -> "⚽"
+                Regex("deport|sport").containsMatchIn(n) -> "🏆"
+                Regex("pelicul|movie|film|cine").containsMatchIn(n) -> "🎬"
+                Regex("serie|series|drama|novela").containsMatchIn(n) -> "📺"
+                Regex("notici|news|informativ").containsMatchIn(n) -> "📰"
+                Regex("infantil|kids|anima|children").containsMatchIn(n) -> "🧸"
+                Regex("music|musica").containsMatchIn(n) -> "🎵"
+                Regex("documental|docu|nature").containsMatchIn(n) -> "🌍"
+                Regex("entreten|reality|show|variedad").containsMatchIn(n) -> "🎭"
+                else -> null
+            }
+        }
+    }
 }
 
 data class MovieInfo(

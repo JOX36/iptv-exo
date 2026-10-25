@@ -462,14 +462,14 @@ private fun EpgLines(ch: Channel, repo: TvRepo) {
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("AHORA", style = Type.Eyebrow, color = Jx.Accent)
             Text("${hhmm(now.start)} – ${hhmm(now.end)}", style = Type.Small, color = Jx.Muted)
-            Text(now.title, style = Type.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(now.label, style = Type.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         ThinProgress(now.progress(), Modifier.width(300.dp), height = 3.dp)
         if (next != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("DESPUÉS", style = Type.Eyebrow, color = Jx.Muted)
                 Text(hhmm(next.start), style = Type.Small, color = Jx.Muted)
-                Text(next.title, style = Type.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(next.label, style = Type.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -517,7 +517,7 @@ private fun PanelRow(num: Int, c: Channel, repo: TvRepo, playing: Boolean, modif
             Column(Modifier.weight(1f)) {
                 Text(c.name, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (playing) Jx.Accent else androidx.tv.material3.LocalContentColor.current)
-                if (now != null) Text(now.title, style = Type.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (now != null) Text(now.label, style = Type.Small, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

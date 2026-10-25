@@ -263,7 +263,7 @@ private fun GuideRow(
                             ) {
                                 Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 5.dp),
                                     verticalArrangement = Arrangement.Center) {
-                                    Text(p.title, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(p.label, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(hhmm(p.start), style = Type.Small, maxLines = 1,
                                         color = if (isNow) Jx.Accent else Jx.Faint)
                                 }
@@ -302,7 +302,12 @@ private fun ProgramInfo(sel: Pair<Channel, EpgItem?>?, repo: TvRepo, nowMs: Long
                 (if (isNow) "AHORA · " else if (past) "YA TERMINÓ · " else "") + "${hhmm(p.start)} – ${hhmm(p.end)}",
                 style = Type.Eyebrow, color = if (isNow) Jx.Accent else Jx.Muted,
             )
-            Text(p.title, style = Type.H1, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            // Imagen del programa (si la guía la trae)
+            if (p.icon.isNotBlank()) com.jox3.iptvexo.tv.ui.RemoteImage(p.icon, p.cleanTitle,
+                Modifier.padding(vertical = 4.dp).width(176.dp).height(99.dp)
+                    .then(Modifier.background(Jx.Surface, androidx.compose.foundation.shape.RoundedCornerShape(8.dp))))
+            Text(p.label, style = Type.H1, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (p.meta.isNotBlank()) Text(p.meta, style = Type.Small, color = Jx.Muted, maxLines = 1)
             if (isNow) ThinProgress(p.progress(), Modifier.fillMaxWidth().padding(vertical = 2.dp), height = 3.dp)
             if (p.description.isNotBlank()) {
                 Text(p.description, style = Type.Small, color = Jx.TextSoft, maxLines = 3, overflow = TextOverflow.Ellipsis)
