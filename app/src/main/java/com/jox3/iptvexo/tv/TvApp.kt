@@ -533,16 +533,16 @@ private fun Rail(
             .focusGroup()
     ) {
         Column(
-            Modifier.fillMaxHeight().padding(vertical = 24.dp, horizontal = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            // Compacta: en el TV Box (540 dp de alto) caben todas las opciones, Ajustes incluido
+            Modifier.fillMaxHeight().padding(vertical = 14.dp, horizontal = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
-            Text("J3", style = Type.H1, color = Jx.Accent, modifier = Modifier.padding(start = 12.dp, bottom = 10.dp))
             // Perfil activo: OK vuelve a "¿Quién está viendo?"
             val pc = LocalProfile.current
             pc.profile?.let { ProfileRailButton(it, expanded, pc.switch) }
             // Servidor en uso: OK abre la lista de servidores
             ServerRailButton(accounts, account, expanded, onServers)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
             railItems.forEach { item ->
                 RailButton(item.icon, item.label, item.route == current, expanded,
                     if (item.route == current) Modifier.safeFocusTarget(current0) else Modifier) { nav.open(item.route) }
@@ -564,7 +564,7 @@ private fun RailButton(
 ) {
     FocusSurface(
         onClick = onClick,
-        modifier = modifier.fillMaxWidth().height(44.dp),
+        modifier = modifier.fillMaxWidth().height(40.dp),
         shape = RoundedCornerShape(12.dp),
         focusedScale = 1f,
         container = if (selected) Jx.SurfaceHi else Color.Transparent,
@@ -591,7 +591,7 @@ private fun ServerRailButton(accounts: List<Account>, account: Account, expanded
     val st = ServerHub.status[account.key]
     FocusSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = Modifier.fillMaxWidth().height(44.dp),
         shape = RoundedCornerShape(12.dp),
         focusedScale = 1f,
         container = Color.Transparent,
@@ -622,7 +622,7 @@ private fun ServerRailButton(accounts: List<Account>, account: Account, expanded
 private fun ProfileRailButton(p: com.jox3.iptvexo.tv.data.Profile, expanded: Boolean, onClick: () -> Unit) {
     FocusSurface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth().height(48.dp),
+        modifier = Modifier.fillMaxWidth().height(44.dp),
         shape = RoundedCornerShape(12.dp),
         focusedScale = 1f,
         container = Color.Transparent,
