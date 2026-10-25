@@ -106,6 +106,9 @@ fun PlayerView(
     val overlay = live.panel != Panel.NONE || paused || ended || now - live.overlayAt < 6000
     // En la vista previa, los botones pequeños aparecen al pasar el mouse
     val hovering = now - lastMove < 2500
+    // El aviso de Ver juntos aparece y se esconde junto con los controles (como en la TV)
+    LaunchedEffect(overlay, live.vod) { com.jox3.tvdesktop.player.WatchTogether.controlsVisible = overlay && live.vod != null }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { com.jox3.tvdesktop.player.WatchTogether.controlsVisible = false } }
 
     Box(
         modifier
@@ -358,7 +361,8 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }
                 if (vod != null) RoundButton(Ico.CLOCK, "Velocidad (V)", selected = live.panel == Panel.SPEED) { live.toggle(Panel.SPEED) }
-                if (vod != null && vod.item.kind != "trailer") RoundButton(Ico.USER, "Ver juntos (J)", selected = live.panel == Panel.TOGETHER) { live.toggle(Panel.TOGETHER) }
+                if (vod != null && vod.item.kind != "trailer") RoundButton(Ico.USER, if (com.jox3.tvdesktop.player.WatchTogether.phase == com.jox3.tvdesktop.player.WatchTogether.Phase.On)
+                    "En la sala · ${com.jox3.tvdesktop.player.WatchTogether.pretty(com.jox3.tvdesktop.player.WatchTogether.code)}" else "Ver juntos (J)", selected = live.panel == Panel.TOGETHER) { live.toggle(Panel.TOGETHER) }
                 RoundButton(Ico.SLEEP, "Apagado automático", selected = live.panel == Panel.SLEEP) { live.toggle(Panel.SLEEP) }
                 RoundButton(Ico.INFO, "Información técnica (I)", selected = live.panel == Panel.INFO) { live.toggle(Panel.INFO) }
                 Spacer(Modifier.width(6.dp))

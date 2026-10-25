@@ -51,6 +51,7 @@ dependencies {
     implementation("net.java.dev.jna:jna-platform:5.15.0") // cifrado de contraseñas con Windows (DPAPI)
     implementation("uk.co.caprica:vlcj:4.7.3")             // reproductor: libVLC desde Kotlin (rama 4.7, API estable)
     implementation("com.google.code.gson:gson:2.11.0")    // lectura por partes de listas JSON enormes
+    implementation("com.google.zxing:core:3.5.3")          // código QR de la invitación a Ver juntos
 
     testImplementation(kotlin("test"))
 }

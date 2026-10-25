@@ -55,23 +55,49 @@ fun TogetherPanel() {
             }
             Phase.On -> {
                 Text("CÓDIGO DE LA SALA", color = Jx.Muted, fontFamily = Exo2, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(wt.pretty(wt.code), color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.Bold, fontSize = 34.sp)
-                    Spacer(Modifier.width(12.dp))
-                    GhostButton("Copiar") {
-                        runCatching {
-                            java.awt.Toolkit.getDefaultToolkit().systemClipboard
-                                .setContents(java.awt.datatransfer.StringSelection(wt.code), null)
-                        }
-                    }
+                Text(wt.pretty(wt.code), color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.Bold, fontSize = 34.sp)
+                Text("En el otro equipo: «Ver juntos» y escribe este código, o escanea con el celular:", color = Jx.Muted, fontFamily = Exo2, fontSize = 13.sp)
+                QrCode(wt.inviteLink(), Modifier.size(140.dp))
+                // Invitación completa (póster, sinopsis, reparto y enlace) para pegar en WhatsApp
+                var copied by remember { mutableStateOf("") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PillButton(if (copied == "inv") "✓ Invitación copiada" else "Copiar invitación") { copyText(wt.inviteText()); copied = "inv" }
+                    GhostButton(if (copied == "code") "✓ Copiado" else "Copiar código") { copyText(wt.code); copied = "code" }
                 }
-                Text("En el otro equipo: «Ver juntos» y escribe este código.", color = Jx.Muted, fontFamily = Exo2, fontSize = 13.sp)
+                if (copied == "inv") Text("Pégala en WhatsApp: quien la reciba en el celular toca el enlace y entra directo a la sala.",
+                    color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp)
                 Text(wt.peopleLine(), color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp)
                 Text("Reacciones", color = Jx.Muted, fontFamily = Exo2, fontSize = 13.sp)
                 ReactionRow()
                 Spacer(Modifier.height(4.dp))
                 DangerButton("Salir de Ver juntos") { wt.leave() }
             }
+        }
+    }
+}
+
+private fun copyText(text: String) {
+    runCatching {
+        java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(text), null)
+    }
+}
+
+/** Código QR (negro sobre blanco) dibujado con zxing. */
+@Composable
+fun QrCode(text: String, modifier: Modifier) {
+    val matrix = remember(text) {
+        runCatching {
+            com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, 0, 0,
+                mapOf(com.google.zxing.EncodeHintType.MARGIN to 1,
+                    com.google.zxing.EncodeHintType.ERROR_CORRECTION to com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M))
+        }.getOrNull()
+    } ?: return
+    androidx.compose.foundation.Canvas(modifier.background(Color.White, RoundedCornerShape(8.dp)).padding(6.dp)) {
+        val n = matrix.width
+        val cell = size.minDimension / n
+        for (y in 0 until n) for (x in 0 until n) {
+            if (matrix[x, y]) drawRect(Color.Black, androidx.compose.ui.geometry.Offset(x * cell, y * cell),
+                androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f))
         }
     }
 }
@@ -90,24 +116,40 @@ private fun ReactionRow() {
 }
 
 /**
- * Aviso flotante mientras hay una sala: código, cuántos están, avisos y reacciones.
- * Igual que en la TV: "👥 Ver juntos · 482 913 · 2 personas".
+ * Aviso de la sala (arriba al centro): "👥 Ver juntos · 482 913 · 2 personas" y quién pausó.
+ * Aparece unos segundos cuando pasa algo (alguien entra, pausa…) y junto con los controles del
+ * reproductor; luego se esconde (igual que en la TV). Las reacciones salen siempre y se van solas.
  */
 @Composable
 fun TogetherBadge(modifier: Modifier = Modifier) {
     val wt = WatchTogether
     if (wt.phase == Phase.Off) return
-    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-            val people = wt.peers.size.coerceAtLeast(1)
-            BasicText(
-                "👥 Ver juntos · ${wt.pretty(wt.code)}" +
-                    if (wt.phase == Phase.On) " · $people ${if (people == 1) "persona" else "personas"}" else "",
-                style = TextStyle(color = Jx.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = Exo2),
-            )
-        }
-        if (wt.message.isNotEmpty()) Box(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-            BasicText(wt.message, style = TextStyle(color = if (wt.phase == Phase.Error) Jx.Live else Jx.TextSoft, fontSize = 13.sp, fontFamily = Exo2))
+    var recent by remember { mutableStateOf(true) }
+    androidx.compose.runtime.LaunchedEffect(wt.peers, wt.message, wt.phase) {
+        recent = true; kotlinx.coroutines.delay(5000); recent = false
+    }
+    val show = recent || wt.controlsVisible || wt.phase != Phase.On
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.animation.AnimatedVisibility(show,
+            enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(16.dp)).padding(start = 12.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val people = wt.peers.size.coerceAtLeast(1)
+                    BasicText(
+                        "👥 Ver juntos · ${wt.pretty(wt.code)}" +
+                            if (wt.phase == Phase.On) " · $people ${if (people == 1) "persona" else "personas"}" else "",
+                        style = TextStyle(color = Jx.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = Exo2),
+                    )
+                    Box(Modifier.clip(RoundedCornerShape(12.dp)).background(Color(0x33FF5A4E))
+                        .clickable { wt.leave() }.pointerHoverIcon(PointerIcon.Hand).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                        BasicText("Salir", style = TextStyle(color = Jx.Live, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, fontFamily = Exo2))
+                    }
+                }
+                if (wt.message.isNotEmpty()) Box(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    BasicText(wt.message, style = TextStyle(color = if (wt.phase == Phase.Error) Jx.Live else Jx.TextSoft, fontSize = 13.sp, fontFamily = Exo2))
+                }
+            }
         }
         wt.reactions.forEach { r ->
             Box(Modifier.background(Color(0x99070A0F), RoundedCornerShape(18.dp)).padding(horizontal = 12.dp, vertical = 4.dp)) {
