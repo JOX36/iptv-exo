@@ -3,18 +3,21 @@ on:
   push:
     branches: [guia-completa]
     paths: [".github/workflows/probe-epg.yml"]
+  workflow_dispatch:
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
       - name: Listar globetvapp
         run: |
+          exec > >(tee /tmp/out1.txt) 2>&1
           for c in Colombia Mexico Argentina Chile Peru Ecuador Spain Usa Venezuela Sports; do
             echo "== $c"; curl -s "https://api.github.com/repos/globetvapp/epg/contents/$c" | grep -o '"name": "[^"]*"\|"size": [0-9]*' | paste - - | head -8
           done
           curl -s "https://api.github.com/repos/globetvapp/epg/contents" | grep -o '"name": "[^"]*"' | tr '\n' ' '
       - name: Probar URLs
         run: |
+          exec > >(tee /tmp/out2.txt) 2>&1
           for u in \
             https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia1.xml \
             https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia1.xml.gz \
@@ -30,6 +33,15 @@ jobs:
           done
       - name: Canales de Colombia en cada fuente
         run: |
+          exec > >(tee /tmp/out3.txt) 2>&1
           curl -sL https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz | zcat | grep -o '<channel id="[^"]*"' | wc -l
           curl -sL https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz | zcat | grep -io '<channel id="[^"]*win[^"]*"' | head
           curl -sL https://www.open-epg.com/files/colombia1.xml.gz | (zcat 2>/dev/null) | grep -o '<channel id="[^"]*"' | wc -l
+      - name: Resultado
+        if: always()
+        run: |
+          for f in /tmp/out1.txt /tmp/out2.txt /tmp/out3.txt; do
+            sleep 1
+            body=$(cat $f | tr -d '\r' | head -c 3500 | sed ':a;N;$!ba;s/%/%25/g;s/\n/%0A/g')
+            echo "::notice title=$f::$body"
+          done
