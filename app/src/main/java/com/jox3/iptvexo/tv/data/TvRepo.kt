@@ -72,6 +72,31 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         ExternalEpg.ensure(context, codes, onExternalReady)
     }
 
+    // ── Elegir la guía de un canal a mano ──
+    class GuideChoice(val key: String, val label: String, val selected: Boolean)
+
+    /** "Automática", las guías más parecidas (con lo que dan ahora) y "Sin guía". */
+    suspend fun guideChoices(ch: Channel): List<GuideChoice> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val manual = ExternalEpg.manualFor(context, ch.name)
+        val now = System.currentTimeMillis() / 1000
+        buildList {
+            add(GuideChoice("", "Automática (la que elige la app)", manual.isEmpty()))
+            ExternalEpg.candidates(ch.name).forEach { c ->
+                val cur = c.progs.firstOrNull { now in it.start until it.stop }
+                add(GuideChoice(c.key, ExternalEpg.displayName(c) + " · " + ExternalEpg.sourceName(c) +
+                    (cur?.let { " — Ahora: ${it.title}" } ?: ""), manual == c.key))
+            }
+            add(GuideChoice("none", "Este canal no tiene guía", manual == "none"))
+        }
+    }
+
+    /** Guarda la elección y vuelve a cargar la guía del canal. */
+    fun chooseGuide(ch: Channel, key: String) {
+        ExternalEpg.setManual(context, ch.name, key)
+        synchronized(epg) { epg.remove(ch.id) }
+        android.os.Handler(android.os.Looper.getMainLooper()).post { epgVersion.intValue++ }
+    }
+
     fun cachedEpg(ch: Channel): List<EpgItem>? {
         val hit = synchronized(epg) { epg[ch.id] } ?: return null
         // Con guía: 5 minutos. Sin guía: solo 1 minuto (puede que aún se esté descargando)
@@ -81,8 +106,16 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
 
     suspend fun epg(ch: Channel): List<EpgItem> {
         cachedEpg(ch)?.let { return it }
-        // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
         val nowSec = System.currentTimeMillis() / 1000
+        // 0. Elegida a mano: esa manda (aunque el servidor traiga otra)
+        val manual = ExternalEpg.manualFor(context, ch.name)
+        if (manual == "none") { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to emptyList() }; return emptyList() }
+        if (manual.isNotEmpty() && ExternalEpg.isReady()) {
+            val picked = ExternalEpg.match(context, ch.name, null)?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 12 * 3600 }
+                ?.map { it.toItem() }.orEmpty()
+            if (picked.isNotEmpty()) { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to picked }; return picked }
+        }
+        // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
         val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 3600 }?.map { it.toItem() }.orEmpty()
         // 2. Guía corta del servidor (14 programas: alcanza para la guía por horas)
         var list = full.ifEmpty {

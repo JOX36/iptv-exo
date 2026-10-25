@@ -5,6 +5,7 @@ import android.view.ViewGroup
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.rememberScrollState
@@ -137,6 +138,7 @@ private enum class Opt(val label: String, val hasPanel: Boolean) {
     Subtitles("Subtítulos", true),
     Picture("Imagen", true),
     Info("Información", true),
+    Guide("Elegir guía", true),
     Favorite("Favorito", false),
     Reload("Recargar", false),
 }
@@ -345,6 +347,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     Opt.Subtitles -> TrackPanel(live.player, live.tracksVersion, C.TRACK_TYPE_TEXT, panelReq)
                     Opt.Picture -> PicturePanel(live.resizeMode, { live.resizeMode = it }, panelReq)
                     Opt.Info -> LiveInfoPanel(live, repo, ch)
+                    Opt.Guide -> GuidePickPanel(repo, ch, panelReq)
                     else -> Unit
                 }
             }
@@ -367,7 +370,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     .padding(start = 48.dp, end = 48.dp, top = 24.dp, bottom = 22.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Opt.values().forEach { opt ->
                         OptionTab(
                             label = when (opt) {
@@ -383,6 +386,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 Opt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
                                 Opt.Reload -> R.drawable.tv_ic_restart
                                 Opt.Info -> R.drawable.tv_ic_info
+                                Opt.Guide -> R.drawable.ic_guide
                             },
                             selected = option == opt,
                             modifier = Modifier.focusRequester(optReqs.getValue(opt)),
@@ -694,6 +698,22 @@ internal fun InfoBox(
                     Text(v.ifBlank { "—" }, style = Type.Label, color = Jx.Text)
                 }
             }
+        }
+    }
+}
+
+
+/** Elegir a mano qué guía usa este canal (cuando la automática no acierta o no hay). */
+@Composable
+private fun GuidePickPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, req: FocusRequester) {
+    val version by repo.epgVersion
+    val choices by produceState<List<TvRepo.GuideChoice>?>(null, ch.id, version) { value = repo.guideChoices(ch) }
+    PanelBox("Elegir guía") {
+        val list = choices
+        if (list == null) { Text("Buscando guías parecidas…", style = Type.Small, color = Jx.Muted); return@PanelBox }
+        Text("Si la guía no corresponde al canal, elige la correcta. Queda guardado.", style = Type.Small, color = Jx.Muted)
+        list.forEachIndexed { i, c ->
+            ChoiceRow(c.label, c.selected, if (i == 0) Modifier.focusRequester(req) else Modifier) { repo.chooseGuide(ch, c.key) }
         }
     }
 }

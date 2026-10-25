@@ -378,6 +378,7 @@ internal fun liveOptions(favorite: Boolean): List<Triple<String, String, Int>> =
     Triple("channels", "Canales", R.drawable.tv_ic_list),
     Triple("guide", "Guía", R.drawable.tv_ic_live),
     Triple("info", "Información", R.drawable.tv_ic_info),
+    Triple("pickguide", "Elegir guía", R.drawable.ic_guide),
     Triple("audio", "Audio", R.drawable.ic_audio),
     Triple("subs", "Subtítulos", R.drawable.ic_subs),
     Triple("picture", "Imagen", R.drawable.ic_resize),
@@ -406,6 +407,14 @@ fun LiveSheets(live: LivePlayback, repo: TvRepo, sheet: String?, onDismiss: () -
                     next?.let { "Después: ${clock(it.start)} ${it.title}" }).joinToString(" · "),
                 body = now?.description.orEmpty(),
                 tech = techInfoFor(ctx, live, repo, ch), onDismiss = onDismiss)
+        }
+        "pickguide" -> if (ch != null) {
+            val version by repo.epgVersion
+            val choices by produceState<List<TvRepo.GuideChoice>?>(null, ch.id, version) { value = repo.guideChoices(ch) }
+            val list = choices
+            if (list == null) PlayerSheet(onDismiss) {
+                Text("Buscando guías parecidas…", style = PType.Body, color = Jx.Muted, modifier = Modifier.padding(22.dp))
+            } else ChoiceSheet("Elegir guía · ${ch.name}", list.map { c -> Triple(c.label, c.selected) { repo.chooseGuide(ch, c.key) } }, onDismiss)
         }
         "guide" -> if (ch != null) PlayerSheet(onDismiss) {
             Text("Guía · ${ch.name}", style = PType.H2, color = Jx.Text, modifier = Modifier.padding(horizontal = 22.dp, vertical = 6.dp))
