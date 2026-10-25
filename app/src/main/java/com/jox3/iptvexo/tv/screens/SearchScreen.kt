@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -131,9 +132,36 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
         lib.addSearch(query)
     }
 
+    // El teclado se esconde a la izquierda al pasar a los resultados (que se agrandan);
+    // con ◀ o Atrás vuelve a salir
+    var keyboardOpen by remember { mutableStateOf(true) }
+    var reopenFocus by remember { mutableStateOf(false) }
+    val kbWidth by androidx.compose.animation.core.animateDpAsState(if (keyboardOpen) 300.dp else 44.dp,
+        androidx.compose.animation.core.tween(220), label = "teclado")
+    LaunchedEffect(keyboardOpen, reopenFocus) {
+        if (keyboardOpen && reopenFocus) { delay(60); runCatching { firstKey.requestFocus() }; reopenFocus = false }
+    }
+    androidx.activity.compose.BackHandler(enabled = !keyboardOpen) { keyboardOpen = true; reopenFocus = true }
+    val big = !keyboardOpen
+
     Row(Modifier.fillMaxSize()) {
-        // ── Teclado ──
-        Column(Modifier.width(300.dp).fillMaxHeight().background(Jx.Rail).padding(horizontal = 20.dp, vertical = 27.dp),
+        // ── Teclado (escondido: una franja con la lupa; al llegar a ella vuelve a salir) ──
+        if (!keyboardOpen) {
+            FocusSurface(
+                onClick = { keyboardOpen = true; reopenFocus = true },
+                modifier = Modifier.width(kbWidth).fillMaxHeight()
+                    .onFocusChanged { if (it.isFocused) { keyboardOpen = true; reopenFocus = true } },
+                shape = RoundedCornerShape(0.dp), focusedScale = 1f, container = Jx.Rail, focusedContainer = Jx.SurfaceHi, ring = false,
+            ) {
+                Column(Modifier.fillMaxSize().padding(vertical = 27.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JxIcon(R.drawable.tv_ic_search, 18.dp, Jx.Accent)
+                    Text("◀", style = Type.Small, color = Jx.Muted)
+                }
+            }
+        } else
+        Column(Modifier.width(kbWidth).fillMaxHeight().background(Jx.Rail).padding(horizontal = 20.dp, vertical = 27.dp)
+            .onFocusChanged { if (it.hasFocus) keyboardOpen = true },
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("BUSCAR", style = Type.Eyebrow, color = Jx.Muted)
             Box(Modifier.fillMaxWidth().height(44.dp).background(Jx.Surface, RoundedCornerShape(10.dp)).padding(horizontal = 14.dp),
@@ -161,7 +189,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
         }
 
         // ── Resultados ──
-        Column(Modifier.weight(1f).fillMaxHeight()) {
+        Column(Modifier.weight(1f).fillMaxHeight().onFocusChanged { if (it.hasFocus) keyboardOpen = false }) {
             val r = results
             // Filtro por servidor + en qué servidores se está buscando
             if (multi) ServerFilter(accounts, account, only) { only = it }
@@ -193,7 +221,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                                     value = if (t.isEmpty()) "" else if (multi && from != null && from.key != account.key)
                                         "${ServerHub.letter(accounts, from)} · $t" else t
                                 }
-                                ChannelTile(h.name, h.image, badges = letters(h), now = now, onClick = {
+                                ChannelTile(h.name, h.image, badges = letters(h), now = now, width = if (big) 156.dp else 112.dp, onClick = {
                                     open(h) { openCopy(h.copies.first(), here) }
                                 })
                             }
@@ -202,7 +230,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                     if (r.movies.isNotEmpty()) item(key = "mv") {
                         ShelfRow("Películas · ${r.movies.size}") {
                             items(r.movies, key = { "m" + it.key }) { h ->
-                                PosterCard(h.name, h.image, onClick = { open(h) { openCopy(h.copies.first(), here) } }, width = 96.dp,
+                                PosterCard(h.name, h.image, onClick = { open(h) { openCopy(h.copies.first(), here) } }, width = if (big) 136.dp else 96.dp,
                                     subtitle = h.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
                                     favorite = h.copies.any { it.account.key == account.key && lib.isFavorite("movie", it.id) },
                                     badges = letters(h))
@@ -212,7 +240,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                     if (r.series.isNotEmpty()) item(key = "sr") {
                         ShelfRow("Series · ${r.series.size}") {
                             items(r.series, key = { "s" + it.key }) { h ->
-                                PosterCard(h.name, h.image, onClick = { open(h) { openCopy(h.copies.first(), here) } }, width = 96.dp,
+                                PosterCard(h.name, h.image, onClick = { open(h) { openCopy(h.copies.first(), here) } }, width = if (big) 136.dp else 96.dp,
                                     subtitle = h.rating.takeIf { it.isNotBlank() }?.let { "★ $it" } ?: "",
                                     favorite = h.copies.any { it.account.key == account.key && lib.isFavorite("series", it.id) },
                                     badges = letters(h))

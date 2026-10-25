@@ -244,9 +244,9 @@ fun LandscapeCard(
 /** Canal en filas del inicio: logo cuadrado + nombre. */
 @Composable
 fun ChannelTile(name: String, logo: String, onClick: () -> Unit, modifier: Modifier = Modifier, onLongClick: (() -> Unit)? = null,
-                badges: List<String> = emptyList(), now: String = "") {
+                badges: List<String> = emptyList(), now: String = "", width: Dp = 112.dp) {
     var focused by remember { mutableStateOf(false) }
-    Column(modifier.width(112.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(modifier.width(width), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         FocusSurface(
             onClick = onClick,
             onLongClick = onLongClick,
