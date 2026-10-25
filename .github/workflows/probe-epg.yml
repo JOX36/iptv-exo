@@ -1,0 +1,35 @@
+name: Probar fuentes EPG (temporal)
+on:
+  push:
+    branches: [guia-completa]
+    paths: [".github/workflows/probe-epg.yml"]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Listar globetvapp
+        run: |
+          for c in Colombia Mexico Argentina Chile Peru Ecuador Spain Usa Venezuela Sports; do
+            echo "== $c"; curl -s "https://api.github.com/repos/globetvapp/epg/contents/$c" | grep -o '"name": "[^"]*"\|"size": [0-9]*' | paste - - | head -8
+          done
+          curl -s "https://api.github.com/repos/globetvapp/epg/contents" | grep -o '"name": "[^"]*"' | tr '\n' ' '
+      - name: Probar URLs
+        run: |
+          for u in \
+            https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia1.xml \
+            https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia1.xml.gz \
+            https://www.open-epg.com/files/colombia1.xml.gz \
+            https://www.open-epg.com/files/colombia1.xml \
+            https://www.open-epg.com/files/mexico1.xml.gz \
+            https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz \
+            https://epgshare01.online/epgshare01/epg_ripper_ALL_SOURCES1.xml.gz \
+            https://iptv-org.github.io/epg/guides/co.xml \
+            https://i.mjh.nz/PlutoTV/all.xml.gz ; do
+            printf "%s -> " "$u"; curl -s -o /tmp/f -w "%{http_code} %{size_download} %{content_type}\n" -L --max-time 60 "$u"
+            (file /tmp/f; (zcat /tmp/f 2>/dev/null || cat /tmp/f) | grep -o '<channel id="[^"]*"' | head -5) | tr '\n' ' '; echo
+          done
+      - name: Canales de Colombia en cada fuente
+        run: |
+          curl -sL https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz | zcat | grep -o '<channel id="[^"]*"' | wc -l
+          curl -sL https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz | zcat | grep -io '<channel id="[^"]*win[^"]*"' | head
+          curl -sL https://www.open-epg.com/files/colombia1.xml.gz | (zcat 2>/dev/null) | grep -o '<channel id="[^"]*"' | wc -l
