@@ -2,4 +2,6 @@
 <!-- Carpeta de la caché donde se guarda el APK de la actualización -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <!-- Póster de la invitación a "Ver juntos" -->
+    <cache-path name="share" path="share/" />
 </paths>

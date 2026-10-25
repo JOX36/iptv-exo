@@ -44,6 +44,15 @@ object WatchTogether {
     var message by mutableStateOf(""); private set
     val reactions = mutableStateListOf<Reaction>()
     var media by mutableStateOf<Media?>(null); private set
+    /** Código que llegó por un enlace de invitación (jox3://together/123456): el marco se une solo. */
+    var pendingJoin by mutableStateOf<String?>(null)
+    /** Datos de TMDB de lo que se está viendo (para la invitación: póster, sinopsis, reparto). */
+    var info by mutableStateOf<com.jox3.iptvexo.tv.data.Tmdb.Info?>(null); private set
+    var appContext: android.content.Context? = null
+
+    /** Enlace de la invitación (página con el póster y botón para abrir la app). */
+    fun inviteLink() = "${CloudSync.SERVER}/v/$code"
+
     /** Los controles del reproductor están a la vista: el aviso de la sala se muestra con ellos. */
     var controlsVisible by mutableStateOf(false)
 
@@ -97,7 +106,7 @@ object WatchTogether {
     fun leave() {
         gen++
         ws?.close(1000, "salió"); ws = null
-        phase = Phase.Off; code = ""; host = false; peers = emptyList(); message = ""; media = null
+        phase = Phase.Off; code = ""; host = false; peers = emptyList(); message = ""; media = null; info = null
         pending = null; retries = 0
         main.removeCallbacks(heartbeat)
     }
@@ -228,8 +237,56 @@ object WatchTogether {
     private fun sendMedia() {
         val m = currentMedia() ?: return
         media = m
-        send(JSONObject().put("type", "media").put("kind", m.kind).put("title", m.title)
-            .put("season", m.season).put("episode", m.episode).put("image", m.image))
+        val myGen = gen
+        // Primero se buscan los datos en TMDB (máx. 3,5 s) para que la invitación tenga póster y sinopsis
+        scope.launch {
+            val i = kotlinx.coroutines.withTimeoutOrNull(3500) { tmdbInfo(m) }
+            if (myGen != gen) return@launch
+            info = i
+            send(JSONObject().put("type", "media").put("kind", m.kind).put("title", m.title)
+                .put("season", m.season).put("episode", m.episode).put("image", m.image)
+                .put("poster", i?.poster.orEmpty()).put("overview", i?.overview.orEmpty())
+                .put("meta", i?.let(::metaLine).orEmpty()).put("cast", i?.cast?.take(4)?.joinToString(", ") { it.name }.orEmpty()))
+        }
+    }
+
+    private suspend fun tmdbInfo(m: Media): com.jox3.iptvexo.tv.data.Tmdb.Info? {
+        val ctx = appContext ?: return null
+        return runCatching {
+            if (m.kind == "movie") com.jox3.iptvexo.tv.data.Tmdb.movie(ctx, m.title)
+            else com.jox3.iptvexo.tv.data.Tmdb.series(ctx, m.title)
+        }.getOrNull()
+    }
+
+    /** "2013 · ⭐ 6.9 · Acción, Terror · 1 h 56 min" */
+    fun metaLine(i: com.jox3.iptvexo.tv.data.Tmdb.Info): String = listOfNotNull(
+        i.year.ifBlank { null },
+        i.rating.takeIf { it > 0f }?.let { "⭐ " + String.format(java.util.Locale.US, "%.1f", it) },
+        i.genres.ifBlank { null },
+        i.runtimeMin.takeIf { it > 0 }?.let { if (it >= 60) "${it / 60} h ${it % 60} min" else "$it min" },
+    ).joinToString(" · ")
+
+    /** Texto de la invitación para WhatsApp. */
+    fun inviteText(): String {
+        val m = media
+        val i = info
+        val title = when {
+            m == null -> "esto"
+            m.kind == "episode" && m.season > 0 -> "${m.title} (T${m.season}E${m.episode})"
+            else -> m.title
+        }
+        return buildString {
+            append("🍿 ¡Veamos juntos *").append(title).append("*!\n")
+            if (i != null) {
+                metaLine(i).takeIf { it.isNotBlank() }?.let { append(it).append("\n") }
+                if (i.overview.isNotBlank()) append("\n").append(i.overview.take(350)).append(if (i.overview.length > 350) "…" else "").append("\n")
+                val cast = i.cast.take(4).joinToString(", ") { it.name }
+                if (cast.isNotBlank()) append("\n🎭 ").append(cast).append("\n")
+                if (i.director.isNotBlank()) append("🎬 ").append(i.director).append("\n")
+            }
+            append("\n👉 Toca para unirte: ").append(inviteLink())
+            append("\no abre JOX3 TV → 👥 Ver juntos → código *").append(code.take(3)).append(" ").append(code.drop(3)).append("*")
+        }
     }
 
     private fun matches(m: Media): Boolean {

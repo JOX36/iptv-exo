@@ -244,6 +244,7 @@ private fun MainShell(
     LaunchedEffect(vod.open, vod.index) { com.jox3.iptvexo.tv.player.WatchTogether.bind(vod) }
     // Al abrir el video de la sala se cierra el panel de unirse
     LaunchedEffect(vod.open) { if (vod.open) togetherPanel = false }
+    com.jox3.iptvexo.tv.player.WatchTogether.appContext = context.applicationContext
     // ── "Porque viste…" al terminar una película o serie ──
     var because by remember { mutableStateOf<SavedItem?>(null) }
     vod.onFinished = { because = it }
