@@ -134,11 +134,13 @@ fun VideoLayer(live: LivePlayback, modifier: Modifier = Modifier) {
 /** Opciones de la barra inferior. Las que tienen panel lo muestran apenas reciben el foco. */
 private enum class Opt(val label: String, val hasPanel: Boolean) {
     Channels("Canales", true),
+    // La guía va al principio, junto a Canales (antes quedaba fuera de la pantalla en el TV Box)
+    Programs("Guía", true),
+    Guide("Elegir guía", true),
+    Info("Información", true),
     Audio("Audio", true),
     Subtitles("Subtítulos", true),
     Picture("Imagen", true),
-    Info("Información", true),
-    Guide("Elegir guía", true),
     Favorite("Favorito", false),
     Reload("Recargar", false),
 }
@@ -348,6 +350,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     Opt.Picture -> PicturePanel(live.resizeMode, { live.resizeMode = it }, panelReq)
                     Opt.Info -> LiveInfoPanel(live, repo, ch)
                     Opt.Guide -> GuidePickPanel(repo, ch, panelReq)
+                    Opt.Programs -> ProgramsPanel(repo, ch, panelReq)
                     else -> Unit
                 }
             }
@@ -386,7 +389,8 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 Opt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
                                 Opt.Reload -> R.drawable.tv_ic_restart
                                 Opt.Info -> R.drawable.tv_ic_info
-                                Opt.Guide -> R.drawable.ic_guide
+                                Opt.Guide -> R.drawable.tv_ic_check
+                                Opt.Programs -> R.drawable.ic_guide
                             },
                             selected = option == opt,
                             modifier = Modifier.focusRequester(optReqs.getValue(opt)),
@@ -646,7 +650,7 @@ private fun LiveInfoPanel(live: LivePlayback, repo: TvRepo, ch: Channel) {
     val tick by produceState(0) { while (true) { delay(2000); value++ } }
     @Suppress("UNUSED_VARIABLE") val t = tick
     InfoBox(
-        title = now?.title ?: ch.name,
+        title = now?.label ?: ch.name,
         meta = buildString {
             append(ch.name)
             if (live.group.isNotBlank()) append(" · ").append(live.group)
@@ -654,7 +658,7 @@ private fun LiveInfoPanel(live: LivePlayback, repo: TvRepo, ch: Channel) {
         eyebrow = now?.let { "AHORA · ${hhmm(it.start)} – ${hhmm(it.end)}" },
         progress = now?.let { ((System.currentTimeMillis() - it.start).toFloat() / (it.end - it.start).coerceAtLeast(1)).coerceIn(0f, 1f) },
         body = now?.description?.takeIf { it.isNotBlank() } ?: if (now == null) "Este canal no tiene guía." else "",
-        after = next?.let { "DESPUÉS · ${hhmm(it.start)}  ${it.title}" },
+        after = next?.let { "DESPUÉS · ${hhmm(it.start)}  ${it.label}" },
         tech = techInfo(ctx, live.player, repo.api.liveUrl(ch.id)),
     )
 }
@@ -714,6 +718,42 @@ private fun GuidePickPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, r
         Text("Si la guía no corresponde al canal, elige la correcta. Queda guardado.", style = Type.Small, color = Jx.Muted)
         list.forEachIndexed { i, c ->
             ChoiceRow(c.label, c.selected, if (i == 0) Modifier.focusRequester(req) else Modifier) { repo.chooseGuide(ch, c.key) }
+        }
+    }
+}
+
+
+/** Guía del canal: lo que dan ahora y lo que sigue (como en el celular). */
+@Composable
+private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, req: FocusRequester) {
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+    val nowMs = System.currentTimeMillis()
+    PanelBox("Guía · ${ch.name}") {
+        val list = epg?.filter { it.end > nowMs }
+        when {
+            list == null -> Text("Cargando guía…", style = Type.Small, color = Jx.Muted)
+            list.isEmpty() -> {
+                Text("Este canal no tiene guía. Prueba con «Elegir guía».", style = Type.Small, color = Jx.Muted)
+                // Algo enfocable para que el panel reciba el foco
+                ChoiceRow("Entendido", false, Modifier.focusRequester(req)) {}
+            }
+            else -> list.take(30).forEachIndexed { i, p ->
+                var focused by remember { mutableStateOf(false) }
+                val isNow = nowMs in p.start until p.end
+                FocusSurface(onClick = {}, modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(req) else Modifier)
+                    .onFocusChanged { focused = it.isFocused },
+                    focusedScale = 1.02f, focusedContainer = Color(0xCC152131)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text((if (isNow) "AHORA · " else "") + "${hhmm(p.start)} – ${hhmm(p.end)}",
+                            style = Type.Small, color = if (isNow) Jx.Accent else Jx.Muted)
+                        Text(p.label, style = Type.Label, color = Jx.Text, maxLines = if (focused) 2 else 1, overflow = TextOverflow.Ellipsis)
+                        if (focused && p.meta.isNotBlank()) Text(p.meta, style = Type.Small, color = Jx.Accent, maxLines = 1)
+                        if (focused && p.description.isNotBlank()) Text(p.description, style = Type.Small, color = Jx.TextSoft,
+                            maxLines = 4, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
         }
     }
 }
