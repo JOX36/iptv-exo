@@ -9,25 +9,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Archivos de open-epg
+        continue-on-error: true
         run: |
           exec > >(tee /tmp/out1.txt) 2>&1
-          for c in colombia mexico argentina chile peru ecuador venezuela uruguay paraguay bolivia costarica panama guatemala honduras elsalvador dominican puertorico spain usa canada brazil portugal uk france italy germany sports latam latino; do
+          for c in colombia mexico argentina chile peru spain usa venezuela ecuador; do
             line="$c:"
-            for n in 1 2 3 4 5; do
-              code=$(curl -s -o /tmp/f -w "%{http_code}" --max-time 40 "https://www.open-epg.com/files/$c$n.xml.gz")
-              if [ "$code" = "200" ] && [ $(stat -c%s /tmp/f) -gt 500 ]; then
-                ch=$(zcat /tmp/f 2>/dev/null | grep -c '<channel id=' ); line="$line $n($ch)"
-              fi
+            for n in 1 2 3 4; do
+              sleep 2
+              code=$(curl -s -A "Mozilla/5.0" -o /tmp/f -w "%{http_code} %{size_download}" --max-time 60 "https://www.open-epg.com/files/$c$n.xml.gz")
+              ch=$(zcat /tmp/f 2>/dev/null | grep -c '<channel id=' || true)
+              line="$line $n[$code ch=$ch]"
             done
             echo "$line"
           done
       - name: Win en open-epg
+        continue-on-error: true
         run: |
           exec > >(tee /tmp/out2.txt) 2>&1
           for n in 1 2; do curl -s "https://www.open-epg.com/files/colombia$n.xml.gz" | zcat | grep -io '<channel id="[^"]*"' | grep -i "win\|caracol\|rcn\|espn" | head -12; done
           echo; curl -s "https://www.open-epg.com/files/colombia1.xml.gz" | zcat | grep -o '<programme[^>]*>' | head -2
           curl -s "https://www.open-epg.com/files/colombia1.xml.gz" | zcat | grep -o '<icon[^>]*>\|<category[^>]*>[^<]*\|<new */>\|<live */>\|<premiere[^>]*>\|<episode-num[^>]*>[^<]*' | sort | uniq -c | sort -rn | head -12
       - name: Etiquetas en epgshare01
+        continue-on-error: true
         run: |
           exec > >(tee /tmp/out3.txt) 2>&1
           curl -sL https://epgshare01.online/epgshare01/epg_ripper_CO1.xml.gz | zcat | grep -o '<icon[^>]*>\|<category[^>]*>[^<]*\|<new */>\|<live */>\|<premiere[^>]*>\|<episode-num[^>]*>[^<]*' | cut -c1-60 | sort | uniq -c | sort -rn | head -12
