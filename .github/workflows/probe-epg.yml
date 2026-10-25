@@ -8,23 +8,24 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Redirección open-epg y frescura de globetvapp
+      - name: Archivos de open-epg
         continue-on-error: true
         run: |
           exec > >(tee /tmp/out1.txt) 2>&1
-          curl -s -o /dev/null -w "redir: %{http_code} -> %{redirect_url}\n" "https://www.open-epg.com/files/colombia1.xml.gz"
-          curl -sIL "https://www.open-epg.com/files/colombia1.xml.gz" | grep -i "^location\|^HTTP\|content-type" | head
-          echo "--- globetvapp colombia1: fechas"
-          curl -s https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia1.xml | grep -o 'start="[0-9]\{8\}' | sort | uniq -c | tail -4
-          curl -s "https://api.github.com/repos/globetvapp/epg/commits?per_page=3" | grep -o '"date": "[^"]*"' | head -3
-          for c in Colombia/colombia1 Colombia/colombia2 Mexico/mexico1 Mexico/mexico2 Argentina/argentina1 Argentina/argentina3 Argentina/argentina4 Chile/chile1 Chile/chile2 Peru/peru1 Peru/peru2 Ecuador/ecuador1 Venezuela/venezuela1 Spain/spain1 Usa/usa1 Sports/sports1 Sports/sports3; do
-            n=$(curl -s https://raw.githubusercontent.com/globetvapp/epg/main/$c.xml.gz | zcat 2>/dev/null | grep -c '<channel id=')
-            echo "$c: $n canales"
+          for c in colombia mexico argentina chile peru ecuador venezuela uruguay paraguay bolivia costarica panama guatemala honduras dominican puertorico spain usa canada brazil portugal sports; do
+            line="$c:"
+            for n in 1 2 3 4; do
+              sleep 1
+              code=$(curl -sL -o /tmp/f -w "%{http_code}" --max-time 60 "https://www.open-epg.com/files/$c$n.xml.gz")
+              ch=$(zcat /tmp/f 2>/dev/null | grep -c '<channel id=' || true)
+              [ "$ch" != "0" ] && line="$line $n=$ch"
+            done
+            echo "$line"
           done
-          echo "--- win/caracol en globetvapp colombia"
-          for n in 1 2; do curl -s https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia$n.xml.gz | zcat | grep -io '<channel id="[^"]*"' | grep -i "win\|caracol\|rcn" ; done
-          echo "--- etiquetas"
-          curl -s https://raw.githubusercontent.com/globetvapp/epg/main/Colombia/colombia1.xml.gz | zcat | grep -o '<icon[^>]*>\|<category[^>]*>[^<]*\|<new */>\|<live */>\|<premiere[^>]*>\|<episode-num[^>]*>' | cut -c1-50 | sort | uniq -c | sort -rn | head -10
+          echo "--- win/caracol en open-epg colombia"
+          for n in 1 2 3; do curl -sL "https://www.open-epg.com/files/colombia$n.xml.gz" | zcat 2>/dev/null | grep -io '<channel id="[^"]*"' | grep -i "win\|caracol\|rcn\|espn\|directv" ; done | sort -u
+          echo "--- fechas"; curl -sL "https://www.open-epg.com/files/colombia1.xml.gz" | zcat | grep -o 'start="[0-9]\{8\}' | sort | uniq -c
+          echo "--- etiquetas"; curl -sL "https://www.open-epg.com/files/colombia1.xml.gz" | zcat | grep -o '<icon[^>]*>\|<category[^>]*>[^<]*\|<new */>\|<live */>\|<premiere[^>]*>\|<episode-num[^>]*>' | cut -c1-50 | sort | uniq -c | sort -rn | head -10
       - name: Resultado
         if: always()
         run: |
