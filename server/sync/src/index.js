@@ -8,6 +8,7 @@
 // Ver juntos:
 // POST /v1/room              → crea una sala y devuelve su código de 6 números.
 // GET  /v1/room/<código>/ws  → WebSocket de la sala (órdenes de reproducir, pausar, adelantar…).
+// GET  /v/<código>            → página de la invitación (póster, sinopsis, botón para abrir la app).
 
 const LISTS = new Set(["fav", "recent", "resume", "profile", "vault"]);
 const MAX_CHANGES = 500;
@@ -27,6 +28,8 @@ export default {
       if (url.pathname === "/" && req.method === "GET") return json({ ok: true, app: "jox3-sync", v: 1 });
       if (url.pathname === "/v1/sync" && req.method === "POST") return await sync(req, env);
       if (url.pathname === "/v1/room" && req.method === "POST") return await createRoom(env);
+      const inv = url.pathname.match(/^\/v\/(\d{6})$/);
+      if (inv && req.method === "GET") return await invitePage(env, inv[1]);
       const m = url.pathname.match(/^\/v1\/room\/(\d{6})\/ws$/);
       if (m) {
         if (req.headers.get("Upgrade") !== "websocket") return json({ error: "se necesita websocket" }, 426);
@@ -120,6 +123,11 @@ export class Room {
       await this.state.storage.setAlarm(Date.now() + ROOM_TTL);
       return new Response("ok");
     }
+    if (url.pathname === "/info") {
+      if (!(await this.state.storage.get("created"))) return new Response("no existe", { status: 404 });
+      const media = await this.state.storage.get("media");
+      return new Response(JSON.stringify({ media: media || null }), { headers: { "content-type": "application/json" } });
+    }
     if (url.pathname === "/ws") {
       const pair = new WebSocketPair();
       const [client, server] = [pair[0], pair[1]];
@@ -173,7 +181,11 @@ export class Room {
       }
       case "media": {
         const media = { kind: String(m.kind || ""), title: String(m.title || "").slice(0, 200), season: m.season | 0,
-          episode: m.episode | 0, image: String(m.image || "").slice(0, 500) };
+          episode: m.episode | 0, image: String(m.image || "").slice(0, 500),
+          // Para la invitación: solo carátulas de TMDB (nunca la dirección del servidor IPTV)
+          poster: /^https:\/\/image\.tmdb\.org\//.test(String(m.poster || "")) ? String(m.poster) : "",
+          overview: String(m.overview || "").slice(0, 700), meta: String(m.meta || "").slice(0, 160),
+          cast: String(m.cast || "").slice(0, 200) };
         await this.state.storage.put("media", media);
         this.broadcast({ type: "media", media, from: (ws.deserializeAttachment() || {}).name || "" }, ws);
         break;
@@ -205,4 +217,49 @@ export class Room {
     for (const ws of this.state.getWebSockets()) { try { ws.close(4000, "La sala terminó"); } catch (e) {} }
     await this.state.storage.deleteAll();
   }
+}
+
+// ───────────────────────── Invitación ─────────────────────────
+
+const esc = t => String(t || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+async function invitePage(env, code) {
+  let media = null;
+  try {
+    const r = await env.ROOMS.get(env.ROOMS.idFromName(code)).fetch("https://room/info");
+    if (r.ok) media = (await r.json()).media;
+  } catch (e) {}
+  const pretty = code.slice(0, 3) + " " + code.slice(3);
+  const title = media ? (media.kind === "episode" && media.season ? `${media.title} · T${media.season}E${media.episode}` : media.title) : "Ver juntos";
+  const open = `intent://together/${code}#Intent;scheme=jox3;package=com.jox3.iptvexo;end`;
+  const desc = media?.overview || "Te invitaron a ver esto al mismo tiempo en JOX3 TV.";
+  const html = `<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc("Ver juntos: " + title)}</title>
+<meta property="og:title" content="${esc("🍿 Veamos juntos: " + title)}">
+<meta property="og:description" content="${esc(desc.slice(0, 200))}">
+${media?.poster ? `<meta property="og:image" content="${esc(media.poster)}">` : ""}
+<meta property="og:type" content="website">
+<style>
+:root{color-scheme:dark}body{margin:0;background:#070A0F;color:#EAF4FA;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:520px;margin:0 auto;padding:24px 18px 40px}
+.poster{width:100%;max-width:300px;display:block;margin:8px auto 18px;border-radius:14px;box-shadow:0 12px 40px #0009}
+h1{font-size:26px;margin:0 0 6px}.meta{color:#9DB3C2;font-size:14px;margin:0 0 14px}
+p{line-height:1.5;color:#C9D8E2}.cast{color:#9DB3C2;font-size:14px}
+.code{margin:22px 0 8px;padding:16px;border:2px solid #00D4FF;border-radius:14px;text-align:center}
+.code b{display:block;font-size:34px;letter-spacing:4px;color:#00D4FF}
+a.btn{display:block;text-align:center;background:#00D4FF;color:#04121A;text-decoration:none;font-weight:700;padding:16px;border-radius:14px;margin-top:14px;font-size:17px}
+small{display:block;color:#7F95A5;text-align:center;margin-top:12px}
+</style></head><body><main>
+<div style="color:#00D4FF;font-weight:700;letter-spacing:2px;font-size:12px">👥 VER JUNTOS · JOX3 TV</div>
+${media?.poster ? `<img class="poster" src="${esc(media.poster)}" alt="">` : ""}
+<h1>${esc(title)}</h1>
+${media?.meta ? `<div class="meta">${esc(media.meta)}</div>` : ""}
+${media?.overview ? `<p>${esc(media.overview)}</p>` : (media ? "" : "<p>Esta sala ya terminó o el código no existe.</p>")}
+${media?.cast ? `<div class="cast">🎭 ${esc(media.cast)}</div>` : ""}
+<div class="code">Código de la sala<b>${esc(pretty)}</b></div>
+<a class="btn" href="${open}">Abrir en JOX3 TV y unirme</a>
+<small>Si no abre: entra a JOX3 TV → 👥 Ver juntos → escribe el código.</small>
+</main></body></html>`;
+  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } });
 }

@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -53,7 +54,14 @@ internal fun TogetherPanel(vod: VodPlayback, req: FocusRequester) {
             WatchTogether.Phase.On -> {
                 Text("CÓDIGO DE LA SALA", style = Type.Eyebrow, color = Jx.Muted)
                 Text(prettyRoomCode(wt.code), style = Type.Hero, color = Jx.Accent)
-                Text("En el otro equipo: «Ver juntos» y escribe este código.", style = Type.Small, color = Jx.Muted)
+                Text("En el otro equipo: «Ver juntos» y escribe este código, o escanea con el celular:", style = Type.Small, color = Jx.Muted)
+                val link = wt.inviteLink()
+                val qr = androidx.compose.runtime.remember(link) {
+                    runCatching { com.jox3.iptvexo.tv.data.RemoteAddServer.qrBitmap(link, 300) }.getOrNull()
+                }
+                if (qr != null) androidx.compose.foundation.Image(
+                    qr.asImageBitmap(), "Código QR para unirse",
+                    Modifier.size(130.dp).background(Color.White, RoundedCornerShape(8.dp)).padding(6.dp))
                 Spacer(Modifier.height(4.dp))
                 Text(peopleLine(), style = Type.Small, color = Jx.TextSoft)
                 Spacer(Modifier.height(6.dp))

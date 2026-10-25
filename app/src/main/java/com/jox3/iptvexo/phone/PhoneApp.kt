@@ -227,6 +227,15 @@ private fun PhoneShell(
     com.jox3.iptvexo.tv.player.WatchTogether.opener = { m -> com.jox3.iptvexo.tv.player.WatchTogether.openHere(m, repo, launcher) }
     LaunchedEffect(vod.open, vod.index) { com.jox3.iptvexo.tv.player.WatchTogether.bind(vod) }
     LaunchedEffect(vod.open) { if (vod.open) joinTogether = false }
+    com.jox3.iptvexo.tv.player.WatchTogether.appContext = context.applicationContext
+    // Llegó un enlace de invitación: unirse a la sala y mostrar cómo va
+    val pendingJoin = com.jox3.iptvexo.tv.player.WatchTogether.pendingJoin
+    LaunchedEffect(pendingJoin) {
+        val c = pendingJoin ?: return@LaunchedEffect
+        com.jox3.iptvexo.tv.player.WatchTogether.pendingJoin = null
+        com.jox3.iptvexo.tv.player.WatchTogether.join(c)
+        joinTogether = true
+    }
     fun openSeries(id: String, name: String, poster: String) { pages.add(Page.SeriesDetail(id, name, poster)) }
     fun playChannel(list: List<com.jox3.iptvexo.tv.data.Channel>, i: Int) {
         val c = list.getOrNull(i) ?: return

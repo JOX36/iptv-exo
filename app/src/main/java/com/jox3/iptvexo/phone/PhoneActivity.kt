@@ -140,6 +140,22 @@ class PhoneActivity : ComponentActivity() {
         private const val PIP_PREV = "com.jox3.iptvexo.PIP_PREV"
     }
 
+    /** Enlace de invitación a "Ver juntos" (jox3://together/123456): unirse a esa sala. */
+    private fun takeTogetherLink(i: android.content.Intent?) {
+        val d = i?.data ?: return
+        if (d.scheme == "jox3" && d.host == "together") {
+            d.lastPathSegment?.filter { it.isDigit() }?.takeIf { it.length == 6 }?.let {
+                com.jox3.iptvexo.tv.player.WatchTogether.pendingJoin = it
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        takeTogetherLink(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -157,6 +173,7 @@ class PhoneActivity : ComponentActivity() {
         updater = Updater(this)
         updater.checkOnStartup()
 
+        takeTogetherLink(intent)
         setContent { PhoneTheme { PhoneApp(this) } }
         showLastCrash()
     }

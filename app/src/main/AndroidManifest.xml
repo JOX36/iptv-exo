@@ -65,12 +65,21 @@
         <activity
             android:name=".phone.PhoneActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|smallestScreenSize|uiMode"
-            android:exported="false"
+            android:exported="true"
+            android:launchMode="singleTask"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
             android:screenOrientation="unspecified"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.Tv" />
+            android:theme="@style/Theme.Tv">
+            <!-- Invitación a "Ver juntos" desde WhatsApp (jox3://together/123456) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jox3" android:host="together" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".tv.TvActivity"

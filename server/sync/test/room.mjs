@@ -38,6 +38,8 @@ if (r.emoji !== "😂" || r.from !== "Ana") throw new Error("react mal: " + JSON
 const bad = new WebSocket(wsUrl("000000"));
 const closeCode = await new Promise(res => { bad.onclose = e => res(e.code); setTimeout(() => res(-1), 5000); });
 if (closeCode !== 4004) throw new Error("sala inexistente cerró con " + closeCode);
+const page = await (await fetch(U + "/v/" + code)).text();
+if (!page.includes("Guerra Mundial Z") || !page.includes("og:title")) throw new Error("página de invitación sin película");
 a.ws.close(); b.ws.close();
 console.log("Ver juntos OK: snapshot, personas, órdenes, reacciones y sala inexistente");
 process.exit(0);
