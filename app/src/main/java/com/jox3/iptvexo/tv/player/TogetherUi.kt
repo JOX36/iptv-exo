@@ -1,6 +1,7 @@
 package com.jox3.iptvexo.tv.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,24 +78,41 @@ fun peopleLine(): String {
 }
 
 /**
- * Aviso flotante mientras hay una sala: código, cuántos están y las reacciones.
- * No recibe foco (solo informa). Sirve para TV y celular.
+ * Aviso de la sala (arriba al centro): código, cuántos están y quién pausó. Aparece unos
+ * segundos cuando pasa algo (alguien entra, pausa…) y junto con los controles del reproductor;
+ * luego se esconde. Las reacciones salen siempre y se van solas. Sirve para TV y celular.
+ * [onLeave]: en el celular, botón para salir de la sala.
  */
 @Composable
-fun TogetherBadge(modifier: Modifier = Modifier, big: Boolean = true) {
+fun TogetherBadge(modifier: Modifier = Modifier, big: Boolean = true, onLeave: (() -> Unit)? = null) {
     val wt = WatchTogether
     if (wt.phase == WatchTogether.Phase.Off) return
+    var recent by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+    androidx.compose.runtime.LaunchedEffect(wt.peers, wt.message, wt.phase) {
+        recent = true; kotlinx.coroutines.delay(5000); recent = false
+    }
+    val show = recent || wt.controlsVisible || wt.phase != WatchTogether.Phase.On
     val fs = if (big) 13.sp else 12.sp
-    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
-            val people = wt.peers.size.coerceAtLeast(1)
-            BasicText(
-                "👥 Ver juntos · ${prettyRoomCode(wt.code)}" + if (wt.phase == WatchTogether.Phase.On) " · $people ${if (people == 1) "persona" else "personas"}" else "",
-                style = TextStyle(color = Jx.Text, fontSize = fs, fontWeight = FontWeight.SemiBold),
-            )
-        }
-        if (wt.message.isNotEmpty()) Box(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-            BasicText(wt.message, style = TextStyle(color = if (wt.phase == WatchTogether.Phase.Error) Jx.Live else Jx.TextSoft, fontSize = fs))
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.animation.AnimatedVisibility(show,
+            enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(16.dp)).padding(start = 12.dp, end = if (onLeave != null) 6.dp else 12.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    val people = wt.peers.size.coerceAtLeast(1)
+                    BasicText(
+                        "👥 Ver juntos · ${prettyRoomCode(wt.code)}" + if (wt.phase == WatchTogether.Phase.On) " · $people ${if (people == 1) "persona" else "personas"}" else "",
+                        style = TextStyle(color = Jx.Text, fontSize = fs, fontWeight = FontWeight.SemiBold),
+                    )
+                    if (onLeave != null) Box(Modifier.background(Color(0x33FF5A4E), RoundedCornerShape(12.dp))
+                        .then(Modifier.clickableNoTv(onLeave)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                        BasicText("Salir", style = TextStyle(color = Jx.Live, fontSize = fs, fontWeight = FontWeight.SemiBold))
+                    }
+                }
+                if (wt.message.isNotEmpty()) Box(Modifier.background(Color(0xCC070A0F), RoundedCornerShape(12.dp)).padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    BasicText(wt.message, style = TextStyle(color = if (wt.phase == WatchTogether.Phase.Error) Jx.Live else Jx.TextSoft, fontSize = fs))
+                }
+            }
         }
         wt.reactions.forEach { r ->
             Box(Modifier.background(Color(0x99070A0F), RoundedCornerShape(18.dp)).padding(horizontal = 12.dp, vertical = 4.dp)) {
@@ -103,3 +121,5 @@ fun TogetherBadge(modifier: Modifier = Modifier, big: Boolean = true) {
         }
     }
 }
+
+private fun Modifier.clickableNoTv(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)

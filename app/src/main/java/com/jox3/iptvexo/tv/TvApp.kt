@@ -465,7 +465,7 @@ private fun MainShell(
             Box(Modifier.fillMaxSize().zIndex(6.5f)) { com.jox3.iptvexo.tv.screens.TogetherJoin(onDismiss = { togetherPanel = false }) }
         }
         // Aviso de la sala (código, personas, reacciones): encima de todo, sin foco
-        com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 24.dp).zIndex(9f))
+        com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopCenter).padding(top = 18.dp).zIndex(9f))
 
         // Panel de servidores (desde la barra lateral)
         if (serverPanel) {

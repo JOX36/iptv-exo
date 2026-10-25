@@ -146,6 +146,8 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         sleepAt = 0L; sleepFired = false
         frameRate = 0f
         lib.refreshProgress()
+        // Cerrar la película = salir de Ver juntos (los demás siguen viendo)
+        if (WatchTogether.phase != WatchTogether.Phase.Off) WatchTogether.leave()
         onClosed()
         finished?.let { onFinished(it) }
     }

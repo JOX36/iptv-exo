@@ -44,6 +44,8 @@ object WatchTogether {
     var message by mutableStateOf(""); private set
     val reactions = mutableStateListOf<Reaction>()
     var media by mutableStateOf<Media?>(null); private set
+    /** Los controles del reproductor están a la vista: el aviso de la sala se muestra con ellos. */
+    var controlsVisible by mutableStateOf(false)
 
     /** La interfaz busca y abre el título en este equipo (lo pone el marco de TV o celular). */
     var opener: (suspend (Media) -> Boolean)? = null

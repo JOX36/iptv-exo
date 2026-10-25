@@ -280,12 +280,14 @@ private fun PhoneShell(
         if (fullscreen) {
             if (vod.open) VodFullscreenPhone(vod) { act.exitLandscape() }
             else LiveFullscreenPhone(live, repo) { act.exitLandscape() }
-            com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopEnd).padding(top = 14.dp, end = 18.dp), big = false)
+            com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopCenter).padding(top = 14.dp), big = false,
+                onLeave = { com.jox3.iptvexo.tv.player.WatchTogether.leave() })
             return@Box
         }
         // Ver juntos: aviso de la sala (encima de todo) y ventana para unirse
         com.jox3.iptvexo.tv.player.TogetherBadge(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 56.dp, end = 12.dp).zIndex(10f), big = false)
+            Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 56.dp).zIndex(10f), big = false,
+            onLeave = { com.jox3.iptvexo.tv.player.WatchTogether.leave() })
         if (joinTogether) PhoneTogetherJoin(onDismiss = { joinTogether = false })
         Column(Modifier.fillMaxSize().navigationBarsPadding()) {
             val page = pages.lastOrNull()
@@ -375,6 +377,8 @@ private fun Header(accounts: AccountStore, account: Account, onSwitch: (Account)
             }
         }
         Spacer(Modifier.weight(1f))
+        // Ver juntos: unirse con un código (siempre a la vista)
+        RoundIcon(R.drawable.ic_together, "Ver juntos", tint = Jx.TextSoft, onClick = onTogether)
         // Perfil activo: tocarlo lleva a "¿Quién está viendo?"
         val pc = com.jox3.iptvexo.tv.LocalProfile.current
         pc.profile?.let { p ->
