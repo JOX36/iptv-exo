@@ -117,27 +117,28 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         }
         // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
         val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 3600 }?.map { it.toItem() }.orEmpty()
-        // 2. Guía corta del servidor (14 programas: alcanza para la guía por horas)
-        var list = full.ifEmpty {
+        // 2. Si no, la guía corta del servidor (14 programas)
+        val server = full.ifEmpty {
             epgPermits.withPermit {
                 try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
             }
         }
-        // La guía de internet aún no está (falló o no ha terminado): se vuelve a pedir
-        if (list.isEmpty() && !ExternalEpg.isReady() && !ExternalEpg.loading) requestExternal()
-        if (list.isEmpty() && ExternalEpg.isReady()) {
-            val now = System.currentTimeMillis() / 1000
+        // 3. Guía de internet (siempre que esté): sirve para completar la del servidor o reemplazarla
+        if (!ExternalEpg.isReady() && !ExternalEpg.loading) requestExternal()
+        val internet = if (!ExternalEpg.isReady()) emptyList() else {
             val hint = synchronized(catCountry) { catCountry[ch.categoryId] }
             // El emparejamiento por nombre recorre muchas claves: fuera del hilo principal
-            list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                 try {
                     ExternalEpg.match(context, ch.name, ch.epgId.ifBlank { null }, hint?.ifBlank { null })
-                        ?.progs?.filter { it.stop > now - 3600 && it.start < now + 12 * 3600 }
+                        ?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 24 * 3600 }
                         ?.map { it.toItem() }
                         .orEmpty()
                 } catch (e: Exception) { emptyList() }
             }
         }
+        // 4. Juntas: base + datos que falten + huecos rellenados
+        val list = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { EpgMerge.merge(server, internet) }
         synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to list }
         return list
     }
