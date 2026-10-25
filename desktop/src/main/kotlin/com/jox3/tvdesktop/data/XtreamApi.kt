@@ -115,6 +115,9 @@ class XtreamApi(val account: Account) {
      * que .m3u8; se usa .ts salvo que el servidor diga que no lo permite.
      */
     @Volatile var liveExt: String = "ts"
+    /** Guía completa del servidor (XMLTV: todos los canales, varios días). */
+    fun xmltvUrl() = "$host/xmltv.php?username=${enc(account.user)}&password=${enc(account.pass)}"
+
     fun liveUrl(id: String): String {
         // Ajustes → En vivo → Formato de los canales (automático = lo que permite el servidor)
         val ext = when (com.jox3.tvdesktop.core.Settings.string("live.format", "auto")) { "ts" -> "ts"; "m3u8" -> "m3u8"; else -> liveExt }

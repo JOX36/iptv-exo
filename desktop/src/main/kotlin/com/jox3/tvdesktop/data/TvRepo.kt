@@ -87,6 +87,35 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
         if (!com.jox3.tvdesktop.core.Settings.bool("epg.internet", true)) return // apagada en Ajustes
         epgCodes = EpgCountries.filesFor(liveCats)
         requestExternal()
+        // Guía completa del servidor (si la tiene): solo los canales que existen en él
+        ServerEpg.ensure(api, ids = {
+            kotlinx.coroutines.runBlocking { runCatching { api.channels().map { it.epgId } }.getOrDefault(emptyList()).toSet() }
+        }, onReady = onExternalReady)
+    }
+
+    // ── Elegir la guía de un canal a mano (igual que Android) ──
+    class GuideChoice(val key: String, val label: String, val selected: Boolean)
+
+    /** "Automática", las guías más parecidas (con lo que dan ahora) y "Sin guía". */
+    suspend fun guideChoices(ch: Channel): List<GuideChoice> = withContext(Dispatchers.Default) {
+        val manual = ExternalEpg.manualFor(ch.name)
+        val now = System.currentTimeMillis() / 1000
+        buildList {
+            add(GuideChoice("", "Automática (la que elige el programa)", manual.isEmpty()))
+            ExternalEpg.candidates(ch.name).forEach { c ->
+                val cur = c.progs.firstOrNull { now in it.start until it.stop }
+                add(GuideChoice(c.key, ExternalEpg.displayName(c) + " · " + ExternalEpg.sourceName(c) +
+                    (cur?.let { " — Ahora: ${it.title}" } ?: ""), manual == c.key))
+            }
+            add(GuideChoice("none", "Este canal no tiene guía", manual == "none"))
+        }
+    }
+
+    /** Guarda la elección y vuelve a cargar la guía del canal. */
+    fun chooseGuide(ch: Channel, key: String) {
+        ExternalEpg.setManual(ch.name, key)
+        synchronized(epg) { epg.remove(ch.id) }
+        SwingUtilities.invokeLater { epgVersion.intValue++ }
     }
 
     /** Pide (o vuelve a pedir) la guía de internet; al estar lista, la interfaz la consulta otra vez. */
@@ -104,26 +133,40 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
 
     suspend fun epg(ch: Channel): List<EpgItem> {
         cachedEpg(ch)?.let { return it }
-        // 14 programas: alcanza para la guía por horas
-        var list = epgPermits.withPermit {
-            try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
+        val nowSec = System.currentTimeMillis() / 1000
+        // 0. Elegida a mano: esa manda (aunque el servidor traiga otra)
+        val manual = ExternalEpg.manualFor(ch.name)
+        if (manual == "none") { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to emptyList() }; return emptyList() }
+        if (manual.isNotEmpty() && ExternalEpg.isReady()) {
+            val picked = ExternalEpg.match(ch.name, null)?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 12 * 3600 }
+                ?.map { it.toItem() }.orEmpty()
+            if (picked.isNotEmpty()) { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to picked }; return picked }
         }
-        // La guía de internet aún no está (falló o no ha terminado): se vuelve a pedir
-        if (list.isEmpty() && !ExternalEpg.isReady() && !ExternalEpg.loading) requestExternal()
-        if (list.isEmpty() && ExternalEpg.isReady()) {
-            val now = System.currentTimeMillis() / 1000
+        // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
+        val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 3600 }?.map { it.toItem() }.orEmpty()
+        // 2. Si no, la guía corta del servidor (14 programas: alcanza para la guía por horas)
+        val server = full.ifEmpty {
+            epgPermits.withPermit {
+                try { api.shortEpg(ch.id, 14) } catch (e: Exception) { emptyList() }
+            }
+        }
+        // 3. Guía de internet (siempre que esté): sirve para completar la del servidor o reemplazarla
+        if (!ExternalEpg.isReady() && !ExternalEpg.loading) requestExternal()
+        val internet = if (!ExternalEpg.isReady()) emptyList() else {
             val hint = synchronized(catCountry) { catCountry[ch.categoryId] }
-            list = withContext(Dispatchers.Default) {
+            withContext(Dispatchers.Default) {
                 try {
                     ExternalEpg.match(ch.name, ch.epgId.ifBlank { null }, hint?.ifBlank { null })
-                        ?.progs?.filter { it.stop > now - 3600 && it.start < now + 24 * 3600 }
-                        ?.map { EpgItem(it.title, it.desc, it.start * 1000, it.stop * 1000) }
+                        ?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 24 * 3600 }
+                        ?.map { it.toItem() }
                         .orEmpty()
                 } catch (e: Exception) {
                     Log.w("Falló el emparejamiento de guía para ${ch.name}", e); emptyList()
                 }
             }
         }
+        // 4. Juntas: base + datos que falten + huecos rellenados
+        val list = withContext(Dispatchers.Default) { EpgMerge.merge(server, internet) }
         synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to list }
         return list
     }

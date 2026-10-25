@@ -107,7 +107,7 @@ object ServerHub {
             items = withContext(Dispatchers.Default) {
                 runCatching {
                     ExternalEpg.match(c.name, null, null)?.progs
-                        ?.map { EpgItem(it.title, it.desc, it.start * 1000, it.stop * 1000) }.orEmpty()
+                        ?.map { it.toItem() }.orEmpty()
                 }.getOrDefault(emptyList())
             }
         }

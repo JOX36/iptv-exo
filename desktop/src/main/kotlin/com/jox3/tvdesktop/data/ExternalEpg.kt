@@ -30,7 +30,33 @@ object ExternalEpg {
     private const val MAX_AGE_MS = 20L * 3600 * 1000      // volver a descargar cada ~20 h
     private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) JOX3TV-PC"
 
-    data class Prog(val start: Long, val stop: Long, val title: String, val desc: String)
+    data class Prog(
+        val start: Long, val stop: Long, val title: String, val desc: String,
+        val icon: String = "", val category: String = "", val live: Boolean = false, val isNew: Boolean = false,
+        val episode: String = "",
+    ) {
+        fun toItem() = EpgItem(title, desc, start * 1000, stop * 1000, icon, category, live, isNew, episode)
+    }
+
+    /**
+     * Segunda fuente: open-epg.com (más canales en Latinoamérica). Por cada archivo de
+     * epgshare01 se bajan también estos. Igual que Android.
+     */
+    private val OPEN_EPG = mapOf(
+        "CO1" to listOf("colombia1", "colombia2", "colombia3", "colombia4"),
+        "MX1" to listOf("mexico1", "mexico2", "mexico3", "mexico4"),
+        "AR1" to listOf("argentina1", "argentina2", "argentina3", "argentina4"),
+        "CL1" to listOf("chile1", "chile2"), "PE1" to listOf("peru1", "peru2"), "EC1" to listOf("ecuador1"),
+        "UY1" to listOf("uruguay1", "uruguay2"), "CR1" to listOf("costarica1", "costarica2"),
+        "PA1" to listOf("panama1", "panama2", "panama3"), "DO1" to listOf("dominican1", "dominican2", "dominican3"),
+        "ES1" to listOf("spain1", "spain2", "spain3", "spain4"), "PT1" to listOf("portugal1", "portugal2"),
+        "BR1" to listOf("brazil2", "brazil3"), "CA2" to listOf("canada1"),
+        "US_SPORTS1" to listOf("sports1", "sports4"),
+    )
+    private const val OE_URL = "https://www.open-epg.com/files/"
+    /** País de cada archivo (para preferir la guía del país del canal). */
+    private fun countryOf(code: String): String =
+        if (code.startsWith("OE_")) OPEN_EPG.entries.firstOrNull { (_, l) -> code.removePrefix("OE_") in l }?.key ?: code else code
     class Chan(val key: String, val id: String, val code: String, val names: List<String>) {
         val progs = ArrayList<Prog>()
     }
@@ -85,7 +111,10 @@ object ExternalEpg {
             try {
                 val dir = File(AppDirs.data, "epg").apply { mkdirs() }
                 val files = want.mapNotNull { code -> download(dir, code)?.let { code to it } }
-                if (files.isNotEmpty()) parseAll(files)
+                // Segunda fuente (open-epg): si falla alguna, no importa
+                val extra = want.flatMap { c -> OPEN_EPG[c].orEmpty() }.distinct()
+                    .mapNotNull { name -> download(dir, "OE_$name")?.let { "OE_$name" to it } }
+                if (files.isNotEmpty() || extra.isNotEmpty()) parseAll(files + extra)
                 if (files.size == want.size) {
                     loadedCodes = want.toSet()
                     loadedAt = System.currentTimeMillis()
@@ -126,7 +155,8 @@ object ExternalEpg {
         if (f.exists() && f.length() > 0 && System.currentTimeMillis() - f.lastModified() < MAX_AGE_MS) return f
         val tmp = File(dir, "$code.part")
         try {
-            val req = Request.Builder().url("$BASE$code.xml.gz").header("User-Agent", UA).build()
+            val url = if (code.startsWith("OE_")) OE_URL + code.removePrefix("OE_") + ".xml.gz" else "$BASE$code.xml.gz"
+            val req = Request.Builder().url(url).header("User-Agent", UA).build()
             Net.api.newCall(req).execute().use { r ->
                 if (r.code != 200) throw RuntimeException("HTTP ${r.code}")
                 val body = r.body ?: throw RuntimeException("sin contenido")
@@ -175,6 +205,7 @@ object ExternalEpg {
                         var chId: String? = null
                         var pCh: String? = null; var pStart = 0L; var pStop = 0L
                         var pTitle = ""; var pDesc = ""
+                        var pIcon = ""; var pCat = ""; var pLive = false; var pNew = false; var pEp = ""
                         var inProg = false
                         val pending = HashMap<String, ArrayList<Prog>>()
                         while (r.hasNext()) {
@@ -188,9 +219,18 @@ object ExternalEpg {
                                         pStart = xmltvTime(r.getAttributeValue(null, "start"))
                                         pStop = xmltvTime(r.getAttributeValue(null, "stop"))
                                         pTitle = ""; pDesc = ""
+                                        pIcon = ""; pCat = ""; pLive = false; pNew = false; pEp = ""
                                     }
                                     "title" -> if (inProg && pTitle.isEmpty()) pTitle = r.elementText.trim()
                                     "desc" -> if (inProg && pDesc.isEmpty()) pDesc = r.elementText.trim()
+                                    "icon" -> if (inProg && pIcon.isEmpty()) pIcon = r.getAttributeValue(null, "src").orEmpty()
+                                    "category" -> if (inProg && pCat.isEmpty()) pCat = r.elementText.trim().take(40)
+                                    "live" -> if (inProg) pLive = true
+                                    "new", "premiere" -> if (inProg) pNew = true
+                                    "episode-num" -> if (inProg && pEp.isEmpty()) {
+                                        val sys = r.getAttributeValue(null, "system").orEmpty()
+                                        pEp = episodeText(sys, r.elementText.trim())
+                                    }
                                 }
                                 XMLStreamConstants.END_ELEMENT -> when (r.localName) {
                                     "channel" -> {
@@ -202,7 +242,8 @@ object ExternalEpg {
                                         inProg = false
                                         val c = pCh
                                         if (c != null && pTitle.isNotEmpty() && pStop > from && pStart < to && pStop > pStart) {
-                                            pending.getOrPut(c) { ArrayList() }.add(Prog(pStart, pStop, pTitle, pDesc.take(400)))
+                                            pending.getOrPut(c) { ArrayList() }.add(Prog(pStart, pStop, pTitle, pDesc.take(400),
+                                                pIcon.takeIf { it.startsWith("http") }.orEmpty().take(300), pCat, pLive, pNew, pEp))
                                         }
                                     }
                                 }
@@ -242,6 +283,9 @@ object ExternalEpg {
     private val QUALITY = setOf("hd", "fhd", "uhd", "4k", "sd", "hevc", "h265", "h264", "1080p", "720p", "1080", "720", "hq", "lq", "fullhd", "backup", "alt", "vip", "col")
     private val PREFIX = setOf("co", "col", "mx", "ar", "cl", "pe", "ec", "us", "usa", "es", "lat", "latam", "br", "uy", "py", "bo", "ve", "cr", "pa", "do", "pr", "sv", "gt", "hn", "ni", "cu", "int")
     private val STOP = setOf("en", "de", "del", "la", "el", "y", "the")
+    private val COUNTRY_WORDS = setOf("colombia", "mexico", "argentina", "chile", "peru", "ecuador", "venezuela", "uruguay",
+        "paraguay", "bolivia", "panama", "espana", "spain", "latam", "latino", "latinoamerica", "latin", "america", "internacional",
+        "international", "usa", "brasil", "brazil", "andina", "sur", "norte")
     private val ALIAS = listOf(
         "directvsports" to "dsports",
         "winsportspremium" to "winsportsplus",
@@ -254,6 +298,18 @@ object ExternalEpg {
         "rcntelevision" to "rcn",
         "gamatv" to "gamavision",
         "goltvlatinoamerica" to "goltv",
+        "winsportsplus" to "winsportsplus",
+        "winsportspremiumhd" to "winsportsplus",
+        "winplusfutbol" to "winsportsplusfutbol",
+        "espnlatinoamerica" to "espn",
+        "espninternacional" to "espn",
+        "tntsportschile" to "tntsports",
+        "telemundointernacional" to "telemundo",
+        "univisiontlnovelas" to "tlnovelas",
+        "historychannel" to "history",
+        "discoverychannel" to "discovery",
+        "cartoonnetwork" to "cartoon",
+        "nickelodeon" to "nick",
     )
 
     private fun alias(k: String): String {
@@ -273,7 +329,10 @@ object ExternalEpg {
         s = s.replace(Regex("\\([^)]*\\)|\\[[^]]*]"), " ")
         s = s.replace("&amp;", "&").replace("+", " plus ")
         val t = s.split(Regex("[^a-z0-9]+")).filter { it.isNotEmpty() }.toMutableList()
-        while (t.size > 1 && t[0] in PREFIX) t.removeAt(0)
+        // Prefijos de país y números de orden al principio ("01 • WIN+ FÚTBOL", "CO 12 Caracol")
+        while (t.size > 1 && (t[0] in PREFIX || (t[0].all { it.isDigit() } && t[0].length <= 3 && t.size > 2))) t.removeAt(0)
+        // "01 WIN SPORTS" con dos palabras: también se quita el número
+        if (t.size == 2 && t[0].all { it.isDigit() } && t[0].startsWith("0")) t.removeAt(0)
         return t.filter { it !in QUALITY && it !in STOP }
     }
 
@@ -291,7 +350,22 @@ object ExternalEpg {
         // "Canal RCN" → "RCN", pero "Canal 1" se queda igual.
         if (short.size > 1 && short[0] == "canal" && !short[1].all { it.isDigit() }) short = short.drop(1)
         if (short.isNotEmpty() && short != t) add(short)
+        // "ESPN COLOMBIA" → "ESPN", "FOX SPORTS ARGENTINA" → "FOX SPORTS": el país va aparte
+        val noCountry = short.filter { it !in COUNTRY_WORDS }
+        if (noCountry.isNotEmpty() && noCountry.size < short.size) add(noCountry)
         return out.distinct()
+    }
+
+    // ═══ Guía elegida a mano (se guarda en los ajustes del equipo) ═══
+    private fun manualKey(name: String) = "epg.manual." + (keysOf(name).firstOrNull() ?: name.lowercase(Locale.ROOT))
+
+    /** Clave manual guardada para este canal ("" = automático, "none" = sin guía). */
+    fun manualFor(name: String): String = com.jox3.tvdesktop.core.Settings.string(manualKey(name))
+
+    /** key = "CODE|id" para fijarlo, "none" para "este canal no tiene guía", "" para volver a lo automático. */
+    fun setManual(name: String, key: String) {
+        com.jox3.tvdesktop.core.Settings.put(manualKey(name), key)
+        matchCache.clear()
     }
 
     private val matchCache = ConcurrentHashMap<String, String>()
@@ -300,6 +374,8 @@ object ExternalEpg {
     fun match(name: String, tvgId: String?, countryHint: String? = null): Chan? {
         val map = chans
         if (map.isEmpty()) return null
+        val manual = manualFor(name)
+        if (manual.isNotEmpty()) return if (manual == "none") null else map[manual]
         val ck = name + "\u0000" + (tvgId ?: "") + "\u0000" + (countryHint ?: "")
         matchCache[ck]?.let { return if (it.isEmpty()) null else map[it] }
         val found = findMatch(name, tvgId, countryHint)
@@ -315,7 +391,8 @@ object ExternalEpg {
         fun best(list: List<Chan>?, k: String = ""): Chan? {
             if (list.isNullOrEmpty()) return null
             return list.sortedWith(compareByDescending<Chan> { it.progs.isNotEmpty() }
-                .thenByDescending { country != null && it.code.startsWith(country) }
+                .thenByDescending { country != null && countryOf(it.code).startsWith(country) }
+                .thenByDescending { it.progs.size.coerceAtMost(20) }
                 .thenByDescending { nat.contains("$k|${it.key}") }
                 .thenBy { it.id.length }).first()
         }
@@ -340,7 +417,63 @@ object ExternalEpg {
                 .values.flatten().distinct()
             if (cands.size == 1) return cands[0]
         }
-        return null
+        // Último intento: palabras en común ("FOX SPORTS 2 ARGENTINA" ~ "Fox Sports 2 AR")
+        return fuzzy(name, country)
+    }
+
+    /** Parecido por palabras (Jaccard); solo si es claro (≥ 0,75) y el número del canal coincide. */
+    private fun fuzzy(name: String, country: String?): Chan? {
+        val mine = tokens(name).map(::alias).toSet()
+        if (mine.isEmpty()) return null
+        val digits = mine.filter { t -> t.all { it.isDigit() } }.toSet()
+        var best: Chan? = null; var bestScore = 0.0
+        for (c in chans.values) {
+            if (c.progs.isEmpty()) continue
+            for (n in c.names + idFormName(c.id)) {
+                val other = tokens(n).map(::alias).toSet()
+                if (other.isEmpty()) continue
+                if (other.filter { t -> t.all { it.isDigit() } }.toSet() != digits) continue
+                var sc = (mine intersect other).size.toDouble() / (mine union other).size
+                if (country != null && countryOf(c.code).startsWith(country)) sc += 0.05
+                if (sc > bestScore) { bestScore = sc; best = c }
+            }
+        }
+        return best.takeIf { bestScore >= 0.75 }
+    }
+
+    /** Para "Elegir guía": las guías más parecidas a este canal, la mejor primero. */
+    fun candidates(name: String, limit: Int = 14): List<Chan> {
+        val mine = tokens(name).map(::alias).toSet()
+        if (mine.isEmpty()) return emptyList()
+        return chans.values.asSequence().filter { it.progs.isNotEmpty() }.map { c ->
+            val sc = (c.names + idFormName(c.id)).maxOf { n ->
+                val o = tokens(n).map(::alias).toSet()
+                if (o.isEmpty()) 0.0 else (mine intersect o).size.toDouble() / (mine union o).size
+            }
+            c to sc
+        }.filter { it.second > 0.0 }.sortedByDescending { it.second }.map { it.first }
+            .distinctBy { (it.names.firstOrNull() ?: it.id).lowercase(Locale.ROOT) + it.progs.firstOrNull()?.title }
+            .take(limit).toList()
+    }
+
+    /** Nombre para mostrar de una guía. */
+    fun displayName(c: Chan): String = c.names.firstOrNull() ?: idFormName(c.id)
+
+    /** Fuente legible: "epgshare01" u "open-epg". */
+    fun sourceName(c: Chan): String = if (c.code.startsWith("OE_")) "open-epg" else "epgshare01"
+
+    /** "E5" / "S1.E4" → "T1 E5". */
+    internal fun episodeText(system: String, raw: String): String {
+        if (raw.isBlank()) return ""
+        if (system == "xmltv_ns") {
+            val parts = raw.split('.')
+            val se = parts.getOrNull(0)?.trim()?.substringBefore('/')?.toIntOrNull()
+            val ep = parts.getOrNull(1)?.trim()?.substringBefore('/')?.toIntOrNull()
+            return listOfNotNull(se?.let { "T${it + 1}" }, ep?.let { "E${it + 1}" }).joinToString(" ")
+        }
+        val m = Regex("(?i)s\\s*(\\d+)\\s*[ .:-]?\\s*e\\s*(\\d+)").find(raw)
+        if (m != null) return "T${m.groupValues[1].toInt()} E${m.groupValues[2].toInt()}"
+        return raw.replace(Regex("(?i)^e\\s*"), "E").take(12)
     }
 
     /** País al principio del nombre ("MX | Azteca 7" → "MX") para preferir esa guía. */

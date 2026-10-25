@@ -186,8 +186,14 @@ private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick:
     androidx.compose.foundation.TooltipArea(
         tooltip = {
             Column(Modifier.width(320.dp).background(Jx.SurfaceHi, RoundedCornerShape(8.dp)).padding(10.dp)) {
-                Text(p.title, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                if (p.icon.isNotBlank()) {
+                    RemoteImage(p.icon, p.title, Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(6.dp)),
+                        scale = androidx.compose.ui.layout.ContentScale.Crop)
+                    Spacer(Modifier.height(6.dp))
+                }
+                Text(p.label, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text("${hhmm(p.start)} – ${hhmm(p.end)}", color = Jx.Muted, fontFamily = Exo2, fontSize = 12.sp)
+                if (p.meta.isNotBlank()) Text(p.meta, color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp)
                 if (p.description.isNotBlank()) Text(p.description, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 12.sp, maxLines = 6)
             }
         },
@@ -202,7 +208,7 @@ private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick:
                 .clickable(onClick = onClick).pointerHoverIcon(PointerIcon.Hand)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         ) {
-            Text(p.title, color = if (airing) Jx.Text else Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
+            Text(p.label, color = if (airing) Jx.Text else Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
                 fontWeight = if (airing) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${hhmm(p.start)} – ${hhmm(p.end)}", color = Jx.Faint, fontFamily = Exo2, fontSize = 11.sp, maxLines = 1)
             if (airing) {
