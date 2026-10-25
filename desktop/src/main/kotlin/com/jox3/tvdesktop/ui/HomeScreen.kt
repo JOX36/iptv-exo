@@ -430,7 +430,7 @@ fun HomeScreen(
             }
         }
         // Ver juntos: aviso de la sala (código, personas, reacciones) encima de todo
-        TogetherBadge(Modifier.align(Alignment.TopEnd).padding(top = 70.dp, end = 20.dp))
+        TogetherBadge(Modifier.align(Alignment.TopCenter).padding(top = 64.dp))
         if (showJoin) TogetherJoin(onDismiss = { showJoin = false })
         if (showAccount && (live.mode == ViewMode.EMBEDDED || live.mode == ViewMode.PIP)) {
             Box(Modifier.fillMaxSize().background(Color(0x99000000)).clickable(

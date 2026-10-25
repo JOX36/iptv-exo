@@ -80,6 +80,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     fun poke() { overlayAt = System.currentTimeMillis() }
 
     fun play(ch: Channel, list: List<Channel>, listName: String) {
+        leaveTogether()
         saveVodProgress()
         if (mode == ViewMode.PIP) mode = ViewMode.EMBEDDED // el canal se ve en la vista previa
         vod = null
@@ -100,6 +101,12 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         panel = Panel.NONE
         player.play(session.url, session.title, live = false, startMs = startMs)
         poke()
+    }
+
+    /** Cerrar la película = salir de Ver juntos (los demás siguen viendo). Igual que Android. */
+    private fun leaveTogether() {
+        if (vod != null && com.jox3.tvdesktop.player.WatchTogether.phase != com.jox3.tvdesktop.player.WatchTogether.Phase.Off)
+            com.jox3.tvdesktop.player.WatchTogether.leave()
     }
 
     /** Guarda dónde va la película o episodio (cada pocos segundos y al salir). */
@@ -183,6 +190,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     }
 
     fun stop() {
+        leaveTogether()
         saveVodProgress()
         player.stop()
         current = null
