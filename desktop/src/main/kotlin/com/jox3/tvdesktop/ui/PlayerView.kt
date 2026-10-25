@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -357,6 +358,8 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
                     Spacer(Modifier.width(6.dp))
                 }
                 if (vod == null) RoundButton(Ico.LIST, "Canales (C)", selected = live.panel == Panel.CHANNELS) { live.toggle(Panel.CHANNELS) }
+                if (vod == null) RoundButton(Ico.GUIDE, "Guía: ahora y lo que sigue (G)", selected = live.panel == Panel.PROGRAMS) { live.toggle(Panel.PROGRAMS) }
+                if (vod == null) RoundButton(Ico.SEARCH, "Elegir guía", selected = live.panel == Panel.GUIDE_PICK) { live.toggle(Panel.GUIDE_PICK) }
                 RoundButton(Ico.AUDIO, "Audio (A)", selected = live.panel == Panel.AUDIO) { live.toggle(Panel.AUDIO) }
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }
@@ -456,8 +459,9 @@ fun EpgNowNext(repo: TvRepo, ch: Channel, now: Long, compact: Boolean = false) {
             Spacer(Modifier.width(10.dp))
             Text("${hhmm(cur.start)} – ${hhmm(cur.end)}", color = Jx.Muted, fontFamily = Exo2, fontSize = 12.sp)
         }
-        Text(cur.title, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold,
+        Text(cur.label, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold,
             fontSize = if (compact) 16.sp else 20.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (cur.meta.isNotBlank()) Text(cur.meta, color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp, maxLines = 1)
         ProgressLine(cur.progress(now), Modifier.fillMaxWidth().padding(vertical = 3.dp))
         if (cur.description.isNotBlank()) {
             Text(cur.description, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
@@ -466,7 +470,7 @@ fun EpgNowNext(repo: TvRepo, ch: Channel, now: Long, compact: Boolean = false) {
         if (next != null) {
             Row(Modifier.padding(top = 2.dp)) {
                 Text("DESPUÉS", color = Jx.Muted, fontFamily = Exo2, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(80.dp))
-                Text("${hhmm(next.start)}  ${next.title}", color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
+                Text("${hhmm(next.start)}  ${next.label}", color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
@@ -500,6 +504,8 @@ private fun SidePanel(live: LiveController) {
             Panel.SLEEP -> "Apagado automático"
             Panel.INFO -> "Información técnica"
             Panel.TOGETHER -> "👥 Ver juntos"
+            Panel.PROGRAMS -> "Guía"
+            Panel.GUIDE_PICK -> "Elegir guía"
             Panel.NONE -> ""
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -562,6 +568,8 @@ private fun SidePanel(live: LiveController) {
                 }
             }
             Panel.TOGETHER -> TogetherPanel()
+            Panel.PROGRAMS -> live.current?.let { ProgramsPanel(live.repo, it) }
+            Panel.GUIDE_PICK -> live.current?.let { GuidePickPanel(live.repo, it) }
             Panel.NONE -> {}
         }
     }
@@ -663,3 +671,67 @@ private fun hoverTint(): Modifier {
 }
 
 private fun LiveController.toggle(p: Panel) { panel = if (panel == p) Panel.NONE else p }
+
+/** "Guía": lo que dan ahora y lo que sigue en el canal. Clic en un programa = su descripción. */
+@Composable
+private fun ProgramsPanel(repo: TvRepo, ch: Channel) {
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+    val now = System.currentTimeMillis()
+    val list = remember(epg) { epg.orEmpty().filter { it.end > now }.take(30) }
+    var open by remember(ch.id) { mutableStateOf<Long?>(list.firstOrNull()?.start) }
+    if (epg == null) { Note("Cargando guía…"); return }
+    if (list.isEmpty()) { Note("Sin guía para este canal. Prueba con «Elegir guía»."); return }
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        items(list, key = { it.start }) { p ->
+            val airing = now in p.start until p.end
+            val expanded = open == p.start
+            Column(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                    .background(if (expanded) Jx.SurfaceHi else Color.Transparent)
+                    .clickable { open = if (expanded) null else p.start }.pointerHoverIcon(PointerIcon.Hand)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (airing) "AHORA" else hhmm(p.start), color = if (airing) Jx.Accent else Jx.Muted, fontFamily = Exo2,
+                        fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(56.dp))
+                    Text(p.label, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp,
+                        fontWeight = if (airing) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = if (expanded) 3 else 1, overflow = TextOverflow.Ellipsis)
+                }
+                if (airing) ProgressLine(p.progress(now), Modifier.fillMaxWidth().padding(top = 6.dp), height = 2.dp)
+                if (expanded) {
+                    Spacer(Modifier.height(6.dp))
+                    if (p.icon.isNotBlank()) {
+                        RemoteImage(p.icon, p.title, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(8.dp)),
+                            scale = androidx.compose.ui.layout.ContentScale.Crop)
+                        Spacer(Modifier.height(6.dp))
+                    }
+                    Text("${hhmm(p.start)} – ${hhmm(p.end)}" + if (p.meta.isNotBlank()) " · ${p.meta}" else "",
+                        color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp)
+                    if (p.description.isNotBlank()) Text(p.description, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        }
+    }
+}
+
+/** "Elegir guía": las guías más parecidas con lo que dan ahora, "Automática" o "Sin guía". Queda guardado. */
+@Composable
+private fun GuidePickPanel(repo: TvRepo, ch: Channel) {
+    var reload by remember { mutableStateOf(0) }
+    val version by repo.epgVersion
+    val choices by produceState<List<TvRepo.GuideChoice>?>(null, ch.id, reload, version) { value = repo.guideChoices(ch) }
+    val list = choices
+    if (list == null) { Note("Buscando guías parecidas…"); return }
+    Column(Modifier.fillMaxWidth()) {
+        Note("Si la guía de «${ch.name}» no coincide con lo que ves, elige la correcta.")
+        if (list.size <= 2) Note("La guía de internet aún no ha cargado o no hay guías parecidas.")
+        LazyColumn {
+            items(list, key = { it.key }) { c ->
+                Choice(c.label, c.selected) { repo.chooseGuide(ch, c.key); reload++ }
+            }
+        }
+    }
+}

@@ -320,7 +320,7 @@ private fun ChannelRow(
                 Text(ch.name, color = if (playing) Jx.Accent else Jx.Text, fontFamily = Exo2, fontSize = 14.sp,
                     fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (now != null) {
-                    Text(now.title, color = if (hovered || playing) Jx.TextSoft else Jx.Faint, fontFamily = Exo2, fontSize = 12.sp,
+                    Text(now.label, color = if (hovered || playing) Jx.TextSoft else Jx.Faint, fontFamily = Exo2, fontSize = 12.sp,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     ProgressLine(now.progress(), Modifier.fillMaxWidth(), height = 2.dp)
                 }

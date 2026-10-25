@@ -329,6 +329,10 @@ fun HomeScreen(
                     else -> return@handler false
                 }
                 Key.V -> if (isVod) live.cycleSpeed() else return@handler false
+                Key.G -> if (live.current != null && !isVod) {
+                    if (live.mode != ViewMode.FULL) toggleFull()
+                    live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.PROGRAMS) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.PROGRAMS
+                } else return@handler false
                 Key.J -> if (isVod && live.vod?.item?.kind != "trailer") {
                     if (live.mode != ViewMode.FULL) toggleFull()
                     live.panel = if (live.panel == com.jox3.tvdesktop.ui.Panel.TOGETHER) com.jox3.tvdesktop.ui.Panel.NONE else com.jox3.tvdesktop.ui.Panel.TOGETHER
