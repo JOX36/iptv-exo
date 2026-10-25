@@ -91,6 +91,9 @@ class XtreamApi(val account: Account) {
 
     // ── URLs de reproducción ──
     fun liveUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.m3u8"
+    /** Guía completa del servidor (XMLTV: todos los canales, varios días). */
+    fun xmltvUrl() = "$host/xmltv.php?username=${enc(account.user)}&password=${enc(account.pass)}"
+
     fun movieUrl(id: String, ext: String) = "$host/movie/${account.user}/${account.pass}/$id.${ext.ifBlank { "mp4" }}"
     fun episodeUrl(id: String, ext: String) = "$host/series/${account.user}/${account.pass}/$id.${ext.ifBlank { "mkv" }}"
 

@@ -351,7 +351,7 @@ private fun ChannelRow(
                 Text(ch.name, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (playing) Jx.Accent else androidx.tv.material3.LocalContentColor.current)
                 if (now != null) {
-                    Text(now.title, style = Type.Small, color = if (focused) Jx.TextSoft else Jx.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(now.label, style = Type.Small, color = if (focused) Jx.TextSoft else Jx.Faint, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (focused) ThinProgress(now.progress(), Modifier.fillMaxWidth(), height = 2.dp)
                 }
             }
@@ -377,7 +377,8 @@ private fun ChannelGuide(ch: Channel, repo: TvRepo) {
             return@Column
         }
         Text("AHORA · ${hhmm(now.start)} – ${hhmm(now.end)}", style = Type.Eyebrow, color = Jx.Accent)
-        Text(now.title, style = Type.H2, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(now.label, style = Type.H2, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        if (now.meta.isNotBlank()) Text(now.meta, style = Type.Small, color = Jx.Muted, maxLines = 1)
         ThinProgress(now.progress(), Modifier.fillMaxWidth().padding(vertical = 2.dp), height = 3.dp)
         if (now.description.isNotBlank()) {
             Text(now.description, style = Type.Small, color = Jx.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -388,7 +389,7 @@ private fun ChannelGuide(ch: Channel, repo: TvRepo) {
             next.forEach { n ->
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(hhmm(n.start), style = Type.Label, color = Jx.Muted, modifier = Modifier.width(64.dp))
-                    Text(n.title, style = Type.Label, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(n.label, style = Type.Label, color = Jx.TextSoft, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
