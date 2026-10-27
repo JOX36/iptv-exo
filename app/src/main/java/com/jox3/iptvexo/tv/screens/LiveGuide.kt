@@ -209,6 +209,7 @@ private fun GuideRow(
     hScroll: ScrollState, playing: Boolean, favorite: Boolean, chModifier: Modifier,
     onFocus: (EpgItem?) -> Unit, onClick: () -> Unit, onLongClick: () -> Unit,
 ) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val version by repo.epgVersion
     // La guía de cada canal se pide solo cuando su fila aparece un instante en pantalla
     val epg by produceState(repo.cachedEpg(ch), ch.id, version) {
@@ -253,7 +254,14 @@ private fun GuideRow(
                             val past = p.end <= nowMs
                             FocusSurface(
                                 // Un programa que ya pasó: verlo desde el inicio (si el canal guarda archivo)
-                                onClick = { if (past && repo.canCatchup(ch, p)) com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) else onClick() },
+                                // Ya pasó → verlo desde el inicio · Todavía no empieza → ⏰ avisarme · Ahora → ver el canal
+                                onClick = {
+                                    when {
+                                        past && repo.canCatchup(ch, p) -> com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p)
+                                        p.start > nowMs -> com.jox3.iptvexo.tv.data.Reminders.toggleWithToast(ctx, repo.api.account, ch, p)
+                                        else -> onClick()
+                                    }
+                                },
                                 onLongClick = onLongClick,
                                 modifier = Modifier.offset(x = left).width(w).fillMaxHeight()
                                     .onFocusChanged { if (it.isFocused) onFocus(p) },
@@ -264,7 +272,9 @@ private fun GuideRow(
                             ) {
                                 Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 5.dp),
                                     verticalArrangement = Arrangement.Center) {
-                                    Text(p.label, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    @Suppress("UNUSED_VARIABLE") val rv = com.jox3.iptvexo.tv.data.Reminders.version.intValue
+                                    val rem = p.start > nowMs && com.jox3.iptvexo.tv.data.Reminders.has(ctx, repo.api.account, ch, p)
+                                    Text((if (rem) "⏰ " else "") + p.label, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text(hhmm(p.start), style = Type.Small, maxLines = 1,
                                         color = if (isNow) Jx.Accent else Jx.Faint)
                                 }
@@ -319,6 +329,8 @@ private fun ProgramInfo(sel: Pair<Channel, EpgItem?>?, repo: TvRepo, nowMs: Long
         Text(when {
                 pastP && repo.canCatchup(ch, p!!) -> "OK: ⏪ ver este programa (ya pasó)"
                 pastP -> "Este canal no guarda programas pasados"
+                p != null && p.start > nowMs -> if (com.jox3.iptvexo.tv.data.Reminders.has(androidx.compose.ui.platform.LocalContext.current, repo.api.account, ch, p))
+                    "⏰ Te aviso cuando empiece · OK: quitar el aviso" else "OK: ⏰ avisarme cuando empiece"
                 playing -> "OK: ver en pantalla completa"
                 else -> "OK: ver en la vista previa"
             },
