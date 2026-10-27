@@ -92,8 +92,9 @@ fun LiveScreen(repo: TvRepo, @Suppress("UNUSED_PARAMETER") host: TvHost) {
     val lib = repo.library
     val live = LocalLive.current
     var reload by remember { mutableIntStateOf(0) }
-    val cats by produceState<Result<List<Category>>?>(null, reload) {
-        value = runCatching { repo.categories(Section.LIVE) }
+    val catV = lib.catVersion.intValue
+    val cats by produceState<Result<List<Category>>?>(null, reload, catV) {
+        value = runCatching { repo.shownCategories(Section.LIVE) }
     }
     var selected by remember { mutableStateOf<Category?>(null) }
     var focusedChannel by remember { mutableStateOf<Channel?>(null) }
