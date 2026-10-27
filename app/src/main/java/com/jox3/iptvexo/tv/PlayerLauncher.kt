@@ -46,7 +46,24 @@ class PlayerLauncher {
         }, index)
     }
 
+    /** Ver un programa de la guía desde el inicio (o uno que ya pasó), si el canal guarda archivo. */
+    fun playCatchup(ch: com.jox3.iptvexo.tv.data.Channel, p: com.jox3.iptvexo.tv.data.EpgItem) {
+        val r = repo ?: return
+        val player = vod ?: return
+        scope.launch {
+            val tz = r.serverTimeZone()
+            val minutes = (((p.end - p.start) / 60_000L).toInt() + 5).coerceIn(5, 600)
+            val url = r.api.timeshiftUrl(ch.id, p.start, minutes, tz)
+            val item = SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId)
+            player.open(listOf(VodItem(url, p.cleanTitle, "${ch.name} · desde el inicio", p.icon.ifBlank { ch.logo },
+                "cu_${ch.id}_${p.start}", item, item, plot = p.description, meta = p.meta, noHistory = true)), 0)
+        }
+    }
+
     companion object {
+        /** El reproductor de la pantalla actual (TV o celular), para abrir repeticiones desde la guía. */
+        @Volatile var current: PlayerLauncher? = null
+
         fun episodeName(series: String, e: Episode) =
             "$series · T${e.season}E${e.num}" + if (e.title.isNotBlank() && !e.title.contains(series, true)) " - ${e.title}" else ""
     }

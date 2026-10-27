@@ -46,6 +46,8 @@ data class VodItem(
     /** Sinopsis y datos cortos (año · género · duración), si se conocen al abrir. */
     val plot: String = "",
     val meta: String = "",
+    /** Repeticiones (catch-up): no entran a "Seguir viendo" ni guardan posición. */
+    val noHistory: Boolean = false,
 )
 
 /**
@@ -134,7 +136,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
             val dur = p?.duration ?: 0L
             val pos = p?.currentPosition ?: 0L
             val done = ended || (dur > 0 && pos.toFloat() / dur >= 0.9f)
-            if (done && !hasNext) (if (cur.resume.kind == "episode") cur.fav else cur.resume) else null
+            if (done && !hasNext && !cur.noHistory) (if (cur.resume.kind == "episode") cur.fav else cur.resume) else null
         }
         saveProgress()
         main.removeCallbacks(ticker)
@@ -229,7 +231,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
 
     private fun load(resume: Boolean) {
         val it = item ?: return
-        lib.rememberPlayback(it.resume)
+        if (!it.noHistory) lib.rememberPlayback(it.resume)
         retries = 0
         failed = false; ended = false; quality = ""
         status = "Cargando…"
@@ -280,6 +282,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     /** Guarda la posición; si ya casi terminó, la borra (sale de "Continuar viendo"). */
     private fun saveProgress() {
         val it = item ?: return
+        if (it.noHistory) return
         val p = exo ?: return
         val pos = p.currentPosition
         val dur = p.duration

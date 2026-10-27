@@ -345,10 +345,13 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
         list.isEmpty() -> CenterText("Este canal no tiene guía")
         else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            items(list.filter { it.end > nowMs }) { p ->
+            // Con archivo, también lo que ya pasó (para verlo desde el inicio)
+            items(list.filter { it.end > nowMs || ch.archiveDays > 0 }) { p ->
                 val isNow = p == nowItem
+                val canCu = repo.canCatchup(ch, p)
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+                        .then(if (canCu) Modifier.clickable { com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) } else Modifier)
                         .then(if (isNow) Modifier.background(Jx.SurfaceHi).border(1.dp, Jx.Accent, RoundedCornerShape(14.dp)) else Modifier)
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -358,7 +361,9 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
                         if (isNow) Text(clock(p.start), style = PType.Tiny, color = Jx.Muted)
                     }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(p.label, style = PType.Label, color = Jx.Text)
+                        Text(p.label, style = PType.Label, color = if (p.end <= nowMs) Jx.Muted else Jx.Text)
+                        if (canCu) Text(if (p.end <= nowMs) "⏪ Toca para verlo (ya pasó)" else "⏪ Toca para verlo desde el inicio",
+                            style = PType.Tiny, color = Jx.Accent)
                         if (p.meta.isNotBlank()) Text(p.meta, style = PType.Tiny, color = Jx.Accent)
                         if (isNow && p.icon.isNotBlank()) com.jox3.iptvexo.tv.ui.RemoteImage(p.icon, p.cleanTitle,
                             Modifier.padding(vertical = 4.dp).width(160.dp).height(90.dp).clip(RoundedCornerShape(10.dp)))

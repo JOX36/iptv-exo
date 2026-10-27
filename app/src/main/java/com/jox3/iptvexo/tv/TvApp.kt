@@ -173,6 +173,7 @@ fun TvApp(host: TvHost) {
                 }
             }
             host.player.repo = repo
+            PlayerLauncher.current = host.player
             CompositionLocalProvider(LocalProfile provides ProfileCtx(profiles.byId(prof.id) ?: prof) { previous = prof; profile = null }) {
                 com.jox3.iptvexo.tv.screens.VaultUnlockGate(profiles, tv = true, profileId = prof.id,
                     onSwitch = { a -> accounts.use(a); account = a }) {
