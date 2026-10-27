@@ -72,6 +72,22 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         ExternalEpg.ensure(context, codes, onExternalReady)
     }
 
+    // ── Ver desde el inicio (catch-up) ──
+    @Volatile private var serverTz: java.util.TimeZone? = null
+
+    /** Zona horaria del servidor (la del equipo si no la informa). */
+    suspend fun serverTimeZone(): java.util.TimeZone = serverTz ?: run {
+        val id = runCatching { api.serverInfo().timezone }.getOrDefault("")
+        val tz = id.takeIf { it.isNotBlank() }?.let { java.util.TimeZone.getTimeZone(it) }
+            ?.takeIf { it.id == id || id.isEmpty() } ?: java.util.TimeZone.getDefault()
+        serverTz = tz
+        tz
+    }
+
+    /** ¿Se puede ver este programa desde el inicio? (el canal guarda archivo y ya empezó). */
+    fun canCatchup(ch: Channel, p: EpgItem, now: Long = System.currentTimeMillis()): Boolean =
+        ch.archiveDays > 0 && p.start < now - 60_000 && p.start > now - ch.archiveDays * 86_400_000L
+
     // ── Elegir la guía de un canal a mano ──
     class GuideChoice(val key: String, val label: String, val selected: Boolean)
 
@@ -111,12 +127,12 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         val manual = ExternalEpg.manualFor(context, ch.name)
         if (manual == "none") { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to emptyList() }; return emptyList() }
         if (manual.isNotEmpty() && ExternalEpg.isReady()) {
-            val picked = ExternalEpg.match(context, ch.name, null)?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 12 * 3600 }
+            val picked = ExternalEpg.match(context, ch.name, null)?.progs?.filter { it.stop > nowSec - 4 * 3600 && it.start < nowSec + 12 * 3600 }
                 ?.map { it.toItem() }.orEmpty()
             if (picked.isNotEmpty()) { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to picked }; return picked }
         }
         // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
-        val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 3600 }?.map { it.toItem() }.orEmpty()
+        val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 4 * 3600 }?.map { it.toItem() }.orEmpty()
         // 2. Si no, la guía corta del servidor (14 programas)
         val server = full.ifEmpty {
             epgPermits.withPermit {
@@ -131,7 +147,7 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                 try {
                     ExternalEpg.match(context, ch.name, ch.epgId.ifBlank { null }, hint?.ifBlank { null })
-                        ?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 24 * 3600 }
+                        ?.progs?.filter { it.stop > nowSec - 4 * 3600 && it.start < nowSec + 24 * 3600 }
                         ?.map { it.toItem() }
                         .orEmpty()
                 } catch (e: Exception) { emptyList() }

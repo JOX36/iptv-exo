@@ -29,6 +29,8 @@ data class Channel(
     val num: Int,
     /** Código de guía (tvg-id / epg_channel_id) para emparejar con la guía de internet. */
     val epgId: String = "",
+    /** Días que el servidor guarda de este canal para ver programas pasados (0 = no guarda). */
+    val archiveDays: Int = 0,
 )
 
 data class Movie(
@@ -153,6 +155,8 @@ data class ServerInfo(
     val expires: Long?,       // ms, null = sin fecha
     val activeCons: String,
     val maxCons: String,
+    /** Zona horaria del servidor ("America/Bogota"): las repeticiones se piden en su hora. */
+    val timezone: String = "",
 )
 
 /** Elemento guardado (favorito, reciente, continuar viendo). */

@@ -252,7 +252,8 @@ private fun GuideRow(
                             val isNow = nowMs in p.start until p.end
                             val past = p.end <= nowMs
                             FocusSurface(
-                                onClick = onClick,
+                                // Un programa que ya pasó: verlo desde el inicio (si el canal guarda archivo)
+                                onClick = { if (past && repo.canCatchup(ch, p)) com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) else onClick() },
                                 onLongClick = onLongClick,
                                 modifier = Modifier.offset(x = left).width(w).fillMaxHeight()
                                     .onFocusChanged { if (it.isFocused) onFocus(p) },
@@ -314,7 +315,15 @@ private fun ProgramInfo(sel: Pair<Channel, EpgItem?>?, repo: TvRepo, nowMs: Long
             }
         }
         val playing = live.current?.id == ch.id
-        Text(if (playing) "OK: ver en pantalla completa" else "OK: ver en la vista previa",
-            style = Type.Small, color = if (playing) Jx.Accent else Jx.Faint)
+        val pastP = p != null && p.end <= nowMs
+        Text(when {
+                pastP && repo.canCatchup(ch, p!!) -> "OK: ⏪ ver este programa (ya pasó)"
+                pastP -> "Este canal no guarda programas pasados"
+                playing -> "OK: ver en pantalla completa"
+                else -> "OK: ver en la vista previa"
+            },
+            style = Type.Small, color = if (playing || (pastP && repo.canCatchup(ch, p!!))) Jx.Accent else Jx.Faint)
+        if (!pastP && p != null && nowMs in p.start until p.end && repo.canCatchup(ch, p))
+            Text("En pantalla completa → Guía: ⏪ verlo desde el inicio", style = Type.Small, color = Jx.Faint)
     }
 }

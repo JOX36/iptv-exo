@@ -738,10 +738,14 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
                 // Algo enfocable para que el panel reciba el foco
                 ChoiceRow("Entendido", false, Modifier.focusRequester(req)) {}
             }
-            else -> list.take(30).forEachIndexed { i, p ->
+            // Con archivo: también los programas que ya pasaron hoy (para verlos desde el inicio)
+            else -> (if (ch.archiveDays > 0) (epg.orEmpty().filter { it.end <= nowMs && it.start > nowMs - 12 * 3_600_000L }.takeLast(8) + list) else list)
+                .take(38).forEachIndexed { i, p ->
                 var focused by remember { mutableStateOf(false) }
                 val isNow = nowMs in p.start until p.end
-                FocusSurface(onClick = {}, modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(req) else Modifier)
+                val canCu = repo.canCatchup(ch, p)
+                FocusSurface(onClick = { if (canCu) com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) },
+                    modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(req) else Modifier)
                     .onFocusChanged { focused = it.isFocused },
                     focusedScale = 1.02f, focusedContainer = Color(0xCC152131)) {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -751,6 +755,7 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
                         if (focused && p.meta.isNotBlank()) Text(p.meta, style = Type.Small, color = Jx.Accent, maxLines = 1)
                         if (focused && p.description.isNotBlank()) Text(p.description, style = Type.Small, color = Jx.TextSoft,
                             maxLines = 4, overflow = TextOverflow.Ellipsis)
+                        if (focused && canCu) Text("OK: ⏪ ver desde el inicio", style = Type.Small, color = Jx.Accent)
                     }
                 }
             }

@@ -144,6 +144,7 @@ private fun PhoneShell(
     val live = remember { LivePlayback(context.applicationContext, repo) }
     val vod = remember { VodPlayback(context.applicationContext, repo.library) }
     val launcher = remember { PlayerLauncher().also { it.repo = repo; it.vod = vod } }
+    PlayerLauncher.current = launcher
     vod.beforeOpen = { live.stop() }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
