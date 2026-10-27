@@ -75,7 +75,8 @@ fun SeriesScreen(repo: TvRepo, nav: Nav) = CatalogScreen(repo, Section.SERIES, "
 private fun CatalogScreen(repo: TvRepo, section: Section, title: String, load: suspend (String) -> List<GridItem>) {
     val lib = repo.library
     var reload by remember { mutableIntStateOf(0) }
-    val cats by produceState<Result<List<Category>>?>(null, reload) { value = runCatching { repo.categories(section) } }
+    val catV = lib.catVersion.intValue
+    val cats by produceState<Result<List<Category>>?>(null, reload, catV) { value = runCatching { repo.shownCategories(section) } }
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     val gridReq = remember { FocusRequester() }
     var firstFocusDone by remember { mutableStateOf(false) }

@@ -174,7 +174,8 @@ fun PhoneLiveScreen(repo: TvRepo, live: LivePlayback, onFullscreen: () -> Unit) 
     val prefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
     var tab by remember { mutableIntStateOf(0) }
     var catSheet by remember { mutableStateOf(false) }
-    val cats by produceState<List<Category>?>(null) { value = runCatching { repo.categories(Section.LIVE) }.getOrDefault(emptyList()) }
+    val catV = repo.library.catVersion.intValue
+    val cats by produceState<List<Category>?>(null, catV) { value = runCatching { repo.shownCategories(Section.LIVE) }.getOrDefault(emptyList()) }
     val allCats = remember(cats) { listOf(Category(FAV_ID, "★ Favoritos"), Category(RECENT_ID, "Recientes")) + cats.orEmpty() }
     var selected by remember { mutableStateOf(LiveUiMemory.category) }
     // Ojo: se usa la lista de ESTA composición (loaded/all), no se vuelve a leer `cats` dentro del
