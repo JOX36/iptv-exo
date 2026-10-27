@@ -619,6 +619,8 @@ fun PhoneSearch(
 @Composable
 fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccount: () -> Unit, onLogout: () -> Unit,
                   onServers: () -> Unit = {}, onBack: () -> Unit) {
+    var recordings by remember { mutableStateOf(false) }
+    if (recordings) { Box(Modifier.statusBarsPadding()) { com.jox3.iptvexo.tv.screens.RecordingsScreen(tv = false) { recordings = false } }; return }
     var askDelete by remember { mutableStateOf(false) }
     if (askDelete) DeleteAccountDialog(account, onConfirm = { askDelete = false; onLogout() }, onDismiss = { askDelete = false })
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
@@ -657,6 +659,7 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
+                PButton("⏺ Grabaciones", Modifier.fillMaxWidth(), icon = R.drawable.ic_record, primary = false) { recordings = true }
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 val sctx = LocalContext.current
                 var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }

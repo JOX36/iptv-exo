@@ -60,6 +60,17 @@ class PlayerLauncher {
         }
     }
 
+    /** Ver una grabación (también mientras se sigue grabando). */
+    fun playRecording(r: com.jox3.iptvexo.tv.data.Recorder.Rec) {
+        val player = vod ?: return
+        val f = java.io.File(r.file)
+        if (!f.exists() || f.length() == 0L) return
+        val item = SavedItem("live", r.chId, r.chName, r.logo)
+        val fmt = java.text.SimpleDateFormat("d MMM · h:mm a", java.util.Locale("es"))
+        player.open(listOf(VodItem(android.net.Uri.fromFile(f).toString(), r.title, "${r.chName} · grabado ${fmt.format(java.util.Date(r.start))}",
+            r.logo, "rec_${r.id}", item, item, noHistory = true)), 0)
+    }
+
     companion object {
         /** El reproductor de la pantalla actual (TV o celular), para abrir repeticiones desde la guía. */
         @Volatile var current: PlayerLauncher? = null

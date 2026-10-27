@@ -395,6 +395,7 @@ internal fun liveOptions(favorite: Boolean): List<Triple<String, String, Int>> =
     Triple("guide", "Guía", R.drawable.tv_ic_live),
     Triple("info", "Información", R.drawable.tv_ic_info),
     Triple("pickguide", "Elegir guía", R.drawable.ic_guide),
+    Triple("record", "Grabar", R.drawable.ic_record),
     Triple("audio", "Audio", R.drawable.ic_audio),
     Triple("subs", "Subtítulos", R.drawable.ic_subs),
     Triple("picture", "Imagen", R.drawable.ic_resize),
@@ -423,6 +424,23 @@ fun LiveSheets(live: LivePlayback, repo: TvRepo, sheet: String?, onDismiss: () -
                     next?.let { "Después: ${clock(it.start)} ${it.title}" }).joinToString(" · "),
                 body = now?.description.orEmpty(),
                 tech = techInfoFor(ctx, live, repo, ch), onDismiss = onDismiss)
+        }
+        "record" -> if (ch != null) {
+            @Suppress("UNUSED_VARIABLE") val v = com.jox3.iptvexo.tv.data.Recorder.version.intValue
+            val version by repo.epgVersion
+            val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+            val now = epg?.let { repo.nowPlaying(it) }?.takeIf { System.currentTimeMillis() in it.start until it.end }
+            val rec = com.jox3.iptvexo.tv.data.Recorder.recordingNow(ctx, repo.api.account.key, ch.id)
+            fun go(title: String, end: Long) = android.widget.Toast.makeText(ctx, com.jox3.iptvexo.tv.data.Recorder.schedule(ctx, repo.api.account, ch,
+                title, System.currentTimeMillis(), end), android.widget.Toast.LENGTH_LONG).show()
+            ChoiceSheet("⏺ Grabar · ${ch.name}", buildList {
+                if (rec != null) add(Triple("■ Detener grabación («${rec.title}»)", true) { com.jox3.iptvexo.tv.data.Recorder.stop(ctx, rec.id) })
+                else {
+                    if (now != null) add(Triple("Este programa (hasta las ${clock(now.end)})", false) { go(now.cleanTitle, now.end) })
+                    listOf(30, 60, 120).forEach { m -> add(Triple(if (m < 60) "$m minutos" else "${m / 60} hora${if (m > 60) "s" else ""}", false) {
+                        go(now?.cleanTitle ?: ch.name, System.currentTimeMillis() + m * 60_000L) }) }
+                }
+            }, onDismiss)
         }
         "pickguide" -> if (ch != null) {
             val version by repo.epgVersion
