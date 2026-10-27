@@ -744,7 +744,14 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
                 var focused by remember { mutableStateOf(false) }
                 val isNow = nowMs in p.start until p.end
                 val canCu = repo.canCatchup(ch, p)
-                FocusSurface(onClick = { if (canCu) com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) },
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val future = p.start > nowMs
+                @Suppress("UNUSED_VARIABLE") val rv = com.jox3.iptvexo.tv.data.Reminders.version.intValue
+                val rem = future && com.jox3.iptvexo.tv.data.Reminders.has(ctx, repo.api.account, ch, p)
+                FocusSurface(onClick = {
+                    if (canCu) com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p)
+                    else if (future) com.jox3.iptvexo.tv.data.Reminders.toggleWithToast(ctx, repo.api.account, ch, p)
+                },
                     modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(req) else Modifier)
                     .onFocusChanged { focused = it.isFocused },
                     focusedScale = 1.02f, focusedContainer = Color(0xCC152131)) {
@@ -756,6 +763,8 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
                         if (focused && p.description.isNotBlank()) Text(p.description, style = Type.Small, color = Jx.TextSoft,
                             maxLines = 4, overflow = TextOverflow.Ellipsis)
                         if (focused && canCu) Text("OK: ⏪ ver desde el inicio", style = Type.Small, color = Jx.Accent)
+                        if (rem) Text("⏰ Te aviso cuando empiece", style = Type.Small, color = Jx.Gold)
+                        if (focused && future) Text(if (rem) "OK: quitar el aviso" else "OK: ⏰ avisarme cuando empiece", style = Type.Small, color = Jx.Accent)
                     }
                 }
             }

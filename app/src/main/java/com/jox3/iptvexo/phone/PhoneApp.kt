@@ -229,6 +229,7 @@ private fun PhoneShell(
     LaunchedEffect(vod.open, vod.index) { com.jox3.iptvexo.tv.player.WatchTogether.bind(vod) }
     LaunchedEffect(vod.open) { if (vod.open) joinTogether = false }
     com.jox3.iptvexo.tv.player.WatchTogether.appContext = context.applicationContext
+
     // Llegó un enlace de invitación: unirse a la sala y mostrar cómo va
     val pendingJoin = com.jox3.iptvexo.tv.player.WatchTogether.pendingJoin
     LaunchedEffect(pendingJoin) {
@@ -243,6 +244,20 @@ private fun PhoneShell(
         repo.library.addRecentChannel(SavedItem("live", c.id, c.name, c.logo, categoryId = c.categoryId))
         vod.close(); pages.clear(); tab = Tab.Live
         live.play(c, list, "")
+    }
+    // Recordatorios: revisar cada 20 s si algo empieza
+    LaunchedEffect(Unit) { while (true) { com.jox3.iptvexo.tv.data.Reminders.checkDue(context); kotlinx.coroutines.delay(20_000) } }
+    // Se tocó la notificación de un recordatorio (jox3://open?kind=live…): poner ese canal
+    val openLink = com.jox3.iptvexo.tv.GoogleTv.pendingLink
+    LaunchedEffect(openLink) {
+        val (accKey, item) = com.jox3.iptvexo.tv.GoogleTv.parse(openLink) ?: return@LaunchedEffect
+        com.jox3.iptvexo.tv.GoogleTv.pendingLink = null
+        if (item.kind != "live") return@LaunchedEffect
+        val ch = com.jox3.iptvexo.tv.data.Channel(item.id, item.name, item.image, item.categoryId, 1)
+        if (accKey == account.key) playChannel(listOf(ch), 0)
+        else accounts.shown().firstOrNull { it.key == accKey }?.let { a ->
+            ServerHub.pendingOpen = ServerHub.Copy(a, "live", item.id, item.name, item.image, "", item.categoryId); onSwitch(a)
+        }
     }
 
     // ── Varios servidores ──
@@ -293,6 +308,20 @@ private fun PhoneShell(
             com.jox3.iptvexo.tv.player.TogetherBadge(Modifier.align(Alignment.TopCenter).padding(top = 14.dp), big = false,
                 onLeave = { com.jox3.iptvexo.tv.player.WatchTogether.leave() })
             return@Box
+        }
+        // Recordatorio que empieza ahora
+        com.jox3.iptvexo.tv.data.Reminders.due.value?.let { r ->
+            Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 12.dp, end = 12.dp, bottom = 76.dp).zIndex(11f)) {
+                com.jox3.iptvexo.tv.screens.ReminderBanner(tv = false, r = r,
+                    onWatch = {
+                        com.jox3.iptvexo.tv.data.Reminders.due.value = null
+                        if (r.acc == account.key) playChannel(listOf(r.channel()), 0)
+                        else accounts.shown().firstOrNull { it.key == r.acc }?.let { a ->
+                            ServerHub.pendingOpen = ServerHub.Copy(a, "live", r.chId, r.chName, r.logo, "", r.cat); onSwitch(a)
+                        }
+                    },
+                    onClose = { com.jox3.iptvexo.tv.data.Reminders.due.value = null })
+            }
         }
         // Ver juntos: aviso de la sala (encima de todo) y ventana para unirse
         com.jox3.iptvexo.tv.player.TogetherBadge(

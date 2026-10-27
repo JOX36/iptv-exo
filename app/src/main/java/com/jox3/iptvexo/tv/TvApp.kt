@@ -246,6 +246,8 @@ private fun MainShell(
     // Al abrir el video de la sala se cierra el panel de unirse
     LaunchedEffect(vod.open) { if (vod.open) togetherPanel = false }
     com.jox3.iptvexo.tv.player.WatchTogether.appContext = context.applicationContext
+    // ── Recordatorios de la guía: revisar cada 20 s si algo empieza ──
+    LaunchedEffect(Unit) { while (true) { com.jox3.iptvexo.tv.data.Reminders.checkDue(context); delay(20_000) } }
     // ── "Porque viste…" al terminar una película o serie ──
     var because by remember { mutableStateOf<SavedItem?>(null) }
     vod.onFinished = { because = it }
@@ -462,6 +464,20 @@ private fun MainShell(
             }
         }
 
+        // Recordatorio que empieza ahora
+        com.jox3.iptvexo.tv.data.Reminders.due.value?.let { r ->
+            Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp).zIndex(8f)) {
+                com.jox3.iptvexo.tv.screens.ReminderBanner(tv = true, r = r,
+                    onWatch = {
+                        com.jox3.iptvexo.tv.data.Reminders.due.value = null
+                        if (r.acc == account.key) live.playFullscreen(listOf(r.channel()), 0, "Recordatorio")
+                        else allAccounts.firstOrNull { it.key == r.acc }?.let { a ->
+                            ServerHub.pendingOpen = ServerHub.Copy(a, "live", r.chId, r.chName, r.logo, "", r.cat); onSwitch(a)
+                        }
+                    },
+                    onClose = { com.jox3.iptvexo.tv.data.Reminders.due.value = null })
+            }
+        }
         // Ver juntos: unirse con un código (desde la barra lateral)
         if (togetherPanel) {
             Box(Modifier.fillMaxSize().zIndex(6.5f)) { com.jox3.iptvexo.tv.screens.TogetherJoin(onDismiss = { togetherPanel = false }) }

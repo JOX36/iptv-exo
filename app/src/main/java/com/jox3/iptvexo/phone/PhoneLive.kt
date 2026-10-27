@@ -335,6 +335,7 @@ private fun ChannelRow(c: Channel, repo: TvRepo, playing: Boolean, favorite: Boo
 
 @Composable
 private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
+    val ctx = LocalContext.current
     val version by repo.epgVersion
     val epg by produceState<List<EpgItem>?>(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
     val list = epg
@@ -351,7 +352,11 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
                 val canCu = repo.canCatchup(ch, p)
                 Row(
                     Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-                        .then(if (canCu) Modifier.clickable { com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) } else Modifier)
+                        .then(when {
+                            canCu -> Modifier.clickable { com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p) }
+                            p.start > nowMs -> Modifier.clickable { com.jox3.iptvexo.tv.data.Reminders.toggleWithToast(ctx, repo.api.account, ch, p) }
+                            else -> Modifier
+                        })
                         .then(if (isNow) Modifier.background(Jx.SurfaceHi).border(1.dp, Jx.Accent, RoundedCornerShape(14.dp)) else Modifier)
                         .padding(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -364,6 +369,12 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
                         Text(p.label, style = PType.Label, color = if (p.end <= nowMs) Jx.Muted else Jx.Text)
                         if (canCu) Text(if (p.end <= nowMs) "⏪ Toca para verlo (ya pasó)" else "⏪ Toca para verlo desde el inicio",
                             style = PType.Tiny, color = Jx.Accent)
+                        if (p.start > nowMs) {
+                            @Suppress("UNUSED_VARIABLE") val rv = com.jox3.iptvexo.tv.data.Reminders.version.intValue
+                            val rem = com.jox3.iptvexo.tv.data.Reminders.has(ctx, repo.api.account, ch, p)
+                            Text(if (rem) "⏰ Te aviso cuando empiece (toca para quitar)" else "Toca para que te avise ⏰",
+                                style = PType.Tiny, color = if (rem) Jx.Gold else Jx.Faint)
+                        }
                         if (p.meta.isNotBlank()) Text(p.meta, style = PType.Tiny, color = Jx.Accent)
                         if (isNow && p.icon.isNotBlank()) com.jox3.iptvexo.tv.ui.RemoteImage(p.icon, p.cleanTitle,
                             Modifier.padding(vertical = 4.dp).width(160.dp).height(90.dp).clip(RoundedCornerShape(10.dp)))
