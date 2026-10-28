@@ -237,6 +237,8 @@ private fun GuideRow(
                 Text(ch.name, style = Type.Label, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     color = if (playing) Jx.Accent else androidx.tv.material3.LocalContentColor.current,
                     modifier = Modifier.weight(1f))
+                // ⏪ = este canal guarda programas pasados (se pueden ver desde el inicio)
+                if (ch.archiveDays > 0) Text("⏪", style = Type.Small, color = Jx.Accent)
                 if (favorite) JxIcon(R.drawable.tv_ic_star_filled, 12.dp, Jx.Gold, "Favorito")
             }
         }
