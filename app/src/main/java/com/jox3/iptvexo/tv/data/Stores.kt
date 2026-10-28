@@ -186,6 +186,30 @@ class LibraryStore(context: Context, accountKey: String, val profileId: String =
         refreshProgress()
     }
 
+    // ── Organizar categorías (por perfil): ocultar, ordenar y renombrar ──
+    class CatPrefs(val hidden: Set<String>, val order: List<String>, val names: Map<String, String>)
+
+    /** Sube cuando cambia la organización: las pantallas vuelven a pedir las categorías. */
+    val catVersion = androidx.compose.runtime.mutableIntStateOf(0)
+
+    fun catPrefs(section: Section): CatPrefs = runCatching {
+        val o = JSONObject(prefs.getString("$ns.cats.${section.name}", "{}") ?: "{}")
+        val h = o.optJSONArray("hidden") ?: JSONArray()
+        val ord = o.optJSONArray("order") ?: JSONArray()
+        val nm = o.optJSONObject("names") ?: JSONObject()
+        CatPrefs((0 until h.length()).map { h.optString(it) }.toSet(), (0 until ord.length()).map { ord.optString(it) },
+            nm.keys().asSequence().associateWith { nm.optString(it) })
+    }.getOrDefault(CatPrefs(emptySet(), emptyList(), emptyMap()))
+
+    fun saveCatPrefs(section: Section, p: CatPrefs) {
+        val o = JSONObject().put("hidden", JSONArray(p.hidden.toList())).put("order", JSONArray(p.order))
+            .put("names", JSONObject().apply { p.names.forEach { (k, v) -> put(k, v) } })
+        prefs.edit().putString("$ns.cats.${section.name}", o.toString()).apply()
+        catVersion.intValue++
+    }
+
+    fun resetCatPrefs(section: Section) { prefs.edit().remove("$ns.cats.${section.name}").apply(); catVersion.intValue++ }
+
     // ── "Porque viste…" (última recomendación, para la fila del Inicio) ──
     val because = mutableStateOf(loadBecause())
 

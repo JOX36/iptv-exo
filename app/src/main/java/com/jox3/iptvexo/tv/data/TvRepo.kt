@@ -29,6 +29,21 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
             if (s == Section.LIVE) startExternalEpg(list)
         }
 
+    /**
+     * Categorías como las organizó el perfil: sin las ocultas, en su orden y con sus nombres.
+     * (Si se ocultaron todas, se muestran todas.)
+     */
+    suspend fun shownCategories(s: Section): List<Category> {
+        val all = categories(s)
+        val p = library.catPrefs(s)
+        if (p.hidden.isEmpty() && p.order.isEmpty() && p.names.isEmpty()) return all
+        val pos = p.order.withIndex().associate { it.value to it.index }
+        val out = all.filter { it.id !in p.hidden }
+            .sortedBy { pos[it.id] ?: (100_000 + all.indexOf(it)) }
+            .map { c -> p.names[c.id]?.takeIf { it.isNotBlank() }?.let { c.copy(name = it) } ?: c }
+        return out.ifEmpty { all }
+    }
+
     suspend fun channels(catId: String): List<Channel> =
         lock.withLock { channels[catId] } ?: api.channels(catId).also { lock.withLock { channels[catId] = it } }
 

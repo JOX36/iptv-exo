@@ -196,7 +196,8 @@ private class GridEntry(val id: String, val name: String, val poster: String, va
 @Composable
 fun PhoneCatalog(repo: TvRepo, section: Section, onOpenMovie: (Movie) -> Unit, onOpenSeries: (String, String, String) -> Unit) {
     val lib = repo.library
-    val cats by produceState<List<Category>?>(null, section) { value = runCatching { repo.categories(section) }.getOrDefault(emptyList()) }
+    val catV = lib.catVersion.intValue
+    val cats by produceState<List<Category>?>(null, section, catV) { value = runCatching { repo.shownCategories(section) }.getOrDefault(emptyList()) }
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE) }
     val prefKey = if (section == Section.VOD) "phone_vod_cat" else "phone_series_cat"
@@ -619,6 +620,8 @@ fun PhoneSearch(
 @Composable
 fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccount: () -> Unit, onLogout: () -> Unit,
                   onServers: () -> Unit = {}, onBack: () -> Unit) {
+    var organize by remember { mutableStateOf(false) }
+    if (organize) { com.jox3.iptvexo.tv.screens.CategoryOrganizer(repo, tv = false) { organize = false }; return }
     var askDelete by remember { mutableStateOf(false) }
     if (askDelete) DeleteAccountDialog(account, onConfirm = { askDelete = false; onLogout() }, onDismiss = { askDelete = false })
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
@@ -657,6 +660,7 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
+                PButton("Organizar categorías", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false) { organize = true }
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 val sctx = LocalContext.current
                 var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }
