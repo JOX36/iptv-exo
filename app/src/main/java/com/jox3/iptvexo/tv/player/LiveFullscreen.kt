@@ -136,6 +136,8 @@ private enum class Opt(val label: String, val hasPanel: Boolean) {
     Channels("Canales", true),
     // La guía va al principio, junto a Canales (antes quedaba fuera de la pantalla en el TV Box)
     Programs("Guía", true),
+    // Ver el programa de ahora desde que empezó (si el canal guarda archivo; si no, lo explica)
+    Restart("Desde el inicio", false),
     Guide("Elegir guía", true),
     Record("Grabar", true),
     Info("Información", true),
@@ -162,6 +164,7 @@ internal val PanelBrush = Brush.horizontalGradient(listOf(Color(0xB3070A0F), Col
 @Composable
 fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     val ch = live.current ?: return
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     var bars by remember { mutableStateOf(true) }
     var option by remember { mutableStateOf<Opt?>(null) }        // opción con el foco (decide el panel)
     var inPanel by remember { mutableStateOf(false) }            // el foco está dentro del panel
@@ -394,6 +397,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 Opt.Guide -> R.drawable.tv_ic_check
                                 Opt.Programs -> R.drawable.ic_guide
                                 Opt.Record -> R.drawable.ic_record
+                                Opt.Restart -> R.drawable.tv_ic_restart
                             },
                             selected = option == opt,
                             modifier = Modifier.focusRequester(optReqs.getValue(opt)),
@@ -402,6 +406,18 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 when (opt) {
                                     Opt.Favorite -> lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
                                     Opt.Reload -> live.reload()
+                                    Opt.Restart -> {
+                                        val now = System.currentTimeMillis()
+                                        val cur = repo.cachedEpg(ch)?.firstOrNull { now in it.start until it.end }
+                                        val msg = when {
+                                            ch.archiveDays <= 0 -> "Este canal no guarda programas pasados en tu servidor, así que no se puede ver desde el inicio. Busca los canales con ⏪."
+                                            cur == null -> "No encuentro qué programa dan ahora en la guía de este canal."
+                                            !repo.canCatchup(ch, cur) -> "El programa acaba de empezar. Prueba en un minuto."
+                                            else -> null
+                                        }
+                                        if (msg != null) android.widget.Toast.makeText(ctx, msg, android.widget.Toast.LENGTH_LONG).show()
+                                        else com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, cur!!)
+                                    }
                                     // OK abre el panel y entra en él
                                     else -> { panelOpen = true; pendingPanelFocus = true }
                                 }
@@ -734,6 +750,9 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
     val nowMs = System.currentTimeMillis()
     PanelBox("Guía · ${ch.name}") {
         val list = epg?.filter { it.end > nowMs }
+        Text(if (ch.archiveDays > 0) "⏪ Este canal guarda ${ch.archiveDays} día(s): elige un programa para verlo desde el inicio."
+            else "Este canal no guarda programas pasados en tu servidor (no se puede ver desde el inicio).",
+            style = Type.Small, color = if (ch.archiveDays > 0) Jx.Accent else Jx.Faint)
         when {
             list == null -> Text("Cargando guía…", style = Type.Small, color = Jx.Muted)
             list.isEmpty() -> {

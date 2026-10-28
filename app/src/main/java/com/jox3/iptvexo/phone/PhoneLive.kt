@@ -321,7 +321,7 @@ private fun ChannelRow(c: Channel, repo: TvRepo, playing: Boolean, favorite: Boo
     ) {
         RemoteImage(c.logo, c.name, Modifier.size(48.dp).clip(RoundedCornerShape(12.dp)).background(Jx.Surface), scale = ContentScale.Fit)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("${c.num} · ${c.name}", style = PType.Label, color = if (playing) Jx.Accent else Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${c.num} · ${c.name}" + (if (c.archiveDays > 0) "  ⏪" else ""), style = PType.Label, color = if (playing) Jx.Accent else Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (now != null) {
                 Text(now.label, style = PType.Small, color = Jx.Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Jx.Line)) {
@@ -347,6 +347,11 @@ private fun ChannelGuideList(ch: Channel, repo: TvRepo) {
         list.isEmpty() -> CenterText("Este canal no tiene guía")
         else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            item {
+                Text(if (ch.archiveDays > 0) "⏪ Este canal guarda ${ch.archiveDays} día(s): toca un programa para verlo desde el inicio."
+                    else "Este canal no guarda programas pasados en tu servidor (no se puede ver desde el inicio).",
+                    style = PType.Small, color = if (ch.archiveDays > 0) Jx.Accent else Jx.Faint, modifier = Modifier.padding(vertical = 4.dp))
+            }
             // Con archivo, también lo que ya pasó (para verlo desde el inicio)
             items(list.filter { it.end > nowMs || ch.archiveDays > 0 }) { p ->
                 val isNow = p == nowItem
