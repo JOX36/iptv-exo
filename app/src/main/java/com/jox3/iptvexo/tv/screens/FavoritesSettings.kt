@@ -106,6 +106,8 @@ fun FavoritesScreen(repo: TvRepo, nav: Nav, host: TvHost) {
 @Composable
 fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () -> Unit, onDelete: () -> Unit) {
     var confirmDelete by remember { mutableStateOf(false) }
+    var recordings by remember { mutableStateOf(false) }
+    if (recordings) { RecordingsScreen(tv = true) { recordings = false }; return }
     var organize by remember { mutableStateOf(false) }
     if (organize) { CategoryOrganizer(repo, tv = true) { organize = false }; return }
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
@@ -140,6 +142,7 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ActionButton("Buscar actualizaciones", host::checkUpdates, Modifier.fillMaxWidth().focusRequester(firstReq),
                 icon = R.drawable.tv_ic_update)
+            ActionButton("⏺ Grabaciones", { recordings = true }, Modifier.fillMaxWidth(), icon = R.drawable.ic_record)
             ActionButton("Organizar categorías", { organize = true }, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
             // Se pide confirmar: la primera pulsación solo cambia el texto

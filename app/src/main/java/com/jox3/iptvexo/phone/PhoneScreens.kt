@@ -620,6 +620,8 @@ fun PhoneSearch(
 @Composable
 fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccount: () -> Unit, onLogout: () -> Unit,
                   onServers: () -> Unit = {}, onBack: () -> Unit) {
+    var recordings by remember { mutableStateOf(false) }
+    if (recordings) { Box(Modifier.statusBarsPadding()) { com.jox3.iptvexo.tv.screens.RecordingsScreen(tv = false) { recordings = false } }; return }
     var organize by remember { mutableStateOf(false) }
     if (organize) { com.jox3.iptvexo.tv.screens.CategoryOrganizer(repo, tv = false) { organize = false }; return }
     var askDelete by remember { mutableStateOf(false) }
@@ -660,6 +662,7 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
+                PButton("⏺ Grabaciones", Modifier.fillMaxWidth(), icon = R.drawable.ic_record, primary = false) { recordings = true }
                 PButton("Organizar categorías", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false) { organize = true }
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 val sctx = LocalContext.current

@@ -137,6 +137,7 @@ private enum class Opt(val label: String, val hasPanel: Boolean) {
     // La guía va al principio, junto a Canales (antes quedaba fuera de la pantalla en el TV Box)
     Programs("Guía", true),
     Guide("Elegir guía", true),
+    Record("Grabar", true),
     Info("Información", true),
     Audio("Audio", true),
     Subtitles("Subtítulos", true),
@@ -351,6 +352,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     Opt.Info -> LiveInfoPanel(live, repo, ch)
                     Opt.Guide -> GuidePickPanel(repo, ch, panelReq)
                     Opt.Programs -> ProgramsPanel(repo, ch, panelReq)
+                    Opt.Record -> RecordPanel(repo, ch, panelReq)
                     else -> Unit
                 }
             }
@@ -391,6 +393,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 Opt.Info -> R.drawable.tv_ic_info
                                 Opt.Guide -> R.drawable.tv_ic_check
                                 Opt.Programs -> R.drawable.ic_guide
+                                Opt.Record -> R.drawable.ic_record
                             },
                             selected = option == opt,
                             modifier = Modifier.focusRequester(optReqs.getValue(opt)),
@@ -752,6 +755,11 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
                     if (canCu) com.jox3.iptvexo.tv.PlayerLauncher.current?.playCatchup(ch, p)
                     else if (future) com.jox3.iptvexo.tv.data.Reminders.toggleWithToast(ctx, repo.api.account, ch, p)
                 },
+                    // Mantener OK: grabar este programa (el de ahora o uno que viene)
+                    onLongClick = if (p.end > nowMs) ({
+                        android.widget.Toast.makeText(ctx, com.jox3.iptvexo.tv.data.Recorder.schedule(ctx, repo.api.account, ch, p.cleanTitle, p.start, p.end),
+                            android.widget.Toast.LENGTH_LONG).show()
+                    }) else null,
                     modifier = Modifier.fillMaxWidth().then(if (i == 0) Modifier.focusRequester(req) else Modifier)
                     .onFocusChanged { focused = it.isFocused },
                     focusedScale = 1.02f, focusedContainer = Color(0xCC152131)) {
@@ -765,9 +773,45 @@ private fun ProgramsPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, re
                         if (focused && canCu) Text("OK: ⏪ ver desde el inicio", style = Type.Small, color = Jx.Accent)
                         if (rem) Text("⏰ Te aviso cuando empiece", style = Type.Small, color = Jx.Gold)
                         if (focused && future) Text(if (rem) "OK: quitar el aviso" else "OK: ⏰ avisarme cuando empiece", style = Type.Small, color = Jx.Accent)
+                        if (focused && p.end > nowMs) Text("Mantén OK: ⏺ grabar", style = Type.Small, color = Jx.Faint)
                     }
                 }
             }
         }
     }
 }
+
+
+/** Grabar este canal: el programa de ahora, o un tiempo fijo. Si ya graba, detener. */
+@Composable
+private fun RecordPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, req: FocusRequester) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    @Suppress("UNUSED_VARIABLE") val v = com.jox3.iptvexo.tv.data.Recorder.version.intValue
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+    val now = epg?.let { repo.nowPlaying(it) }
+    val rec = com.jox3.iptvexo.tv.data.Recorder.recordingNow(ctx, repo.api.account.key, ch.id)
+    fun go(title: String, end: Long) {
+        android.widget.Toast.makeText(ctx, com.jox3.iptvexo.tv.data.Recorder.schedule(ctx, repo.api.account, ch, title,
+            System.currentTimeMillis(), end), android.widget.Toast.LENGTH_LONG).show()
+    }
+    PanelBox("⏺ Grabar") {
+        if (rec != null) {
+            Text("Grabando «${rec.title}»", style = Type.Label, color = Jx.Live)
+            Text("Termina a las ${hhmm(rec.end)}", style = Type.Small, color = Jx.Muted)
+            ChoiceRow("■ Detener grabación", false, Modifier.focusRequester(req)) { com.jox3.iptvexo.tv.data.Recorder.stop(ctx, rec.id) }
+        } else {
+            Text("Se guarda en .ts con la misma calidad. Puedes seguir viendo este canal mientras graba.", style = Type.Small, color = Jx.Muted)
+            if (now != null && nowMsIn(now)) ChoiceRow("Este programa (hasta las ${hhmm(now.end)})", false, Modifier.focusRequester(req)) { go(now.cleanTitle, now.end) }
+            listOf(30, 60, 120).forEachIndexed { i, m ->
+                ChoiceRow(if (m < 60) "$m minutos" else "${m / 60} hora${if (m > 60) "s" else ""}", false,
+                    if (i == 0 && (now == null || !nowMsIn(now))) Modifier.focusRequester(req) else Modifier) {
+                    go(now?.cleanTitle?.takeIf { nowMsIn(now) } ?: ch.name, System.currentTimeMillis() + m * 60_000L)
+                }
+            }
+        }
+        Text("Tus grabaciones: Ajustes → Grabaciones", style = Type.Small, color = Jx.Faint)
+    }
+}
+
+private fun nowMsIn(p: com.jox3.iptvexo.tv.data.EpgItem) = System.currentTimeMillis() in p.start until p.end

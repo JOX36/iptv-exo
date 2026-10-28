@@ -262,7 +262,11 @@ private fun GuideRow(
                                         else -> onClick()
                                     }
                                 },
-                                onLongClick = onLongClick,
+                                // Mantener OK sobre un programa de ahora o futuro: grabarlo
+                                onLongClick = if (!past) ({
+                                    android.widget.Toast.makeText(ctx, com.jox3.iptvexo.tv.data.Recorder.schedule(ctx, repo.api.account, ch,
+                                        p.cleanTitle, p.start, p.end), android.widget.Toast.LENGTH_LONG).show()
+                                }) else onLongClick,
                                 modifier = Modifier.offset(x = left).width(w).fillMaxHeight()
                                     .onFocusChanged { if (it.isFocused) onFocus(p) },
                                 shape = RoundedCornerShape(8.dp),
@@ -330,7 +334,7 @@ private fun ProgramInfo(sel: Pair<Channel, EpgItem?>?, repo: TvRepo, nowMs: Long
                 pastP && repo.canCatchup(ch, p!!) -> "OK: ⏪ ver este programa (ya pasó)"
                 pastP -> "Este canal no guarda programas pasados"
                 p != null && p.start > nowMs -> if (com.jox3.iptvexo.tv.data.Reminders.has(androidx.compose.ui.platform.LocalContext.current, repo.api.account, ch, p))
-                    "⏰ Te aviso cuando empiece · OK: quitar el aviso" else "OK: ⏰ avisarme cuando empiece"
+                    "⏰ Te aviso cuando empiece · OK: quitar el aviso · Mantén OK: ⏺ grabar" else "OK: ⏰ avisarme · Mantén OK: ⏺ grabar"
                 playing -> "OK: ver en pantalla completa"
                 else -> "OK: ver en la vista previa"
             },

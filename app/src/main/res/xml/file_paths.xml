@@ -4,4 +4,6 @@
     <cache-path name="updates" path="updates/" />
     <!-- Póster de la invitación a "Ver juntos" -->
     <cache-path name="share" path="share/" />
+    <!-- Grabaciones en la memoria interna (para compartirlas) -->
+    <external-files-path name="grabaciones" path="Grabaciones/" />
 </paths>
