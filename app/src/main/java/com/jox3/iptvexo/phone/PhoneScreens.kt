@@ -39,7 +39,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -75,10 +74,8 @@ import com.jox3.iptvexo.tv.data.TvRepo
 import com.jox3.iptvexo.tv.data.XtreamApi
 import com.jox3.iptvexo.tv.ui.Jx
 import com.jox3.iptvexo.tv.ui.RemoteImage
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -284,7 +281,6 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpe
     var trailerOpen by remember { mutableStateOf(false) }
     if (trailerOpen && tm != null) PhoneTrailerDialog(tm.trailerKey) { trailerOpen = false }
     val others = com.jox3.iptvexo.tv.ui.rememberOtherCopies("movie", movie.name, movie.id, repo)
-    val ctx = LocalContext.current
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { DetailHeader(info?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: movie.poster, movie.name, onBack, tm) }
         item {
@@ -352,7 +348,6 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
     var trailerOpen by remember { mutableStateOf(false) }
     if (trailerOpen && tm != null) PhoneTrailerDialog(tm.trailerKey) { trailerOpen = false }
     val others = com.jox3.iptvexo.tv.ui.rememberOtherCopies("series", name, seriesId, repo)
-    val ctx = LocalContext.current
     val title = data?.name?.ifBlank { null } ?: name
     val cover = data?.poster?.ifBlank { null } ?: poster.ifBlank { null } ?: tm?.poster.orEmpty()
     val isFav = lib.isFavorite("series", seriesId)
@@ -446,10 +441,6 @@ private fun DetailHeader(image: String, title: String, onBack: () -> Unit, tm: c
 }
 
 // ─────────────────────────── Buscar ───────────────────────────
-
-private class SearchResults(val channels: List<Channel>, val movies: List<Movie>, val series: List<Series>) {
-    val isEmpty get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty()
-}
 
 @Composable
 fun PhoneSearch(

@@ -302,7 +302,7 @@ object Tmdb {
 
     /** En el celular, de fondo solo con WiFi (no gasta datos). En la TV siempre. */
     fun onUnmeteredNetwork(ctx: Context): Boolean = runCatching {
-        val cm: android.net.ConnectivityManager = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+        val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
         cm.isActiveNetworkMetered.not()
     }.getOrDefault(false)
 

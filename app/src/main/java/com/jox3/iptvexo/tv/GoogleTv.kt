@@ -3,7 +3,6 @@ package com.jox3.iptvexo.tv
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.UiModeManager
-import android.content.ContentUris
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap

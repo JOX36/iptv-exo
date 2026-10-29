@@ -29,7 +29,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import com.jox3.iptvexo.tv.ui.safeFocusRestorer
 import com.jox3.iptvexo.tv.ui.rememberFocusMemory
 import com.jox3.iptvexo.tv.ui.focusMemoryItem
 import com.jox3.iptvexo.tv.ui.focusMemoryGroup

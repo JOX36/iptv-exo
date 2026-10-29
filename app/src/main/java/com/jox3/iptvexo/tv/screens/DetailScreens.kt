@@ -230,7 +230,6 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
     val seasons = data?.seasons.orEmpty()
     val allEpisodes = remember(data) { seasons.values.flatten() }
     val tm = rememberTmdb("series", name)
-    val ctx = androidx.compose.ui.platform.LocalContext.current
     var trailerFull by remember { mutableStateOf(false) }
     val others = rememberOtherCopies("series", name, seriesId, repo)
     val servers = com.jox3.iptvexo.tv.data.LocalServers.current
