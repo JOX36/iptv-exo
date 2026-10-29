@@ -326,6 +326,8 @@ private fun ChannelRow(
                     ProgressLine(now.progress(), Modifier.fillMaxWidth(), height = 2.dp)
                 }
             }
+            // ⏪ = se puede ver desde el inicio (el canal guarda programas pasados)
+            if (ch.archiveDays > 0) Text("⏪", color = Jx.Accent, fontSize = 12.sp)
             if (playing) JxIcon(Ico.PLAY, 12.dp, Jx.Accent)
             if (favorite || hovered) {
                 Box(Modifier.size(26.dp).clip(RoundedCornerShape(50))

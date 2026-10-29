@@ -359,7 +359,9 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
                 }
                 if (vod == null) RoundButton(Ico.LIST, "Canales (C)", selected = live.panel == Panel.CHANNELS) { live.toggle(Panel.CHANNELS) }
                 if (vod == null) RoundButton(Ico.GUIDE, "Guía: ahora y lo que sigue (G)", selected = live.panel == Panel.PROGRAMS) { live.toggle(Panel.PROGRAMS) }
+                if (vod == null) RoundButton(Ico.RESTART, "Desde el inicio: el programa de ahora desde que empezó") { live.restartCurrent() }
                 if (vod == null) RoundButton(Ico.SEARCH, "Elegir guía", selected = live.panel == Panel.GUIDE_PICK) { live.toggle(Panel.GUIDE_PICK) }
+                if (vod == null) RoundButton(Ico.RECORD, "Grabar", selected = live.panel == Panel.RECORD) { live.toggle(Panel.RECORD) }
                 RoundButton(Ico.AUDIO, "Audio (A)", selected = live.panel == Panel.AUDIO) { live.toggle(Panel.AUDIO) }
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }
@@ -506,6 +508,7 @@ private fun SidePanel(live: LiveController) {
             Panel.TOGETHER -> "👥 Ver juntos"
             Panel.PROGRAMS -> "Guía"
             Panel.GUIDE_PICK -> "Elegir guía"
+            Panel.RECORD -> "⏺ Grabar"
             Panel.NONE -> ""
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -568,7 +571,8 @@ private fun SidePanel(live: LiveController) {
                 }
             }
             Panel.TOGETHER -> TogetherPanel()
-            Panel.PROGRAMS -> live.current?.let { ProgramsPanel(live.repo, it) }
+            Panel.PROGRAMS -> live.current?.let { ProgramsPanel(live, it) }
+            Panel.RECORD -> live.current?.let { RecordPanel(live, it) }
             Panel.GUIDE_PICK -> live.current?.let { GuidePickPanel(live.repo, it) }
             Panel.NONE -> {}
         }
@@ -674,12 +678,23 @@ private fun LiveController.toggle(p: Panel) { panel = if (panel == p) Panel.NONE
 
 /** "Guía": lo que dan ahora y lo que sigue en el canal. Clic en un programa = su descripción. */
 @Composable
-private fun ProgramsPanel(repo: TvRepo, ch: Channel) {
+private fun ProgramsPanel(live: LiveController, ch: Channel) {
+    val repo = live.repo
     val version by repo.epgVersion
     val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
     val now = System.currentTimeMillis()
-    val list = remember(epg) { epg.orEmpty().filter { it.end > now }.take(30) }
-    var open by remember(ch.id) { mutableStateOf<Long?>(list.firstOrNull()?.start) }
+    // Con archivo: también los programas que ya pasaron hoy (para verlos desde el inicio)
+    val list = remember(epg) {
+        val all = epg.orEmpty()
+        val coming = all.filter { it.end > now }
+        (if (ch.archiveDays > 0) all.filter { it.end <= now && it.start > now - 12 * 3_600_000L }.takeLast(8) + coming else coming).take(38)
+    }
+    var open by remember(ch.id) { mutableStateOf<Long?>(list.firstOrNull { now in it.start until it.end }?.start) }
+    @Suppress("UNUSED_VARIABLE") val rv = com.jox3.tvdesktop.data.Reminders.version.intValue
+    @Suppress("UNUSED_VARIABLE") val recV = com.jox3.tvdesktop.data.Recorder.version.intValue
+    Text(if (ch.archiveDays > 0) "⏪ Este canal guarda ${ch.archiveDays} día(s): abre un programa para verlo desde el inicio."
+        else "Este canal no guarda programas pasados en tu servidor (no se puede ver desde el inicio).",
+        color = if (ch.archiveDays > 0) Jx.Accent else Jx.Faint, fontFamily = Exo2, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
     if (epg == null) { Note("Cargando guía…"); return }
     if (list.isEmpty()) { Note("Sin guía para este canal. Prueba con «Elegir guía»."); return }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -693,9 +708,11 @@ private fun ProgramsPanel(repo: TvRepo, ch: Channel) {
                     .padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val past = p.end <= now
+                    val rem = p.start > now && com.jox3.tvdesktop.data.Reminders.has(repo.api.account, ch, p)
                     Text(if (airing) "AHORA" else hhmm(p.start), color = if (airing) Jx.Accent else Jx.Muted, fontFamily = Exo2,
                         fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.width(56.dp))
-                    Text(p.label, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp,
+                    Text((if (rem) "⏰ " else "") + p.label, color = if (past) Jx.TextSoft else Jx.Text, fontFamily = Exo2, fontSize = 14.sp,
                         fontWeight = if (airing) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = if (expanded) 3 else 1, overflow = TextOverflow.Ellipsis)
                 }
@@ -711,6 +728,7 @@ private fun ProgramsPanel(repo: TvRepo, ch: Channel) {
                         color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp)
                     if (p.description.isNotBlank()) Text(p.description, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
                         modifier = Modifier.padding(top = 4.dp))
+                    ProgramActions(live, ch, p, now)
                 }
             }
         }
@@ -733,5 +751,60 @@ private fun GuidePickPanel(repo: TvRepo, ch: Channel) {
                 Choice(c.label, c.selected) { repo.chooseGuide(ch, c.key); reload++ }
             }
         }
+    }
+}
+
+/** Lo que se puede hacer con un programa de la guía: ⏪ verlo desde el inicio, ⏰ avisarme, ⏺ grabar. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun ProgramActions(live: LiveController, ch: Channel, p: com.jox3.tvdesktop.data.EpgItem, now: Long) {
+    val repo = live.repo
+    val acc = repo.api.account
+    @Suppress("UNUSED_VARIABLE") val rv = com.jox3.tvdesktop.data.Reminders.version.intValue
+    @Suppress("UNUSED_VARIABLE") val recV = com.jox3.tvdesktop.data.Recorder.version.intValue
+    val canCu = TvRepo.canCatchup(ch, p, now)
+    val future = p.start > now
+    val rem = future && com.jox3.tvdesktop.data.Reminders.has(acc, ch, p)
+    val recorded = p.end > now && com.jox3.tvdesktop.data.Recorder.hasFor(acc.key, ch.id, maxOf(p.start, now))
+    if (!canCu && !future && p.end <= now) return
+    androidx.compose.foundation.layout.FlowRow(
+        Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (canCu) PillButton("⏪ Ver desde el inicio") { live.panel = Panel.NONE; live.playCatchup(ch, p) }
+        if (future) GhostButton(if (rem) "⏰ Quitar aviso" else "⏰ Avisarme") { live.notice(com.jox3.tvdesktop.data.Reminders.toggle(acc, ch, p)) }
+        if (p.end > now) GhostButton(if (recorded) "⏺ Ya se graba" else "⏺ Grabar") {
+            if (!recorded) live.notice(com.jox3.tvdesktop.data.Recorder.schedule(acc, ch, p.cleanTitle, p.start, p.end))
+        }
+    }
+}
+
+/** Grabar este canal: el programa de ahora o un tiempo fijo. Si ya graba, detener. */
+@Composable
+private fun RecordPanel(live: LiveController, ch: Channel) {
+    val repo = live.repo
+    @Suppress("UNUSED_VARIABLE") val v = com.jox3.tvdesktop.data.Recorder.version.intValue
+    val version by repo.epgVersion
+    val epg by produceState(repo.cachedEpg(ch), ch.id, version) { value = repo.epg(ch) }
+    val nowMs = System.currentTimeMillis()
+    val cur = epg?.firstOrNull { nowMs in it.start until it.end }
+    val rec = com.jox3.tvdesktop.data.Recorder.recordingNow(repo.api.account.key, ch.id)
+    fun go(title: String, end: Long) {
+        live.notice(com.jox3.tvdesktop.data.Recorder.schedule(repo.api.account, ch, title, System.currentTimeMillis(), end))
+    }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (rec != null) {
+            Text("Grabando «${rec.title}»", color = Jx.Live, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+            Note("Termina a las ${hhmm(rec.end)}")
+            Choice("■ Detener grabación", false) { com.jox3.tvdesktop.data.Recorder.stop(rec.id) }
+        } else {
+            Note("Se guarda en .ts con la misma calidad. Puedes seguir viendo este canal mientras graba, y sigue grabando aunque minimices el programa.")
+            if (cur != null) Choice("Este programa (hasta las ${hhmm(cur.end)})", false) { go(cur.cleanTitle, cur.end) }
+            listOf(30, 60, 120).forEach { m ->
+                Choice(if (m < 60) "$m minutos" else "${m / 60} hora${if (m > 60) "s" else ""}", false) {
+                    go(cur?.cleanTitle ?: ch.name, System.currentTimeMillis() + m * 60_000L)
+                }
+            }
+        }
+        Note("Tus grabaciones: Ajustes → Grabaciones")
     }
 }

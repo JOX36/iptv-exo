@@ -115,6 +115,18 @@ class XtreamApi(val account: Account) {
      * que .m3u8; se usa .ts salvo que el servidor diga que no lo permite.
      */
     @Volatile var liveExt: String = "ts"
+    /**
+     * Repetición de un programa (catch-up): desde [startMs] durante [minutes] minutos.
+     * La hora va en la zona horaria del servidor. Igual que Android.
+     */
+    fun timeshiftUrl(id: String, startMs: Long, minutes: Int, tz: java.util.TimeZone): String {
+        val f = java.text.SimpleDateFormat("yyyy-MM-dd:HH-mm", java.util.Locale.US).apply { timeZone = tz }
+        return "$host/timeshift/${account.user}/${account.pass}/$minutes/${f.format(java.util.Date(startMs))}/$id.ts"
+    }
+
+    /** Señal en vivo en .ts (para grabar). */
+    fun liveTsUrl(id: String) = "$host/live/${account.user}/${account.pass}/$id.ts"
+
     /** Guía completa del servidor (XMLTV: todos los canales, varios días). */
     fun xmltvUrl() = "$host/xmltv.php?username=${enc(account.user)}&password=${enc(account.pass)}"
 
@@ -145,6 +157,7 @@ class XtreamApi(val account: Account) {
                 expires = exp,
                 activeCons = u.optString("active_cons", "0"),
                 maxCons = u.optString("max_connections", "?"),
+                timezone = json.optJSONObject("server_info")?.optString("timezone").orEmpty(),
             )
         }
     }
@@ -174,6 +187,7 @@ class XtreamApi(val account: Account) {
                 categoryId = o["category_id"].orEmpty(),
                 num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
                 epgId = o["epg_channel_id"].orEmpty().takeUnless { it == "null" }.orEmpty(),
+                archiveDays = if (o["tv_archive"] == "1") (o["tv_archive_duration"]?.toDoubleOrNull()?.toInt() ?: 1).coerceAtLeast(1) else 0,
             )
         }.distinctBy { it.id } // algunos servidores repiten el mismo canal
     }
@@ -235,7 +249,7 @@ class XtreamApi(val account: Account) {
     }
 
     companion object {
-        private val CH_KEYS = setOf("stream_id", "name", "stream_icon", "category_id", "num", "epg_channel_id")
+        private val CH_KEYS = setOf("stream_id", "name", "stream_icon", "category_id", "num", "epg_channel_id", "tv_archive", "tv_archive_duration")
         private val MOVIE_KEYS = setOf("stream_id", "name", "stream_icon", "rating", "container_extension", "category_id", "added")
         private val SERIES_KEYS = setOf("series_id", "name", "cover", "rating", "category_id", "last_modified")
 

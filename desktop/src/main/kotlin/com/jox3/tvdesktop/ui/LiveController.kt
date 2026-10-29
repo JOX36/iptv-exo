@@ -9,6 +9,7 @@ import com.jox3.tvdesktop.data.SavedItem
 import com.jox3.tvdesktop.data.TvRepo
 import com.jox3.tvdesktop.player.Aspect
 import com.jox3.tvdesktop.player.VideoPlayer
+import kotlinx.coroutines.launch
 
 /**
  * Cómo se ve el reproductor: en la vista previa, ocupando la ventana, en mini (ventana
@@ -17,7 +18,7 @@ import com.jox3.tvdesktop.player.VideoPlayer
 enum class ViewMode { EMBEDDED, FULL, MINI, PIP }
 
 /** Panel de opciones abierto sobre el video. */
-enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO, TOGETHER, PROGRAMS, GUIDE_PICK }
+enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO, TOGETHER, PROGRAMS, GUIDE_PICK, RECORD }
 
 /**
  * Película o episodio en reproducción. [next] = siguiente episodio (para "Siguiente" y
@@ -31,6 +32,8 @@ data class VodSession(
     val url: String,
     val nextLabel: String? = null,
     val next: (() -> Unit)? = null,
+    /** Repeticiones y grabaciones: no entran a "Seguir viendo" ni a "Porque viste…". */
+    val noHistory: Boolean = false,
 )
 
 /** Pedido de abrir algo desde el buscador: un canal, la ficha de una película o de una serie. */
@@ -109,10 +112,51 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
             com.jox3.tvdesktop.player.WatchTogether.leave()
     }
 
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+
+    /**
+     * Ver un programa de la guía desde el inicio (o uno que ya pasó), si el canal guarda archivo.
+     * Se ve como una película: se puede pausar, adelantar y retroceder. Igual que Android.
+     */
+    fun playCatchup(ch: Channel, p: com.jox3.tvdesktop.data.EpgItem) {
+        scope.launch {
+            val tz = repo.serverTimeZone()
+            val minutes = (((p.end - p.start) / 60_000L).toInt() + 5).coerceIn(5, 600)
+            val url = repo.api.timeshiftUrl(ch.id, p.start, minutes, tz)
+            val item = SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId)
+            playVod(VodSession(item, p.cleanTitle, "${ch.name} · ⏪ desde el inicio", p.icon.ifBlank { ch.logo }, url, noHistory = true), 0)
+            mode = ViewMode.FULL
+        }
+    }
+
+    /** Lo de "Desde el inicio" del reproductor: el programa de ahora, o por qué no se puede. */
+    fun restartCurrent() {
+        val ch = current ?: return
+        val now = System.currentTimeMillis()
+        val cur = repo.cachedEpg(ch)?.firstOrNull { now in it.start until it.end }
+        val msg = when {
+            ch.archiveDays <= 0 -> "Este canal no guarda programas pasados en tu servidor. Busca los canales con ⏪."
+            cur == null -> "No encuentro qué programa dan ahora en la guía de este canal."
+            !TvRepo.canCatchup(ch, cur) -> "El programa acaba de empezar. Prueba en un minuto."
+            else -> null
+        }
+        if (msg != null) notice(msg) else playCatchup(ch, cur!!)
+    }
+
+    /** Ver una grabación (también mientras se sigue grabando). */
+    fun playRecording(r: com.jox3.tvdesktop.data.Recorder.Rec) {
+        val f = java.io.File(r.file)
+        if (!f.exists() || f.length() == 0L) { notice("La grabación todavía no tiene video"); return }
+        val fmt = java.text.SimpleDateFormat("d MMM · h:mm a", java.util.Locale.forLanguageTag("es"))
+        val item = SavedItem("live", r.chId, r.chName, r.logo)
+        playVod(VodSession(item, r.title, "${r.chName} · grabado ${fmt.format(java.util.Date(r.start))}", r.logo, f.absolutePath, noHistory = true), 0)
+        mode = ViewMode.FULL
+    }
+
     /** Guarda dónde va la película o episodio (cada pocos segundos y al salir). */
     fun saveVodProgress() {
         val v = vod ?: return
-        if (v.item.kind == "trailer") return // los tráileres no van a "continuar viendo"
+        if (v.item.kind == "trailer" || v.noHistory) return // tráileres, repeticiones y grabaciones no van a "continuar viendo"
         val len = player.lengthMs
         if (len <= 0) return
         val pos = if (player.state == com.jox3.tvdesktop.player.PlayState.Ended) len else player.timeMs
@@ -125,7 +169,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
      */
     fun finishedItem(): SavedItem? {
         val v = vod ?: return null
-        if (v.item.kind == "trailer" || v.next != null) return null
+        if (v.item.kind == "trailer" || v.noHistory || v.next != null) return null
         val len = player.lengthMs
         val ended = player.state == com.jox3.tvdesktop.player.PlayState.Ended
         val done = ended || (len > 0 && player.timeMs.toFloat() / len >= 0.9f)
@@ -238,6 +282,10 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     }
 
     fun flash(text: String) { toast = text to System.currentTimeMillis() }
+
+    /** Aviso más largo abajo al centro, encima de todo (recordatorios, grabaciones, desde el inicio). */
+    var notice by mutableStateOf<Pair<String, Long>?>(null); private set
+    fun notice(text: String) { notice = text to System.currentTimeMillis() }
 
     companion object {
         val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
