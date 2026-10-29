@@ -161,6 +161,7 @@ class PhoneActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        com.jox3.iptvexo.tv.data.Downloads.resumePending(this)
 
         Coil.setImageLoader(
             ImageLoader.Builder(this)

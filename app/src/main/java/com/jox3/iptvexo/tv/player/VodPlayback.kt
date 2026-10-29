@@ -257,7 +257,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     private fun ensurePlayer(): ExoPlayer = exo ?: run {
         PlayerSafety.markStarting(context); startingMarked = true
         ExoPlayer.Builder(context)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(NetClient.player())))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, OkHttpDataSource.Factory(NetClient.player()))))
             .setRenderersFactory(
                 DefaultRenderersFactory(context)
                     .setExtensionRendererMode(

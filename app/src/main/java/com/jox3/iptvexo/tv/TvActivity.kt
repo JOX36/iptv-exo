@@ -28,6 +28,7 @@ class TvActivity : ComponentActivity(), TvHost {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.jox3.iptvexo.tv.data.Downloads.resumePending(this)
         hideSystemBars()
 
         // Imágenes (logos, pósters, fondos): mismo cliente HTTP que la app y caché

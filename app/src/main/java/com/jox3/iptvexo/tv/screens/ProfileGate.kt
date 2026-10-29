@@ -32,6 +32,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -90,6 +94,12 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
     // Perfiles creados en otro equipo: se bajan al mostrar esta pantalla
     LaunchedEffect(Unit) { CloudSync.syncProfiles(ctx, store) }
 
+    // Animación al entrar: el avatar elegido crece hasta llenar la pantalla
+    var entering by remember { mutableStateOf<Profile?>(null) }
+    val avatarBounds = remember { HashMap<String, androidx.compose.ui.geometry.Rect>() }
+    var gateOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var gateSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
     fun finish(p: Profile) {
         Profiles.current = store.byId(p.id) ?: p
         if (!tv) store.remembered = if (rememberHere) p.id else null
@@ -97,16 +107,29 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
     }
 
     // El aviso del código JOX3 lo hace la app al entrar al perfil (VaultUnlockGate), siempre
-    fun choose(p: Profile) = finish(p)
+    fun choose(p: Profile) { if (entering == null) entering = p }
 
     BackHandler(enabled = mode != Mode.Pick || onCancel != null) {
         if (mode == Mode.Pick) onCancel?.invoke() else mode = Mode.Pick
     }
 
-    Box(Modifier.fillMaxSize().background(Jx.Bg)) {
+    val zoom = remember { androidx.compose.animation.core.Animatable(0f) }
+    LaunchedEffect(entering) {
+        val p = entering ?: return@LaunchedEffect
+        zoom.snapTo(0f)
+        zoom.animateTo(1f, androidx.compose.animation.core.tween(620, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        ProfileEnter.reveal.value = store.byId(p.id) ?: p
+        finish(p)
+    }
+
+    Box(Modifier.fillMaxSize().background(Jx.Bg).onGloballyPositioned {
+        gateOrigin = it.localToWindow(androidx.compose.ui.geometry.Offset.Zero); gateSize = it.size
+    }) {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = 1f - zoom.value * 0.9f }) {
         when (val m = mode) {
             Mode.Pick, Mode.Manage -> PickScreen(
                 store, tv, manage = m == Mode.Manage, rememberHere = rememberHere,
+                onAvatarBounds = { id, r -> avatarBounds[id] = r },
                 onRemember = { rememberHere = it },
                 onProfile = { p ->
                     when {
@@ -135,6 +158,54 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
             }
             is Mode.Forgot -> ForgotScreen(store, tv, m.profile, onDone = { mode = Mode.Pick })
         }
+        }
+        entering?.let { p ->
+            // Si se escribió un PIN, el avatar ya no está en pantalla: crece desde el centro
+            val r = avatarBounds[p.id]?.translate(-gateOrigin.x, -gateOrigin.y)?.takeIf { mode == Mode.Pick || mode == Mode.Manage }
+            ProfileZoom(p, r, gateSize, zoom.value)
+        }
+    }
+}
+
+/** Para que la app, al abrir el perfil, se descubra desde su color (continuación de la animación). */
+internal object ProfileEnter { val reveal = mutableStateOf<Profile?>(null) }
+
+/** El avatar crece desde su lugar hasta tapar toda la pantalla con su color. */
+@Composable
+private fun ProfileZoom(p: Profile, from: androidx.compose.ui.geometry.Rect?, screen: androidx.compose.ui.unit.IntSize, t: Float) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val side = from?.width ?: with(density) { 112.dp.toPx() }
+    val cx = from?.center?.x ?: (screen.width / 2f)
+    val cy = from?.center?.y ?: (screen.height / 2f)
+    val target = 2f * kotlin.math.hypot(screen.width.toFloat(), screen.height.toFloat()) / side + 1f
+    val scale = 1f + (target - 1f) * t
+    val sideDp = with(density) { side.toDp() }
+    Box(
+        Modifier
+            .offset { androidx.compose.ui.unit.IntOffset((cx - side / 2).toInt(), (cy - side / 2).toInt()) }
+            .size(sideDp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clip(RoundedCornerShape(sideDp * 0.22f)).background(Color(p.color)),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicText(p.emoji, modifier = Modifier.graphicsLayer { alpha = (1f - t * 2.2f).coerceIn(0f, 1f) },
+            style = TextStyle(fontSize = (sideDp.value * 0.46f).sp, textAlign = TextAlign.Center))
+    }
+}
+
+/** Al entrar al perfil: su color tapa la pantalla y se desvanece mostrando el contenido. */
+@Composable
+private fun ProfileReveal() {
+    val p = ProfileEnter.reveal.value ?: return
+    val a = remember(p) { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(p) {
+        delay(120)
+        a.animateTo(0f, androidx.compose.animation.core.tween(520, easing = androidx.compose.animation.core.LinearOutSlowInEasing))
+        ProfileEnter.reveal.value = null
+    }
+    Box(Modifier.fillMaxSize().graphicsLayer { alpha = a.value }.background(Color(p.color)), contentAlignment = Alignment.Center) {
+        BasicText(p.emoji, modifier = Modifier.graphicsLayer { val k = 1f + (1f - a.value) * 0.6f; scaleX = k; scaleY = k; alpha = a.value },
+            style = TextStyle(fontSize = 64.sp, textAlign = TextAlign.Center))
     }
 }
 
@@ -144,6 +215,7 @@ fun ProfileGate(store: ProfileStore, tv: Boolean, onPick: (Profile) -> Unit, onC
 private fun PickScreen(
     store: ProfileStore, tv: Boolean, manage: Boolean, rememberHere: Boolean,
     onRemember: (Boolean) -> Unit, onProfile: (Profile) -> Unit, onAdd: () -> Unit, onManage: () -> Unit,
+    onAvatarBounds: (String, androidx.compose.ui.geometry.Rect) -> Unit = { _, _ -> },
 ) {
     val first = remember { FocusRequester() }
     LaunchedEffect(manage) { if (tv) { delay(120); runCatching { first.requestFocus() } } }
@@ -151,7 +223,8 @@ private fun PickScreen(
     val tiles: List<@Composable () -> Unit> = buildList {
         store.list.forEachIndexed { i, p ->
             add {
-                ProfileTile(tv, p, size, manage, if (i == 0) Modifier.focusRequester(first) else Modifier) { onProfile(p) }
+                ProfileTile(tv, p, size, manage, if (i == 0) Modifier.focusRequester(first) else Modifier,
+                    onBounds = { r -> onAvatarBounds(p.id, r) }) { onProfile(p) }
             }
         }
         if (store.canAdd) add { AddTile(tv, size, onAdd) }
@@ -195,10 +268,12 @@ private fun PickScreen(
 }
 
 @Composable
-private fun ProfileTile(tv: Boolean, p: Profile, size: Dp, manage: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun ProfileTile(tv: Boolean, p: Profile, size: Dp, manage: Boolean, modifier: Modifier,
+                        onBounds: (androidx.compose.ui.geometry.Rect) -> Unit = {}, onClick: () -> Unit) {
     Press(tv, onClick, modifier, scale = 1.08f) { f ->
         Column(Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Avatar(p.emoji, p.color, size, ring = f, lock = p.hasPin, edit = manage)
+            Avatar(p.emoji, p.color, size, ring = f, lock = p.hasPin, edit = manage,
+                modifier = Modifier.onGloballyPositioned { onBounds(it.boundsInWindow()) })
             Spacer(Modifier.height(10.dp))
             Txt(p.name, if (tv) 15 else 16, if (f || !tv) Jx.Text else Jx.Muted, bold = f, maxLines = 1)
         }
@@ -220,10 +295,11 @@ private fun AddTile(tv: Boolean, size: Dp, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Avatar(emoji: String, color: Long, size: Dp, ring: Boolean = false, lock: Boolean = false, edit: Boolean = false) {
+private fun Avatar(emoji: String, color: Long, size: Dp, ring: Boolean = false, lock: Boolean = false, edit: Boolean = false,
+                   modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(size * 0.22f)
     Box(
-        Modifier.size(size)
+        modifier.size(size)
             .then(if (ring) Modifier.border(3.dp, Jx.Text, shape) else Modifier)
             .padding(if (ring) 5.dp else 0.dp)
             .clip(shape).background(Color(color)),
@@ -661,8 +737,11 @@ fun VaultUnlockGate(store: ProfileStore, tv: Boolean, profileId: String, onSwitc
         CloudSync.syncAllProfiles(ctx, except = store.account)
     }
     val a = ask
-    if (a != null) Box(Modifier.fillMaxSize().background(Jx.Bg)) { UnlockPrompt(store, tv, a, onFinish = { ask = null; checkVisible() }) }
-    else content()
+    Box(Modifier.fillMaxSize()) {
+        if (a != null) Box(Modifier.fillMaxSize().background(Jx.Bg)) { UnlockPrompt(store, tv, a, onFinish = { ask = null; checkVisible() }) }
+        else content()
+        ProfileReveal()
+    }
 }
 
 /** Al elegir un perfil con código JOX3 en un equipo que aún no tiene sus servidores. */

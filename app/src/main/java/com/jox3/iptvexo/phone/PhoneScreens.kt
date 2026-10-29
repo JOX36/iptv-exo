@@ -100,6 +100,11 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
     val progressVersion by lib.progressVersion
     val resume = remember(progressVersion) { lib.continueWatching() }
     val becauseList = lib.because.value?.second.orEmpty()
+    val homeCtx = LocalContext.current
+    val dlv = com.jox3.iptvexo.tv.data.Downloads.version.intValue
+    val doneDownloads = remember(dlv) {
+        com.jox3.iptvexo.tv.data.Downloads.all(homeCtx).filter { it.status == com.jox3.iptvexo.tv.data.Downloads.Status.DONE }.sortedByDescending { it.ts }.take(20)
+    }
     val fresh = com.jox3.iptvexo.tv.ui.rememberFreshImages(repo, remember(resume, becauseList) { resume.map { it.item } + becauseList })
     val recents = lib.recentChannels.toList()
 
@@ -125,6 +130,20 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
                         ) {
                             if (isEp) onOpenSeries(r.item.seriesId, r.item.name.substringBefore(" · "), r.item.image)
                             else launcher.playMovie(r.item.id, r.item.name, fresh.imageOf(r.item), r.item.ext, r.item.categoryId)
+                        }
+                    }
+                }
+            }
+        }
+        // ── Descargas listas (para ver sin internet) ──
+        if (doneDownloads.isNotEmpty()) item {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("Descargadas · sin internet")
+                LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(doneDownloads, key = { "dl" + it.id }) { d ->
+                        PosterTile(d.series.ifBlank { d.title }, d.image, Modifier.width(112.dp),
+                            badges = if (d.kind == "episode") listOf("T${d.season}E${d.num}") else emptyList()) {
+                            launcher.playDownload(d, com.jox3.iptvexo.tv.data.Downloads.all(homeCtx))
                         }
                     }
                 }
@@ -310,6 +329,17 @@ fun PhoneMovieDetail(repo: TvRepo, launcher: PlayerLauncher, movie: Movie, onOpe
                 if (!tm?.trailerKey.isNullOrBlank()) PButton("Ver tráiler", Modifier.fillMaxWidth(), icon = R.drawable.ic_play, primary = false) {
                     trailerOpen = true
                 }
+                val dctx = LocalContext.current
+                val dlStart = com.jox3.iptvexo.tv.screens.rememberDownloadStarter()
+                val dv = com.jox3.iptvexo.tv.data.Downloads.version.intValue
+                val dl = remember(dv, movie.id) { com.jox3.iptvexo.tv.data.Downloads.find(dctx, repo.api.account, "movie", movie.id) }
+                PButton(com.jox3.iptvexo.tv.screens.downloadLabel(dl), Modifier.fillMaxWidth(), icon = R.drawable.ic_download, primary = false,
+                    progress = dl?.takeIf { it.status == com.jox3.iptvexo.tv.data.Downloads.Status.DOWNLOADING }?.fraction) {
+                    com.jox3.iptvexo.tv.screens.downloadClick(dctx, dl) {
+                        dlStart { com.jox3.iptvexo.tv.screens.dlToast(dctx, com.jox3.iptvexo.tv.data.Downloads.movie(dctx, repo.api.account, movie.id, movie.name,
+                            info?.poster?.ifBlank { null } ?: movie.poster.ifBlank { null } ?: tm?.poster.orEmpty(), ext)) }
+                    }
+                }
                 AvailableIn(others) { c -> onOpenMovie(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L)) }
                 (info?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null })?.let { Text(it, style = PType.Body, color = Jx.TextSoft) }
                 if (tm?.cast.isNullOrEmpty()) {
@@ -354,6 +384,22 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
     val title = data?.name?.ifBlank { null } ?: name
     val cover = data?.poster?.ifBlank { null } ?: poster.ifBlank { null } ?: tm?.poster.orEmpty()
     val isFav = lib.isFavorite("series", seriesId)
+    val dctx = LocalContext.current
+    val dlStart = com.jox3.iptvexo.tv.screens.rememberDownloadStarter()
+    val dv = com.jox3.iptvexo.tv.data.Downloads.version.intValue
+    val dls = remember(dv) { com.jox3.iptvexo.tv.data.Downloads.all(dctx).filter { it.acc == repo.api.account.key && it.seriesId == seriesId }.associateBy { it.streamId } }
+    var dlSheet by remember { mutableStateOf(false) }
+    fun download(eps: List<com.jox3.iptvexo.tv.data.Episode>) = dlStart {
+        com.jox3.iptvexo.tv.screens.dlToast(dctx, com.jox3.iptvexo.tv.data.Downloads.episodes(dctx, repo.api.account, seriesId, title, cover, eps))
+    }
+    if (dlSheet) {
+        val seasonEps = seasons[season].orEmpty()
+        ChoiceSheet("Descargar $title", listOf(
+            Triple("Temporada $season (${seasonEps.size} episodios)", false) { download(seasonEps) },
+            Triple("Serie completa (${all.size} episodios)", false) { download(all) },
+            Triple("Un episodio: toca ⬇ junto a él", false) {},
+        )) { dlSheet = false }
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item { DetailHeader(data?.backdrop?.ifBlank { null } ?: tm?.backdrop?.ifBlank { null } ?: cover, title, onBack, tm) }
         item {
@@ -377,6 +423,7 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
                 if (!tm?.trailerKey.isNullOrBlank()) PButton("Ver tráiler", Modifier.fillMaxWidth(), icon = R.drawable.ic_play, primary = false) {
                     trailerOpen = true
                 }
+                if (all.isNotEmpty()) PButton("Descargar…", Modifier.fillMaxWidth(), icon = R.drawable.ic_download, primary = false) { dlSheet = true }
                 AvailableIn(others.filter { it.account.key != com.jox3.iptvexo.tv.data.LocalServers.current?.account?.key })
                 (data?.plot?.ifBlank { null } ?: tm?.overview?.ifBlank { null })?.let {
                     Text(it, style = PType.Body, color = Jx.TextSoft, maxLines = 5, overflow = TextOverflow.Ellipsis)
@@ -412,6 +459,14 @@ fun PhoneSeriesDetail(repo: TvRepo, launcher: PlayerLauncher, seriesId: String, 
                             Text("E${ep.num} · ${ep.title.ifBlank { "Episodio ${ep.num}" }}", style = PType.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(when { frac >= 0.95f -> "Visto"; frac > 0f -> "A medias"; else -> ep.duration }, style = PType.Tiny,
                                 color = if (frac >= 0.95f) Jx.Ok else Jx.Muted)
+                            val badge = com.jox3.iptvexo.tv.screens.downloadBadge(dls[ep.id])
+                            if (badge.isNotBlank()) Text(badge, style = PType.Tiny, color = if (badge.startsWith("✓")) Jx.Ok else Jx.Accent)
+                        }
+                        val epDl = dls[ep.id]
+                        RoundIcon(if (epDl?.status == com.jox3.iptvexo.tv.data.Downloads.Status.DONE) R.drawable.tv_ic_check else R.drawable.ic_download,
+                            com.jox3.iptvexo.tv.screens.downloadLabel(epDl), size = 40.dp, iconSize = 18.dp,
+                            tint = if (epDl?.status == com.jox3.iptvexo.tv.data.Downloads.Status.DONE) Jx.Ok else Jx.TextSoft) {
+                            com.jox3.iptvexo.tv.screens.downloadClick(dctx, epDl) { download(listOf(ep)) }
                         }
                     }
                 }
@@ -616,6 +671,8 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                   onServers: () -> Unit = {}, onBack: () -> Unit) {
     var recordings by remember { mutableStateOf(false) }
     if (recordings) { Box(Modifier.statusBarsPadding()) { com.jox3.iptvexo.tv.screens.RecordingsScreen(tv = false) { recordings = false } }; return }
+    var downloads by remember { mutableStateOf(false) }
+    if (downloads) { Box(Modifier.statusBarsPadding()) { com.jox3.iptvexo.tv.screens.DownloadsScreen(tv = false) { downloads = false } }; return }
     var organize by remember { mutableStateOf(false) }
     if (organize) { com.jox3.iptvexo.tv.screens.CategoryOrganizer(repo, tv = false) { organize = false }; return }
     var askDelete by remember { mutableStateOf(false) }
@@ -657,6 +714,7 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Buscar actualizaciones", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_update, primary = false) { act.checkUpdates() }
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
                 PButton("⏺ Grabaciones", Modifier.fillMaxWidth(), icon = R.drawable.ic_record, primary = false) { recordings = true }
+                PButton("Descargas", Modifier.fillMaxWidth(), icon = R.drawable.ic_download, primary = false) { downloads = true }
                 PButton("Organizar categorías", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false) { organize = true }
                 val tctx = LocalContext.current
                 var tzAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.data.AppTime.isAuto(tctx)) }

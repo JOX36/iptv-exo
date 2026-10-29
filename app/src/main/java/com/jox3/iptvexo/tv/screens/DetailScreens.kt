@@ -70,6 +70,7 @@ import com.jox3.iptvexo.tv.data.Tmdb
 import com.jox3.iptvexo.tv.data.ServerHub
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 
 private fun fmtTime(ms: Long): String {
     val s = ms / 1000
@@ -153,7 +154,10 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
                     if (credits.isNotEmpty()) Text(credits, style = Type.Small, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
 
-                Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val dlStart = rememberDownloadStarter()
+                val dv = com.jox3.iptvexo.tv.data.Downloads.version.intValue
+                val dl = remember(dv, movie.id) { com.jox3.iptvexo.tv.data.Downloads.find(ctx, repo.api.account, "movie", movie.id) }
+                Row(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (canResume) {
                         ActionButton("Continuar · ${fmtTime(pos)}", {
                             host.player.playMovie(movie.id, movie.name, movie.poster, ext, movie.categoryId)
@@ -171,6 +175,12 @@ fun MovieDetailScreen(repo: TvRepo, nav: Nav, host: TvHost, movie: Movie) {
                     ActionButton(if (isFav) "En favoritos" else "Favorito", { lib.toggleFavorite(favItem) },
                         icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
                     if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { trailerFull = true }, icon = R.drawable.tv_ic_play)
+                    ActionButton(downloadLabel(dl), {
+                        downloadClick(ctx, dl) {
+                            dlStart { dlToast(ctx, com.jox3.iptvexo.tv.data.Downloads.movie(ctx, repo.api.account, movie.id, movie.name,
+                                info?.poster?.ifBlank { null } ?: movie.poster.ifBlank { null } ?: tm?.poster.orEmpty(), ext)) }
+                        }
+                    }, icon = R.drawable.ic_download, progress = dl?.takeIf { it.status == com.jox3.iptvexo.tv.data.Downloads.Status.DOWNLOADING }?.fraction)
                 }
                 // Disponible también en otros servidores (o en otra calidad en este)
                 if (others.isNotEmpty() && servers != null) {
@@ -250,6 +260,14 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
     val seasonMem = rememberFocusMemory()
     val epMem = rememberFocusMemory()
     LaunchedEffect(season) { seasonMem.remember(season) }
+    val dctx = androidx.compose.ui.platform.LocalContext.current
+    val dlStart = rememberDownloadStarter()
+    val dv = com.jox3.iptvexo.tv.data.Downloads.version.intValue
+    val dls = remember(dv) { com.jox3.iptvexo.tv.data.Downloads.all(dctx).filter { it.acc == repo.api.account.key && it.seriesId == seriesId }.associateBy { it.streamId } }
+    var dlMenu by remember { mutableStateOf(false) }
+    fun download(eps: List<Episode>) = dlStart {
+        dlToast(dctx, com.jox3.iptvexo.tv.data.Downloads.episodes(dctx, repo.api.account, seriesId, title, cover, eps))
+    }
 
     Box(Modifier.fillMaxSize()) {
         // Fondo tenue a la izquierda
@@ -287,6 +305,7 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                         lib.toggleFavorite(SavedItem("series", seriesId, title, cover))
                     }, icon = if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star)
                     if (!tm?.trailerKey.isNullOrBlank()) ActionButton("Tráiler", { trailerFull = true })
+                    if (allEpisodes.isNotEmpty()) ActionButton("Descargar", { dlMenu = true }, icon = R.drawable.ic_download)
                 }
                 // También en otros servidores
                 if (others.isNotEmpty() && servers != null) {
@@ -330,8 +349,11 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
                     contentPadding = PaddingValues(bottom = 32.dp, top = 4.dp, start = 4.dp, end = 4.dp),
                 ) {
                     items(episodes, key = { it.id }) { ep ->
+                        val epDl = dls[ep.id]
                         EpisodeRow(ep, cover, lib.positionOf(ep.id).let { (p, d) -> if (d > 0) p.toFloat() / d else 0f },
-                            Modifier.focusMemoryItem(epMem, ep.id)) {
+                            Modifier.focusMemoryItem(epMem, ep.id), badge = downloadBadge(epDl),
+                            // Mantener OK: descargar este episodio (o pausar / seguir / ver la descarga)
+                            onLongClick = { downloadClick(dctx, epDl) { download(listOf(ep)) } }) {
                             host.player.playEpisode(seriesId, title, cover, allEpisodes, allEpisodes.indexOf(ep))
                         }
                     }
@@ -344,14 +366,26 @@ fun SeriesDetailScreen(repo: TvRepo, host: TvHost, seriesId: String, name: Strin
             TvTrailerFullscreen(tm.trailerKey, title) { trailerFull = false }
         }
     }
+    if (dlMenu) {
+        val seasonEps = seasons[season].orEmpty()
+        Box(Modifier.fillMaxSize().zIndex(11f)) {
+            TvChoiceMenu("Descargar $title", "Se guardan en la memoria del equipo para verlos sin internet. " +
+                "Para un solo episodio: mantén OK sobre él.", listOf(
+                "Temporada $season (${seasonEps.size} episodios)" to { download(seasonEps) },
+                "Serie completa (${allEpisodes.size} episodios)" to { download(allEpisodes) },
+            )) { dlMenu = false }
+        }
+    }
     LaunchedEffect(data, season) { if (data != null) runCatching { mainReq.requestFocus() } }
 }
 
 @Composable
-private fun EpisodeRow(ep: Episode, cover: String, watched: Float, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun EpisodeRow(ep: Episode, cover: String, watched: Float, modifier: Modifier = Modifier, badge: String = "",
+                       onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     FocusSurface(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier.fillMaxWidth().height(if (focused) 104.dp else 78.dp).onFocusChanged { focused = it.isFocused },
         focusedScale = 1.02f,
         focusedContainer = Jx.SurfaceHi,
@@ -371,6 +405,8 @@ private fun EpisodeRow(ep: Episode, cover: String, watched: Float, modifier: Mod
                 Text("EPISODIO ${ep.num}" + if (ep.duration.isNotBlank()) " · ${ep.duration}" else "",
                     style = Type.Eyebrow, color = if (focused) Jx.Accent else Jx.Muted)
                 Text(ep.title.ifBlank { "Episodio ${ep.num}" }, style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (badge.isNotBlank()) Text(badge, style = Type.Small, color = if (badge.startsWith("✓")) Jx.Ok else Jx.Accent)
+                else if (focused && onLongClick != null) Text("Mantén OK: ⬇ descargar", style = Type.Small, color = Jx.Faint)
                 if (focused && ep.plot.isNotBlank()) {
                     Text(ep.plot, style = Type.Small, color = Jx.TextSoft, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
