@@ -1,0 +1,16 @@
+w: app/src/main/java/com/jox3/iptvexo/phone/PhoneApp.kt:94:31 Condition 'acc != null' is always 'false'
+w: app/src/main/java/com/jox3/iptvexo/phone/PhoneScreens.kt:287:9 Variable 'ctx' is never used
+w: app/src/main/java/com/jox3/iptvexo/phone/PhoneScreens.kt:355:9 Variable 'ctx' is never used
+w: app/src/main/java/com/jox3/iptvexo/tv/data/ExternalEpg.kt:392:154 Unnecessary non-null assertion (!!) on a non-null receiver of type String
+w: app/src/main/java/com/jox3/iptvexo/tv/data/Profiles.kt:90:75 There is more than one label with such a name in this scope
+w: app/src/main/java/com/jox3/iptvexo/tv/data/Profiles.kt:91:43 There is more than one label with such a name in this scope
+w: app/src/main/java/com/jox3/iptvexo/tv/data/Recorder.kt:272:39 There is more than one label with such a name in this scope
+w: app/src/main/java/com/jox3/iptvexo/tv/data/Tmdb.kt:74:22 Parameter 'ctx' is never used
+w: app/src/main/java/com/jox3/iptvexo/tv/data/XtreamApi.kt:64:98 There is more than one label with such a name in this scope
+w: app/src/main/java/com/jox3/iptvexo/tv/player/VodFullscreen.kt:281:29 Name shadowed: cur
+w: app/src/main/java/com/jox3/iptvexo/tv/player/WatchTogether.kt:134:57 The corresponding parameter in the supertype 'WebSocketListener' is named 'code'. This may cause problems when calling this function with named arguments.
+w: app/src/main/java/com/jox3/iptvexo/tv/screens/DetailScreens.kt:233:9 Variable 'ctx' is never used
+w: app/src/main/java/com/jox3/iptvexo/tv/screens/FavoritesSettings.kt:56:45 Parameter 'host' is never used
+w: app/src/main/java/com/jox3/iptvexo/tv/screens/ProfileGate.kt:670:26 Parameter 'store' is never used
+w: app/src/main/java/com/jox3/iptvexo/tv/screens/SearchScreen.kt:67:42 Parameter 'host' is never used
+w: app/src/main/java/com/jox3/iptvexo/tv/screens/SearchScreen.kt:217:37 Name shadowed: ctx

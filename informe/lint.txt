@@ -1,0 +1,1106 @@
+/home/runner/.gradle/caches/transforms-3/f406afc02b9ba2c491241cccbeae4d8a/transformed/jetified-runtime-release/jars/lint.jar: Warning: Library lint checks reference invalid APIs; these checks will be skipped!
+
+Lint found an issue registry (androidx.compose.runtime.lint.RuntimeIssueRegistry)
+which contains some references to invalid API:
+org.jetbrains.kotlin.analysis.api.session.KtAnalysisSessionProvider: org.jetbrains.kotlin.analysis.api.lifetime.KtLifetimeTokenFactory getTokenFactory()
+(Referenced from androidx/compose/runtime/lint/AutoboxingStateCreationDetector.class)
+
+Therefore, this lint check library is not included
+in analysis. This affects the following lint checks:
+AutoboxingStateValueProperty
+AutoboxingStateCreation
+CoroutineCreationDuringComposition
+FlowOperatorInvokedInComposition
+ComposableLambdaParameterNaming
+ComposableLambdaParameterPosition
+ComposableNaming
+StateFlowValueCalledInComposition
+CompositionLocalNaming
+MutableCollectionMutableState
+ProduceStateDoesNotAssignValue
+RememberReturnType
+OpaqueUnitKey
+UnrememberedMutableState
+
+To use this lint check, upgrade to a more recent version
+of the library. [ObsoleteLintCustomCheck]
+/home/runner/.gradle/caches/transforms-3/e0fcde19d678b3e3b85b3a17065a2dd7/transformed/jetified-ui-release/jars/lint.jar: Warning: Library lint checks reference invalid APIs; these checks will be skipped!
+
+Lint found an issue registry (androidx.compose.ui.lint.UiIssueRegistry)
+which contains some references to invalid API:
+org.jetbrains.kotlin.analysis.api.session.KtAnalysisSessionProvider: org.jetbrains.kotlin.analysis.api.lifetime.KtLifetimeTokenFactory getTokenFactory()
+(Referenced from androidx/compose/ui/lint/ModifierDeclarationDetectorKt$ensureReceiverIsReferenced$1.class)
+
+Therefore, this lint check library is not included
+in analysis. This affects the following lint checks:
+UnnecessaryComposedModifier
+ModifierFactoryExtensionFunction
+ModifierFactoryReturnType
+ModifierFactoryUnreferencedReceiver
+ModifierNodeInspectableProperties
+ModifierParameter
+MultipleAwaitPointerEventScopes
+ReturnFromAwaitPointerEventScope
+SuspiciousCompositionLocalModifierRead
+SuspiciousModifierThen
+
+To use this lint check, upgrade to a more recent version
+of the library. [ObsoleteLintCustomCheck]
+/home/runner/.gradle/caches/transforms-3/eb46681d17c01d07b5094e123c145e1f/transformed/lifecycle-livedata-core-2.8.6/jars/lint.jar: Warning: Library lint checks reference invalid APIs; these checks will be skipped!
+
+Lint found an issue registry (androidx.lifecycle.lint.LiveDataCoreIssueRegistry)
+which contains some references to invalid API:
+org.jetbrains.kotlin.analysis.api.session.KtAnalysisSessionProvider: org.jetbrains.kotlin.analysis.api.lifetime.KtLifetimeTokenFactory getTokenFactory()
+(Referenced from androidx/lifecycle/lint/NonNullableMutableLiveDataDetector$createUastHandler$1.class)
+
+Therefore, this lint check library is not included
+in analysis. This affects the following lint checks:
+NullSafeMutableLiveData
+
+To use this lint check, upgrade to a more recent version
+of the library. [ObsoleteLintCustomCheck]
+
+   Explanation for issues of type "ObsoleteLintCustomCheck":
+   Lint can be extended with "custom checks": additional checks implemented by
+   developers and libraries to for example enforce specific API usages
+   required by a library or a company coding style guideline.
+
+   The Lint APIs are not yet stable, so these checks may either cause a
+   performance degradation, or stop working, or provide wrong results.
+
+   This warning flags custom lint checks that are found to be using obsolete
+   APIs and will need to be updated to run in the current lint environment.
+
+   It may also flag issues found to be using a newer version of the API,
+   meaning that you need to use a newer version of lint (or Android Studio or
+   Gradle plugin etc) to work with these checks.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/App.kt:77: Warning: Consider using apply() instead; commit writes its data to persistent storage immediately, whereas apply will handle it in the background [ApplySharedPref]
+            sp.edit().putBoolean(KEY_FFMPEG_OFF, true).putString(KEY_OFF_VERSION, version(ctx)).commit()
+                                                                                                ~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/App.kt:79: Warning: Consider using apply() instead; commit writes its data to persistent storage immediately, whereas apply will handle it in the background [ApplySharedPref]
+        sp.edit().putBoolean(KEY_STARTING, true).commit()
+                                                 ~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/App.kt:103: Warning: Consider using apply() instead; commit writes its data to persistent storage immediately, whereas apply will handle it in the background [ApplySharedPref]
+            .putBoolean(KEY_FFMPEG_OFF, true).putString(KEY_OFF_VERSION, version(ctx)).commit()
+                                                                                       ~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/App.kt:109: Warning: Consider using apply() instead; commit writes its data to persistent storage immediately, whereas apply will handle it in the background [ApplySharedPref]
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY_STARTING, false).commit()
+                                                                                                     ~~~~~~~~
+
+   Explanation for issues of type "ApplySharedPref":
+   Consider using apply() instead of commit on shared preferences. Whereas
+   commit blocks and writes its data to persistent storage immediately, apply
+   will handle it in the background.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1576: Warning: Implicitly using the default locale is a common source of bugs: Use toUpperCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                                : (lang != null && !lang.isEmpty() ? lang.toUpperCase() : "Pista");
+                                                                          ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1597: Warning: Implicitly using the default locale is a common source of bugs: Use toLowerCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+            String m = f.sampleMimeType.toLowerCase();
+                                        ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1621: Warning: Implicitly using the default locale is a common source of bugs: Use toUpperCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                                : (lang != null && !lang.isEmpty() ? lang.toUpperCase() : "Subtitulo");
+                                                                          ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1653: Warning: Implicitly using the default locale is a common source of bugs: Use toUpperCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+            if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
+                                                                                    ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1698: Warning: Implicitly using the default locale is a common source of bugs: Use toUpperCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                    if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
+                                                                                            ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1706: Warning: Implicitly using the default locale is a common source of bugs: Use toUpperCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                    if (techContainer != null) techContainer.setText(fileContainerFromUrl().toUpperCase());
+                                                                                            ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2665: Warning: Implicitly using the default locale is a common source of bugs: Use String.format(Locale, ...) instead [DefaultLocale]
+                                String timeStr = String.format("%d:%02d:%02d",
+                                                 ^
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/Updater.java:125: Warning: Implicitly using the default locale is a common source of bugs: Use toLowerCase(Locale) instead. For strings meant to be internal use Locale.ROOT, otherwise Locale.getDefault(). [DefaultLocale]
+                        if (a.optString("name", "").toLowerCase().endsWith(".apk")) {
+                                                    ~~~~~~~~~~~
+
+   Explanation for issues of type "DefaultLocale":
+   Calling String#toLowerCase() or #toUpperCase() without specifying an
+   explicit locale is a common source of bugs. The reason for that is that
+   those methods will use the current locale on the user's device, and even
+   though the code appears to work correctly when you are developing the app,
+   it will fail in some locales. For example, in the Turkish locale, the
+   uppercase replacement for i is not I.
+
+   If you want the methods to just perform ASCII replacement, for example to
+   convert an enum name, call String#toUpperCase(Locale.US) instead. If you
+   really want to use the current locale, call
+   String#toUpperCase(Locale.getDefault()) instead.
+
+   https://developer.android.com/reference/java/util/Locale.html#default_locale
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:264: Error: Field requires API level 23 (current min is 21): android.view.WindowManager.LayoutParams#preferredDisplayModeId [NewApi]
+            lp.preferredDisplayModeId = 0
+            ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/phone/PhoneActivity.kt:114: Error: Call requires API level 26 (current min is 21): onPictureInPictureModeChanged [NewApi]
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/Recorder.kt:156: Error: Call requires API level 23 (current min is 21): android.app.AlarmManager#setExactAndAllowWhileIdle [NewApi]
+            else am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/Reminders.kt:108: Error: Call requires API level 23 (current min is 21): android.app.AlarmManager#setExactAndAllowWhileIdle [NewApi]
+            else am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/Tmdb.kt:305: Error: Call requires API level 23 (current min is 21): android.content.Context#getSystemService [NewApi]
+        val cm: android.net.ConnectivityManager = ctx.getSystemService(android.net.ConnectivityManager::class.java)
+                                                      ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:228: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+                    .sortedBy { normalize(it.name) }.take(12).forEach { out.putIfAbsent(it.id, it) }
+                                                                            ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:240: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+            runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+                                                                                                                ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:242: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+        if (matching.isEmpty()) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+                                                                                                     ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:245: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+            .forEach { if (seen.add(titleKey(it.name))) out.putIfAbsent(it.id, it) }
+                                                            ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:266: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+                    idx.series.forEach { sr -> byKey.putIfAbsent(titleKey(sr.name), sr)?.let { old -> if (!old.poster.startsWith("http") && sr.poster.startsWith("http")) byKey[titleKey(sr.name)] = sr } }
+                                                     ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:269: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+                        byKey[k]?.let { sr -> out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId)) }
+                                                  ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:275: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+                        byKey[k]?.let { m -> out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId)) }
+                                                 ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:286: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+                    if (k != srcKey) out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId))
+                                         ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:293: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+                    if (k != srcKey) out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId))
+                                         ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:307: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+        for (c in matching) runCatching { series(c.id) }.getOrNull()?.sortedByDescending { it.updated }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+                                                                                                                                  ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/data/TvRepo.kt:308: Error: Call requires API level 24 (current min is 21): java.util.HashMap#putIfAbsent [NewApi]
+        if (pool.isEmpty() && source.categoryId.isNotBlank()) runCatching { series(source.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+                                                                                                                                    ~~~~~~~~~~~
+
+   Explanation for issues of type "NewApi":
+   This check scans through all the Android API calls in the application and
+   warns about any calls that are not available on all versions targeted by
+   this application (according to its minimum SDK attribute in the manifest).
+
+   If you really want to use this API and don't need to support older devices
+   just set the minSdkVersion in your build.gradle or AndroidManifest.xml
+   files.
+
+   If your code is deliberately accessing newer APIs, and you have ensured
+   (e.g. with conditional execution) that this code will only ever be called
+   on a supported platform, then you can annotate your class or method with
+   the @TargetApi annotation specifying the local minimum SDK to apply, such
+   as @TargetApi(11), such that this check considers 11 rather than your
+   manifest file's minimum SDK as the required API level.
+
+   If you are deliberately setting android: attributes in style definitions,
+   make sure you place this in a values-vNN folder in order to avoid running
+   into runtime conflicts on certain devices where manufacturers have added
+   custom attributes whose ids conflict with the new ones on later platforms.
+
+   Similarly, you can use tools:targetApi="11" in an XML file to indicate that
+   the element will only be inflated in an adequate context.
+
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:15: Warning: Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the android.os.Build.VERSION_CODES javadoc for details. [OldTargetApi]
+        targetSdk 34
+        ~~~~~~~~~~~~
+
+   Explanation for issues of type "OldTargetApi":
+   When your application runs on a version of Android that is more recent than
+   your targetSdkVersion specifies that it has been tested with, various
+   compatibility modes kick in. This ensures that your application continues
+   to work, but it may look out of place. For example, if the targetSdkVersion
+   is less than 14, your app may get an option button in the UI.
+
+   To fix this issue, set the targetSdkVersion to the highest available value.
+   Then test your app to make sure everything works correctly. You may want to
+   consult the compatibility notes to see what changes apply to each version
+   you are adding support for:
+   https://developer.android.com/reference/android/os/Build.VERSION_CODES.html
+   as well as follow this guide:
+   https://developer.android.com/distribute/best-practices/develop/target-sdk.
+   html
+
+   https://developer.android.com/distribute/best-practices/develop/target-sdk.html
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/screens/SearchScreen.kt:163: Error: Suspicious indentation: This is conditionally executed; expected it to be indented [SuspiciousIndentation]
+        Column(Modifier.width(kbWidth).fillMaxHeight().background(Jx.Rail).padding(horizontal = 20.dp, vertical = 27.dp)
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    /home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/screens/SearchScreen.kt:149: Previous statement here
+
+   Explanation for issues of type "SuspiciousIndentation":
+   This check looks for cases where the indentation suggests a grouping that
+   isn't actually there in the code. A common example of this would be
+   something like
+   if (column > width)
+       line++
+       column = 0
+   Here, the column = 0 line will be executed every single time, not just if
+   the condition is true.
+
+   Available options:
+
+   **always-run** (default is false):
+   Whether this check should be included while editing.
+
+   While you're editing, it's common to have a temporary situation where you have suspicious indentation scenarios -- e.g. you start typing an `if` statement on the line above something you want to make conditional, and you haven't indented it yet. It can be distracting and misleading to suddenly have both statements light up as errors. Therefore, lint will avoid including this check when running on the fly in the editor, unless it looks like the file has not been recently edited. With this option, you can turn it on in all cases.
+
+   To configure this option, use a `lint.xml` file with an <option> like this:
+
+   ```xml
+   <lint>
+       <issue id="SuspiciousIndentation">
+           <option name="always-run" value="false" />
+       </issue>
+   </lint>
+   ```
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/AndroidManifest.xml:21: Warning: Requiring Wifi permissions limits app availability on TVs that support only Ethernet [LeanbackUsesWifi]
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "LeanbackUsesWifi":
+   WiFi is not required for Android TV and many devices connect to the
+   internet via alternative methods e.g. Ethernet.
+
+   If your app is not focused specifically on WiFi functionality and only
+   wishes to connect to the internet, please modify your Manifest to contain:
+   <uses-feature android:name="android.hardware.wifi" android:required="false"
+   />
+
+   Un-metered or non-roaming connections can be detected in software using
+   NetworkCapabilities#NET_CAPABILITY_NOT_METERED and
+   NetworkCapabilities#NET_CAPABILITY_NOT_ROAMING.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/drawable/banner_tv.xml:4: Warning: Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more [VectorRaster]
+    android:width="320dp"
+                   ~~~~~
+
+   Explanation for issues of type "VectorRaster":
+   Vector icons require API 21 or API 24 depending on used features, but when
+   minSdkVersion is less than 21 or 24 and Android Gradle plugin 1.4 or higher
+   is used, a vector drawable placed in the drawable folder is automatically
+   moved to drawable-anydpi-v21 or drawable-anydpi-v24 and bitmap images are
+   generated for different screen resolutions for backwards compatibility.
+
+   However, there are some limitations to this raster image generation, and
+   this lint check flags elements and attributes that are not fully supported.
+   You should manually check whether the generated output is acceptable for
+   those older devices.
+
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:80: Warning: A newer version of androidx.appcompat:appcompat than 1.7.0 is available: 1.8.0 [GradleDependency]
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:81: Warning: A newer version of com.google.android.material:material than 1.12.0 is available: 1.14.0 [GradleDependency]
+    implementation 'com.google.android.material:material:1.12.0'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:82: Warning: A newer version of androidx.constraintlayout:constraintlayout than 2.1.4 is available: 2.2.2 [GradleDependency]
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:84: Warning: A newer version of androidx.core:core-splashscreen than 1.0.1 is available: 1.2.0 [GradleDependency]
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:86: Warning: A newer version of androidx.tvprovider:tvprovider than 1.0.0 is available: 1.1.0 [GradleDependency]
+    implementation 'androidx.tvprovider:tvprovider:1.0.0'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:92: Warning: A newer version of androidx.media3:media3-exoplayer than 1.5.0 is available: 1.11.1 [GradleDependency]
+    implementation "androidx.media3:media3-exoplayer:$media3"
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:93: Warning: A newer version of androidx.media3:media3-ui than 1.5.0 is available: 1.11.1 [GradleDependency]
+    implementation "androidx.media3:media3-ui:$media3"
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:94: Warning: A newer version of androidx.media3:media3-exoplayer-hls than 1.5.0 is available: 1.11.1 [GradleDependency]
+    implementation "androidx.media3:media3-exoplayer-hls:$media3"
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:95: Warning: A newer version of androidx.media3:media3-datasource-okhttp than 1.5.0 is available: 1.11.1 [GradleDependency]
+    implementation "androidx.media3:media3-datasource-okhttp:$media3"
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:97: Warning: A newer version of androidx.media3:media3-session than 1.5.0 is available: 1.11.1 [GradleDependency]
+    implementation "androidx.media3:media3-session:$media3"
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:103: Warning: A newer version of com.google.android.gms:play-services-cast-framework than 21.5.0 is available: 23.0.0 [GradleDependency]
+    implementation 'com.google.android.gms:play-services-cast-framework:21.5.0'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:104: Warning: A newer version of androidx.mediarouter:mediarouter than 1.7.0 is available: 1.8.1 [GradleDependency]
+    implementation 'androidx.mediarouter:mediarouter:1.7.0'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:107: Warning: A newer version of androidx.compose:compose-bom than 2024.09.03 is available: 2026.09.00 [GradleDependency]
+    implementation platform('androidx.compose:compose-bom:2024.09.03')
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:110: Warning: A newer version of androidx.tv:tv-material than 1.0.0 is available: 1.1.0 [GradleDependency]
+    implementation 'androidx.tv:tv-material:1.0.0'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:113: Warning: A newer version of androidx.activity:activity-compose than 1.9.2 is available: 1.13.0 [GradleDependency]
+    implementation 'androidx.activity:activity-compose:1.9.2'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:114: Warning: A newer version of androidx.lifecycle:lifecycle-runtime-compose than 2.8.6 is available: 2.11.0 [GradleDependency]
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.8.6'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:115: Warning: A newer version of androidx.lifecycle:lifecycle-viewmodel-compose than 2.8.6 is available: 2.11.0 [GradleDependency]
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.8.6'
+                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:122: Warning: A newer version of com.android.tools:desugar_jdk_libs than 2.0.4 is available: 2.1.5 [GradleDependency]
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:125: Warning: A newer version of androidx.test.ext:junit than 1.1.5 is available: 1.3.0 [GradleDependency]
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/build.gradle:126: Warning: A newer version of androidx.test.espresso:espresso-core than 3.5.1 is available: 3.7.0 [GradleDependency]
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "GradleDependency":
+   This detector looks for usages of libraries where the version you are using
+   is not the current stable release. Using older versions is fine, and there
+   are cases where you deliberately want to stick with an older version.
+   However, you may simply not be aware that a more recent version is
+   available, and that is what this lint check helps find.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:196: Error: Builder.setType can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setType(TvContractCompat.PreviewPrograms.TYPE_CHANNEL)
+                         ~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:196: Error: Builder.setType can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setType(TvContractCompat.PreviewPrograms.TYPE_CHANNEL)
+                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:196: Error: PreviewProgramColumns.TYPE_CHANNEL can only be accessed from within the same library group (referenced groupId=androidx.tvprovider from groupId=iptv-exo) [RestrictedApi]
+                        .setType(TvContractCompat.PreviewPrograms.TYPE_CHANNEL)
+                                                                  ~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:197: Error: Builder.setTitle can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setTitle(f.name)
+                         ~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:198: Error: Builder.setDescription can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setDescription(if (now.isNotBlank()) "Ahora: $now" else "En vivo")
+                         ~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:199: Error: Builder.setLive can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setLive(true)
+                         ~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:200: Error: Builder.setPosterArtAspectRatio can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_16_9)
+                         ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:200: Error: Builder.setPosterArtAspectRatio can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_16_9)
+                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:200: Error: PreviewProgramColumns.ASPECT_RATIO_16_9 can only be accessed from within the same library group (referenced groupId=androidx.tvprovider from groupId=iptv-exo) [RestrictedApi]
+                        .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_16_9)
+                                                                                  ~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:201: Error: Builder.setIntentUri can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setIntentUri(link(acc, f))
+                         ~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:202: Error: Builder.setInternalProviderId can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                        .setInternalProviderId(f.id)
+                         ~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:204: Error: Builder.setLogoUri can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                    if (f.image.startsWith("http")) p.setPosterArtUri(Uri.parse(f.image)).setLogoUri(Uri.parse(f.image))
+                                                                                          ~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/GoogleTv.kt:204: Error: Builder.setPosterArtUri can only be called from within the same library (androidx.tvprovider:tvprovider) [RestrictedApi]
+                    if (f.image.startsWith("http")) p.setPosterArtUri(Uri.parse(f.image)).setLogoUri(Uri.parse(f.image))
+                                                      ~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/TvActivity.kt:85: Error: ComponentActivity.dispatchKeyEvent can only be called from within the same library group prefix (referenced groupId=androidx.core with prefix androidx from groupId=iptv-exo) [RestrictedApi]
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = try {
+                 ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/TvActivity.kt:86: Error: ComponentActivity.dispatchKeyEvent can only be called from within the same library group prefix (referenced groupId=androidx.core with prefix androidx from groupId=iptv-exo) [RestrictedApi]
+        super.dispatchKeyEvent(event)
+              ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/TvActivity.kt:86: Error: ComponentActivity.dispatchKeyEvent can only be called from within the same library group prefix (referenced groupId=androidx.core with prefix androidx from groupId=iptv-exo) [RestrictedApi]
+        super.dispatchKeyEvent(event)
+                               ~~~~~
+
+   Explanation for issues of type "RestrictedApi":
+   This API has been flagged with a restriction that has not been met.
+
+   Examples of API restrictions:
+   * Method can only be invoked by a subclass
+   * Method can only be accessed from within the same library (defined by the
+   Gradle library group id)
+   * Method can only be accessed from tests.
+
+   You can add your own API restrictions with the @RestrictTo annotation.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/phone/PhoneActivity.kt:207: Warning: You should not lock orientation of your activities, so that you can support a good user experience for any device or orientation [SourceLockedOrientationActivity]
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1127: Warning: You should not lock orientation of your activities, so that you can support a good user experience for any device or orientation [SourceLockedOrientationActivity]
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "SourceLockedOrientationActivity":
+   The Activity should not be locked to a portrait orientation so that users
+   can take advantage of the multi-window environments and larger
+   landscape-first screens that Android runs on such as ChromeOS, tablets, and
+   foldables. To fix the issue, consider calling setRequestedOrientation with
+   the ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR or
+   ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED options or removing the call
+   all together.
+
+   https://developer.android.com/guide/topics/large-screens/large-screen-cookbook#restricted_app_orientation
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/player/LiveFullscreen.kt:630: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+        AspectRatioFrameLayout.RESIZE_MODE_FIT to "Ajustar (sin recortar)",
+                               ~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/player/LiveFullscreen.kt:631: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Ampliar (llenar recortando)",
+                               ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/player/LiveFullscreen.kt:632: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+        AspectRatioFrameLayout.RESIZE_MODE_FILL to "Estirar",
+                               ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/player/LiveFullscreen.kt:653: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+    AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Imagen: ampliar"
+                           ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/player/LiveFullscreen.kt:654: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+    AspectRatioFrameLayout.RESIZE_MODE_FILL -> "Imagen: estirar"
+                           ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/MainActivity.java:393: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+            Intent i = new Intent(MainActivity.this, PlayerActivity.class);
+                                                     ~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/phone/PhonePlayer.kt:425: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT to "Ajustar (sin recortar)",
+                                                  ~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/phone/PhonePlayer.kt:426: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Ampliar (llenar recortando)",
+                                                  ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/phone/PhonePlayer.kt:427: Error: This declaration is opt-in and its usage should be marked with @androidx.media3.common.util.UnstableApi or @OptIn(markerClass = androidx.media3.common.util.UnstableApi.class) [UnsafeOptInUsageError from androidx.annotation.experimental]
+        androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FILL to "Estirar",
+                                                  ~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "UnsafeOptInUsageError":
+   This API has been flagged as opt-in with error-level severity.
+
+   Any declaration annotated with this marker is considered part of an
+   unstable or
+   otherwise non-standard API surface and its call sites should accept the
+   opt-in
+   aspect of it by using the @OptIn annotation, using the marker annotation
+   --
+   effectively causing further propagation of the opt-in aspect -- or
+   configuring
+   the UnsafeOptInUsageError check's options for project-wide opt-in.
+
+   To configure project-wide opt-in, specify the opt-in option value in
+   lint.xml
+   as a comma-delimited list of opted-in annotations:
+
+   <lint>
+       <issue id="UnsafeOptInUsageError">
+           <option name="opt-in" value="com.foo.ExperimentalBarAnnotation" />
+       </issue>
+   </lint>
+
+   Vendor: Android Open Source Project
+   Identifier: androidx.annotation.experimental
+   Feedback: https://issuetracker.google.com/issues/new?component=459778
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/ui/Trailer.kt:98: Error: None of the methods in the added interface (T) have been annotated with @android.webkit.JavascriptInterface; they will not be visible in API 17 [JavascriptInterface]
+                addJavascriptInterface(bridge, "Android")
+                ~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "JavascriptInterface":
+   As of API 17, you must annotate methods in objects registered with the
+   addJavascriptInterface method with a @JavascriptInterface annotation.
+
+   https://developer.android.com/reference/android/webkit/WebView.html#addJavascriptInterface(java.lang.Object, java.lang.String)
+   https://goo.gle/JavascriptInterface
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/xml/network_security_config.xml:6: Warning: The Network Security Configuration allows the use of user certificates in the release version of your app [AcceptsUserCertificates]
+            <certificates src="user" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "AcceptsUserCertificates":
+   Allowing user certificates could allow eavesdroppers to intercept data sent
+   by your app, 'which could impact the privacy of your users. Consider
+   nesting your app's trust-anchors inside a <debug-overrides> element to make
+   sure they are only available when android:debuggable is set to "true".
+
+   https://goo.gle/AcceptsUserCertificates
+   https://developer.android.com/training/articles/security-config#TrustingDebugCa
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/xml/network_security_config.xml:3: Warning: Insecure Base Configuration [InsecureBaseConfiguration]
+    <base-config cleartextTrafficPermitted="true">
+                                            ~~~~
+
+   Explanation for issues of type "InsecureBaseConfiguration":
+   Permitting cleartext traffic could allow eavesdroppers to intercept data
+   sent by your app, which impacts the privacy of your users. Consider only
+   allowing encrypted traffic by setting the cleartextTrafficPermitted tag to
+   "false".
+
+   https://goo.gle/InsecureBaseConfiguration
+   https://developer.android.com/preview/features/security-config.html
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/MainActivity.java:108: Warning: Permitting connections with SSL-related errors could allow eavesdroppers to intercept data sent by your app, which impacts the privacy of your users. Consider canceling the connections by invoking SslErrorHandler#cancel(). [WebViewClientOnReceivedSslError]
+                handler.proceed();
+                ~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "WebViewClientOnReceivedSslError":
+   This check looks for onReceivedSslError implementations that invoke
+   SslErrorHandler#proceed.
+
+   https://goo.gle/WebViewClientOnReceivedSslError
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/player/WatchTogether.kt:68: Warning: Do not place Android context classes in static fields (static reference to VodPlayback which has field context pointing to Context); this is a memory leak [StaticFieldLeak]
+    private var vod: VodPlayback? = null
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "StaticFieldLeak":
+   A static field will leak contexts.
+
+   Non-static inner classes have an implicit reference to their outer class.
+   If that outer class is for example a Fragment or Activity, then this
+   reference means that the long-running handler/loader/task will hold a
+   reference to the activity which prevents it from getting garbage
+   collected.
+
+   Similarly, direct field references to activities and fragments from these
+   longer running instances can cause leaks.
+
+   ViewModel classes should never point to Views or non-application Contexts.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_main.xml:5: Warning: Possible overdraw: Root element paints background #0a0e14 with a theme that also paints a background (inferred theme is @style/Theme_App_Starting) [Overdraw]
+    android:background="#0a0e14">
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:6: Warning: Possible overdraw: Root element paints background #000000 with a theme that also paints a background (inferred theme is @style/Theme_AppCompat_NoActionBar) [Overdraw]
+    android:background="#000000">
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "Overdraw":
+   If you set a background drawable on a root view, then you should use a
+   custom theme where the theme background is null. Otherwise, the theme
+   background will be painted first, only to have your custom background
+   completely cover it; this is called "overdraw".
+
+   NOTE: This detector relies on figuring out which layouts are associated
+   with which activities based on scanning the Java code, and it's currently
+   doing that using an inexact pattern matching algorithm. Therefore, it can
+   incorrectly conclude which activity the layout is associated with and then
+   wrongly complain that a background-theme is hidden.
+
+   If you want your custom background on multiple pages, then you should
+   consider making a custom theme with your custom background and just using
+   that theme instead of a root element background.
+
+   Of course it's possible that your custom drawable is translucent and you
+   want it to be mixed with the background. However, you will get better
+   performance if you pre-mix the background with your drawable and use that
+   resulting image or color as a custom theme background instead.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/drawable/tv_ic_backspace.xml:2: Warning: The resource R.drawable.tv_ic_backspace appears to be unused [UnusedResources]
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+^
+
+   Explanation for issues of type "UnusedResources":
+   Unused resources make applications larger and slow down builds.
+
+
+   The unused resource check can ignore tests. If you want to include
+   resources that are only referenced from tests, consider packaging them in a
+   test source set instead.
+
+   You can include test sources in the unused resource check by setting the
+   system property lint.unused-resources.include-tests =true, and to exclude
+   them (usually for performance reasons), use
+   lint.unused-resources.exclude-tests =true.
+   ,
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:693: Warning: This GridLayout layout or its LinearLayout parent is unnecessary; transfer the background attribute to the other view [UselessParent]
+                    <GridLayout
+                     ~~~~~~~~~~
+
+   Explanation for issues of type "UselessParent":
+   A layout with children that has no siblings, is not a scrollview or a root
+   layout, and does not have a background, can be removed and have its
+   children moved directly into the parent for a flatter and more efficient
+   layout hierarchy.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:715: Warning: activity_player.xml has more than 80 views, bad for performance [TooManyViews]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A\u00d1O" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "TooManyViews":
+   Using too many views in a single layout is bad for performance. Consider
+   using compound drawables or other tricks for reducing the number of views
+   in this layout.
+
+   The maximum view count defaults to 80 but can be configured with the
+   environment variable ANDROID_LINT_MAX_VIEW_COUNT.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/AndroidManifest.xml:123: Error: Mime-type matching is case sensitive and should only use lower-case characters [AppLinkUrlError]
+                <data android:mimeType="application/x-mpegURL" />
+                                        ~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "AppLinkUrlError":
+   Ensure the URL is supported by your app, to get installs and traffic to
+   your app from Google Search.
+
+   https://g.co/AppIndexing/AndroidStudio
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1434: Warning: Buttons in button bars should be borderless; use style="?android:attr/buttonBarButtonStyle" (and ?android:attr/buttonBarStyle on the parent) [ButtonStyle]
+            <Button
+             ~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1445: Warning: Buttons in button bars should be borderless; use style="?android:attr/buttonBarButtonStyle" (and ?android:attr/buttonBarStyle on the parent) [ButtonStyle]
+            <Button
+             ~~~~~~
+
+   Explanation for issues of type "ButtonStyle":
+   Button bars typically use a borderless style for the buttons. Set the
+   style="?android:attr/buttonBarButtonStyle" attribute on each of the
+   buttons, and set style="?android:attr/buttonBarStyle" on the parent layout
+
+   https://d.android.com/r/studio-ui/designer/material/dialogs
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:66: Warning: Avoid using sizes smaller than 11sp: 9sp [SmallSp]
+            android:textSize="9sp"
+            ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:81: Warning: Avoid using sizes smaller than 11sp: 9sp [SmallSp]
+            android:textSize="9sp"
+            ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:154: Warning: Avoid using sizes smaller than 11sp: 8sp [SmallSp]
+                    android:textSize="8sp"
+                    ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:177: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                    android:textSize="10sp"
+                    ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:187: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                android:textSize="10sp"
+                ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:437: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                        android:textSize="10sp"
+                        ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:449: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                        android:textSize="10sp"
+                        ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:461: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                        android:textSize="10sp"
+                        ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:473: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                        android:textSize="10sp"
+                        ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:700: Warning: Avoid using sizes smaller than 11sp: 9sp [SmallSp]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RESOLUCI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                                                                                          ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:705: Warning: Avoid using sizes smaller than 11sp: 9sp [SmallSp]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CONTENEDOR" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                                                                                     ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:710: Warning: Avoid using sizes smaller than 11sp: 9sp [SmallSp]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DURACI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                                                                                        ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:715: Warning: Avoid using sizes smaller than 11sp: 9sp [SmallSp]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A\u00d1O" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                                                                                   ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:779: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                android:textSize="10sp"
+                ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:918: Warning: Avoid using sizes smaller than 11sp: 8sp [SmallSp]
+                    android:textSize="8sp"
+                    ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:954: Warning: Avoid using sizes smaller than 11sp: 8sp [SmallSp]
+                    android:textSize="8sp"
+                    ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:998: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                android:textSize="10sp"
+                ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1020: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+                android:textSize="10sp"
+                ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1164: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+            android:textSize="10sp"
+            ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1260: Warning: Avoid using sizes smaller than 11sp: 10sp [SmallSp]
+            android:textSize="10sp"
+            ~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "SmallSp":
+   Avoid using sizes smaller than 11sp.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/tv/ui/Trailer.kt:87: Warning: onTouch lambda should call View#performClick when a click is detected [ClickableViewAccessibility]
+                    setOnTouchListener { _, _ -> true }   // de fondo: los toques no hacen nada
+                                       ~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "ClickableViewAccessibility":
+   If a View that overrides onTouchEvent or uses an OnTouchListener does not
+   also implement performClick and call it when clicks are detected, the View
+   may not handle accessibility actions properly. Logic handling the click
+   actions should ideally be placed in View#performClick as some accessibility
+   services invoke performClick when a click action should occur.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:675: Warning: Missing contentDescription attribute on image [ContentDescription]
+                    <ImageView
+                     ~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1345: Warning: Missing contentDescription attribute on image [ContentDescription]
+                <ImageView
+                 ~~~~~~~~~
+
+   Explanation for issues of type "ContentDescription":
+   Non-textual widgets like ImageViews and ImageButtons should use the
+   contentDescription attribute to specify a textual description of the widget
+   such that screen readers and other accessibility tools can adequately
+   describe the user interface.
+
+   Note that elements in application screens that are purely decorative and do
+   not provide any content or enable a user action should not have
+   accessibility content descriptions. In this case, set their descriptions to
+   @null. If your app's minSdkVersion is 16 or higher, you can instead set
+   these graphical elements' android:importantForAccessibility attributes to
+   no.
+
+   Note that for text fields, you should not set both the hint and the
+   contentDescription attributes since the hint will never be shown. Just set
+   the hint.
+
+   https://developer.android.com/guide/topics/ui/accessibility/apps#special-cases
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:559: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        liveTxtStatus.setText("\u25CF EN VIVO");
+                              ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:604: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        vodTxtPlot.setText("Cargando informacion...");
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1031: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+            if (txtLoading != null) txtLoading.setText("No se pudo conectar al canal");
+                                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1037: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+        txtLoading.setText(reason + " (" + retryCount + "/" + MAX_RETRIES + ")...");
+                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1200: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+            drawerTitle.setText("Episodios");
+                                ~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1211: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                drawerCatLabel.setText("Temporada " + s);
+                                       ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1211: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+                drawerCatLabel.setText("Temporada " + s);
+                                       ~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1217: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+            drawerTitle.setText("Canales");
+                                ~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1400: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                                if (slot != null) { slot.setText("\u25B8 " + fTitle); slot.setVisibility(View.VISIBLE); }
+                                                                 ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1651: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+            if (!rating.isEmpty() && !rating.equals("0")) { vodTxtRating.setText("\u2B50 " + rating); vodTxtRating.setVisibility(View.VISIBLE); }
+                                                                                 ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1694: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                    if (!rating.isEmpty() && !rating.equals("0")) { vodTxtRating.setText("\u2B50 "+rating); vodTxtRating.setVisibility(View.VISIBLE); }
+                                                                                         ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1705: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+                    vodTxtPlot.setText("Sin informacion disponible.");
+                                       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1806: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+            chip.setText("T" + s);
+                         ~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:1959: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+                vodTxtPlot.setText("Cargando informacion..."); vodTxtYear.setVisibility(View.GONE);
+                                   ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2008: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+            tRating.setText("\u2B50 " + rating);
+                            ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2478: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        nextEpBtnCancel.setText("\u2715 Cancelar");
+                                ~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2483: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+            nextEpTitle.setText("\uD83C\uDF89 Nueva temporada \u2014 T" + nextSeason + "\n" + nextName);
+                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2483: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+            nextEpTitle.setText("\uD83C\uDF89 Nueva temporada \u2014 T" + nextSeason + "\n" + nextName);
+                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2489: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+        nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2489: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                                ~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2489: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                                                           ~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2497: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                    nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2497: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+                    nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                                            ~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2497: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+                    nextEpCountdown.setText("En " + countdownSeconds + " segundos...");
+                                                                       ~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2551: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        nextEpTitle.setText("Serie completada \u2705");
+                            ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2552: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        nextEpCountdown.setText("Has visto todos los episodios");
+                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2554: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        nextEpBtnCancel.setText("Cerrar");
+                                ~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2730: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                gestValueRight.setText(pct + "%");
+                                       ~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2737: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                gestValueView.setText(pct + "%");
+                                      ~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2753: Warning: Do not concatenate text displayed with setText. Use resource string with placeholders. [SetTextI18n]
+                if (gestSeekValue != null) gestSeekValue.setText((seconds > 0 ? "+" : "") + seconds + "s");
+                                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/PlayerActivity.java:2994: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+            vodTxtPlot.setText("Cargando informacion...");
+                               ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/java/com/jox3/iptvexo/Updater.java:260: Warning: String literal in setText can not be translated. Use Android resources instead. [SetTextI18n]
+        progressText.setText("Descargando…");
+                             ~~~~~~~~~~~~~~
+
+   Explanation for issues of type "SetTextI18n":
+   When calling TextView#setText
+   * Never call Number#toString() to format numbers; it will not handle
+   fraction separators and locale-specific digits properly. Consider using
+   String#format with proper format specifications (%d or %f) instead.
+   * Do not pass a string literal (e.g. "Hello") to display text. Hardcoded
+   text can not be properly translated to other languages. Consider using
+   Android resource strings instead.
+   * Do not build messages by concatenating text chunks. Such messages can not
+   be properly translated.
+
+   https://developer.android.com/guide/topics/resources/localization.html
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:39: Warning: Hardcoded string "Volver", should use @string resource [HardcodedText]
+            android:contentDescription="Volver" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:95: Warning: Hardcoded string "Reproductor externo", should use @string resource [HardcodedText]
+            android:contentDescription="Reproductor externo" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:107: Warning: Hardcoded string "Favorito", should use @string resource [HardcodedText]
+            android:contentDescription="Favorito" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:115: Warning: Hardcoded string "Transmitir a Chromecast", should use @string resource [HardcodedText]
+            android:contentDescription="Transmitir a Chromecast"
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:152: Warning: Hardcoded string "AHORA", should use @string resource [HardcodedText]
+                    android:text="AHORA"
+                    ~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:222: Warning: Hardcoded string "Canal anterior", should use @string resource [HardcodedText]
+                android:contentDescription="Canal anterior" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:233: Warning: Hardcoded string "PiP", should use @string resource [HardcodedText]
+                android:contentDescription="PiP" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:245: Warning: Hardcoded string "Audio", should use @string resource [HardcodedText]
+                android:contentDescription="Audio" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:256: Warning: Hardcoded string "Refrescar transmision", should use @string resource [HardcodedText]
+                android:contentDescription="Refrescar transmision" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:267: Warning: Hardcoded string "Lista de canales", should use @string resource [HardcodedText]
+                android:contentDescription="Lista de canales" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:279: Warning: Hardcoded string "Detener", should use @string resource [HardcodedText]
+                android:contentDescription="Detener" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:289: Warning: Hardcoded string "Canal siguiente", should use @string resource [HardcodedText]
+                android:contentDescription="Canal siguiente" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:339: Warning: Hardcoded string "Volver", should use @string resource [HardcodedText]
+                    android:contentDescription="Volver" />
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:366: Warning: Hardcoded string "Favorito", should use @string resource [HardcodedText]
+                    android:contentDescription="Favorito" />
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:374: Warning: Hardcoded string "Transmitir a Chromecast", should use @string resource [HardcodedText]
+                    android:contentDescription="Transmitir a Chromecast"
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:395: Warning: Hardcoded string "Poster de fondo", should use @string resource [HardcodedText]
+                android:contentDescription="Poster de fondo" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:505: Warning: Hardcoded string "Pantalla completa", should use @string resource [HardcodedText]
+                        android:contentDescription="Pantalla completa" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:516: Warning: Hardcoded string "PiP", should use @string resource [HardcodedText]
+                        android:contentDescription="PiP" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:528: Warning: Hardcoded string "Audio", should use @string resource [HardcodedText]
+                        android:contentDescription="Audio" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:540: Warning: Hardcoded string "Subtítulos", should use @string resource [HardcodedText]
+                        android:contentDescription="Subtítulos" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:551: Warning: Hardcoded string "Externo", should use @string resource [HardcodedText]
+                        android:contentDescription="Externo" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:562: Warning: Hardcoded string "Copiar URL", should use @string resource [HardcodedText]
+                        android:contentDescription="Copiar URL" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:573: Warning: Hardcoded string "Detener", should use @string resource [HardcodedText]
+                        android:contentDescription="Detener" />
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:589: Warning: Hardcoded string "uD83DuDCFA Episodios", should use @string resource [HardcodedText]
+                        android:text="\uD83D\uDCFA Episodios"
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:633: Warning: Hardcoded string "uD83CuDFAC Tambiu00e9n te puede interesar", should use @string resource [HardcodedText]
+                        android:text="\uD83C\uDFAC Tambi\u00e9n te puede interesar"
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:670: Warning: Hardcoded string "u2139uFE0F Ficha tu00e9cnica", should use @string resource [HardcodedText]
+                        android:text="\u2139\uFE0F Ficha t\u00e9cnica"
+                        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:700: Warning: Hardcoded string "RESOLUCIu00d3N", should use @string resource [HardcodedText]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="RESOLUCI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:701: Warning: Hardcoded string "u2014", should use @string resource [HardcodedText]
+                            <TextView android:id="@+id/tech_resolution" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                                                                                                                                                 ~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:705: Warning: Hardcoded string "CONTENEDOR", should use @string resource [HardcodedText]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="CONTENEDOR" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:706: Warning: Hardcoded string "u2014", should use @string resource [HardcodedText]
+                            <TextView android:id="@+id/tech_container" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                                                                                                                                                ~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:710: Warning: Hardcoded string "DURACIu00d3N", should use @string resource [HardcodedText]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="DURACI\u00d3N" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:711: Warning: Hardcoded string "u2014", should use @string resource [HardcodedText]
+                            <TextView android:id="@+id/tech_duration" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                                                                                                                                               ~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:715: Warning: Hardcoded string "Au00d1O", should use @string resource [HardcodedText]
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="A\u00d1O" android:textColor="#7AB8CC" android:textSize="9sp" android:letterSpacing="0.05" />
+                                                                                                               ~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:716: Warning: Hardcoded string "u2014", should use @string resource [HardcodedText]
+                            <TextView android:id="@+id/tech_year" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="\u2014" android:textColor="#E0F4FF" android:textSize="13sp" android:textStyle="bold" />
+                                                                                                                                           ~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:752: Warning: Hardcoded string "Salir de pantalla completa", should use @string resource [HardcodedText]
+            android:contentDescription="Salir de pantalla completa" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:794: Warning: Hardcoded string "Subtítulos", should use @string resource [HardcodedText]
+            android:contentDescription="Subtítulos" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:806: Warning: Hardcoded string "Audio", should use @string resource [HardcodedText]
+            android:contentDescription="Audio" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:817: Warning: Hardcoded string "Copiar URL", should use @string resource [HardcodedText]
+            android:contentDescription="Copiar URL" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:828: Warning: Hardcoded string "Externo", should use @string resource [HardcodedText]
+            android:contentDescription="Externo" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:839: Warning: Hardcoded string "PiP", should use @string resource [HardcodedText]
+            android:contentDescription="PiP" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:851: Warning: Hardcoded string "Favorito", should use @string resource [HardcodedText]
+            android:contentDescription="Favorito" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:859: Warning: Hardcoded string "Transmitir a Chromecast", should use @string resource [HardcodedText]
+            android:contentDescription="Transmitir a Chromecast"
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:896: Warning: Hardcoded string "Episodio anterior", should use @string resource [HardcodedText]
+                android:contentDescription="Episodio anterior" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:912: Warning: Hardcoded string "Retroceder 10s", should use @string resource [HardcodedText]
+                    android:contentDescription="Retroceder 10s" />
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:916: Warning: Hardcoded string "10s", should use @string resource [HardcodedText]
+                    android:text="10s"
+                    ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:932: Warning: Hardcoded string "Play / Pausa", should use @string resource [HardcodedText]
+                android:contentDescription="Play / Pausa" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:948: Warning: Hardcoded string "Adelantar 10s", should use @string resource [HardcodedText]
+                    android:contentDescription="Adelantar 10s" />
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:952: Warning: Hardcoded string "10s", should use @string resource [HardcodedText]
+                    android:text="10s"
+                    ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:969: Warning: Hardcoded string "Lista de episodios", should use @string resource [HardcodedText]
+                android:contentDescription="Lista de episodios" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:981: Warning: Hardcoded string "Episodio siguiente", should use @string resource [HardcodedText]
+                android:contentDescription="Episodio siguiente" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1000: Warning: Hardcoded string "0:00", should use @string resource [HardcodedText]
+                android:text="0:00" />
+                ~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1022: Warning: Hardcoded string "0:00", should use @string resource [HardcodedText]
+                android:text="0:00" />
+                ~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1039: Warning: Hardcoded string "1x", should use @string resource [HardcodedText]
+                android:text="1x"
+                ~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1046: Warning: Hardcoded string "Velocidad", should use @string resource [HardcodedText]
+                android:contentDescription="Velocidad" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1057: Warning: Hardcoded string "Tamaño de video", should use @string resource [HardcodedText]
+                android:contentDescription="Tamaño de video" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1068: Warning: Hardcoded string "Descargar", should use @string resource [HardcodedText]
+                android:contentDescription="Descargar" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1079: Warning: Hardcoded string "Detener", should use @string resource [HardcodedText]
+                android:contentDescription="Detener" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1097: Warning: Hardcoded string "Bloquear pantalla", should use @string resource [HardcodedText]
+        android:contentDescription="Bloquear pantalla" />
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1119: Warning: Hardcoded string "Conectando...", should use @string resource [HardcodedText]
+            android:text="Conectando..."
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1144: Warning: Hardcoded string "🔊", should use @string resource [HardcodedText]
+            android:text="🔊"
+            ~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1166: Warning: Hardcoded string "50%", should use @string resource [HardcodedText]
+            android:text="50%" />
+            ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1194: Warning: Hardcoded string "⏩", should use @string resource [HardcodedText]
+                android:text="⏩"
+                ~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1204: Warning: Hardcoded string "0:00:00", should use @string resource [HardcodedText]
+                android:text="0:00:00" />
+                ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1240: Warning: Hardcoded string "☀️", should use @string resource [HardcodedText]
+            android:text="☀️"
+            ~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1262: Warning: Hardcoded string "50%", should use @string resource [HardcodedText]
+            android:text="50%" />
+            ~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1296: Warning: Hardcoded string "Canales", should use @string resource [HardcodedText]
+                android:text="Canales"
+                ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1309: Warning: Hardcoded string "Cerrar", should use @string resource [HardcodedText]
+                android:contentDescription="Cerrar" />
+                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1338: Warning: Hardcoded string "Todos los canales", should use @string resource [HardcodedText]
+                    android:text="Todos los canales"
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1417: Warning: Hardcoded string "Siguiente episodio", should use @string resource [HardcodedText]
+            android:text="Siguiente episodio" />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1426: Warning: Hardcoded string "En 5 segundos...", should use @string resource [HardcodedText]
+            android:text="En 5 segundos..." />
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1438: Warning: Hardcoded string "▶ Ahora", should use @string resource [HardcodedText]
+                android:text="▶ Ahora"
+                ~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/res/layout/activity_player.xml:1450: Warning: Hardcoded string "✕ Cancelar", should use @string resource [HardcodedText]
+                android:text="✕ Cancelar"
+                ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+   Explanation for issues of type "HardcodedText":
+   Hardcoding text attributes directly in layout files is bad for several
+   reasons:
+
+   * When creating configuration variations (for example for landscape or
+   portrait) you have to repeat the actual text (and keep it up to date when
+   making changes)
+
+   * The application cannot be translated to other languages by just adding
+   new translations for existing string resources.
+
+   There are quickfixes to automatically extract this hardcoded string into a
+   resource lookup.
+
+/home/runner/work/iptv-exo/iptv-exo/app/src/main/AndroidManifest.xml: Warning: The project references RTL attributes, but does not explicitly enable or disable RTL support with android:supportsRtl in the manifest [RtlEnabled]
+
+   Explanation for issues of type "RtlEnabled":
+   To enable right-to-left support, when running on API 17 and higher, you
+   must set the android:supportsRtl attribute in the manifest <application>
+   element.
+
+   If you have started adding RTL attributes, but have not yet finished the
+   migration, you can set the attribute to false to satisfy this lint check.
+
+44 errors, 179 warnings
