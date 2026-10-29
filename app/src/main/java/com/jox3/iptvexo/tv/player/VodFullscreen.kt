@@ -471,14 +471,6 @@ private fun InfoPanel(vod: VodPlayback) {
     )
 }
 
-@Composable
-private fun InfoLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-        Text(label, style = Type.Label, color = Jx.Muted, modifier = Modifier.width(130.dp))
-        Text(value.ifBlank { "—" }, style = Type.Label, color = Jx.Text)
-    }
-}
-
 
 /**
  * Reproductor pequeño (esquina superior derecha, sin tapar la información) al pulsar Atrás en una película o

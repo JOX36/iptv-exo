@@ -389,7 +389,7 @@ object ExternalEpg {
         val letters = Regex("[a-z]{4,}")
         var pre: String? = null
         for (k in keys) for (ik in idx.keys) {
-            if (ik.length >= 6 && !ik.startsWith("id:") && k.startsWith(ik) && letters.matches(k.substring(ik.length)) && (pre == null || ik.length > pre!!.length)) pre = ik
+            if (ik.length >= 6 && !ik.startsWith("id:") && k.startsWith(ik) && letters.matches(k.substring(ik.length)) && (pre == null || ik.length > pre.length)) pre = ik
         }
         pre?.let { p -> best(idx[p], p)?.let { return it } }
         // "TyC Sports" → "TyC Sports International": solo si hay un único candidato.

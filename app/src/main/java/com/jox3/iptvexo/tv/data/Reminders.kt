@@ -105,7 +105,9 @@ object Reminders {
         val p = pi(ctx, r, PendingIntent.FLAG_UPDATE_CURRENT) ?: return
         runCatching {
             if (Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) am.setWindow(AlarmManager.RTC_WAKEUP, at, 60_000, p)
-            else am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+            else if (Build.VERSION.SDK_INT >= 23) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, p)
+            // Android 5: esa función no existe (antes la alarma no se programaba y no avisaba/grababa)
+            else am.setExact(AlarmManager.RTC_WAKEUP, at, p)
         }
     }
 

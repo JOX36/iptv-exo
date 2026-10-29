@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,7 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Text
 import com.jox3.iptvexo.R
@@ -39,7 +37,6 @@ import com.jox3.iptvexo.tv.TvHost
 import com.jox3.iptvexo.tv.player.LocalLive
 import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.Movie
-import com.jox3.iptvexo.tv.data.Series
 import com.jox3.iptvexo.tv.data.TvRepo
 import com.jox3.iptvexo.tv.data.Account
 import com.jox3.iptvexo.tv.data.ServerHub
@@ -51,9 +48,7 @@ import com.jox3.iptvexo.tv.ui.PosterCard
 import com.jox3.iptvexo.tv.ui.ShelfRow
 import com.jox3.iptvexo.tv.ui.StatusBox
 import com.jox3.iptvexo.tv.ui.Type
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 
 private val KEYS = "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ0123456789".map { it.toString() }
 

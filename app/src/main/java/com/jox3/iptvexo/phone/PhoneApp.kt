@@ -90,8 +90,8 @@ fun PhoneApp(act: PhoneActivity) {
                 if (isNew) com.jox3.iptvexo.tv.data.ServerAccess.claimNew(context, accounts, a)
                 account = a; adding = false
             },
-            onCancel = if (acc != null) ({ adding = false }) else null)
-        BackHandler(enabled = acc != null) { adding = false }
+            onCancel = if (adding) ({ adding = false }) else null)
+        BackHandler(enabled = adding) { adding = false }
         return
     }
     key(acc.key) {

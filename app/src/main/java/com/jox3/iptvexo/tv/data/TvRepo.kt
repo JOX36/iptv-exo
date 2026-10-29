@@ -1,7 +1,5 @@
 package com.jox3.iptvexo.tv.data
 
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
@@ -225,7 +223,7 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
                     idx.movies.indices.filter { idx.movieKeys[it].startsWith(base) }.map { idx.movies[it] }
                 }
                 bestCopies(saga).filter { it.id != movie.id && titleKey(it.name) != titleKey(movie.name) }
-                    .sortedBy { normalize(it.name) }.take(12).forEach { out.putIfAbsent(it.id, it) }
+                    .sortedBy { normalize(it.name) }.take(12).forEach { out.addIfAbsent(it.id, it) }
             }
         }
         // 2. Género
@@ -237,12 +235,12 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         }.take(4)
         val pool = LinkedHashMap<String, Movie>()
         for (c in matching) {
-            runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
+            runCatching { movies(c.id) }.getOrNull()?.sortedByDescending { it.added }?.take(40)?.forEach { pool.addIfAbsent(it.id, it) }
         }
-        if (matching.isEmpty()) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        if (matching.isEmpty()) runCatching { movies(movie.categoryId) }.getOrNull()?.forEach { pool.addIfAbsent(it.id, it) }
         val seen = out.values.map { titleKey(it.name) }.toMutableSet().apply { add(titleKey(movie.name)) }
         bestCopies(pool.values.toList()).shuffled(java.util.Random(movie.id.hashCode().toLong()))
-            .forEach { if (seen.add(titleKey(it.name))) out.putIfAbsent(it.id, it) }
+            .forEach { if (seen.add(titleKey(it.name))) out.addIfAbsent(it.id, it) }
         out.remove(movie.id)
         return out.values.take(limit)
     }
@@ -263,16 +261,16 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
             if (idx != null) kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
                 if (isSeries) {
                     val byKey = HashMap<String, Series>()
-                    idx.series.forEach { sr -> byKey.putIfAbsent(titleKey(sr.name), sr)?.let { old -> if (!old.poster.startsWith("http") && sr.poster.startsWith("http")) byKey[titleKey(sr.name)] = sr } }
+                    idx.series.forEach { sr -> byKey.addIfAbsent(titleKey(sr.name), sr)?.let { old -> if (!old.poster.startsWith("http") && sr.poster.startsWith("http")) byKey[titleKey(sr.name)] = sr } }
                     titles.forEach { t ->
                         val k = titleKey(t); if (k.isEmpty() || k == srcKey) return@forEach
-                        byKey[k]?.let { sr -> out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId)) }
+                        byKey[k]?.let { sr -> out.addIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId)) }
                     }
                 } else {
                     val byKey = bestCopies(idx.movies).associateBy { titleKey(it.name) }
                     titles.forEach { t ->
                         val k = titleKey(t); if (k.isEmpty() || k == srcKey) return@forEach
-                        byKey[k]?.let { m -> out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId)) }
+                        byKey[k]?.let { m -> out.addIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId)) }
                     }
                 }
             }
@@ -283,14 +281,14 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
                 val genre = runCatching { api.seriesInfo(source.id).genre }.getOrDefault("")
                 similarSeries(source, genre, limit * 2).forEach { sr ->
                     val k = titleKey(sr.name)
-                    if (k != srcKey) out.putIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId))
+                    if (k != srcKey) out.addIfAbsent(k, SavedItem("series", sr.id, sr.name, sr.poster, categoryId = sr.categoryId))
                 }
             } else {
                 val genre = runCatching { api.movieInfo(source.id).genre }.getOrDefault("")
                 val movie = Movie(source.id, source.name, source.image, "", source.ext, source.categoryId, 0L)
                 similarMovies(movie, genre, limit * 2).forEach { m ->
                     val k = titleKey(m.name)
-                    if (k != srcKey) out.putIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId))
+                    if (k != srcKey) out.addIfAbsent(k, SavedItem("movie", m.id, m.name, m.poster, ext = m.ext, categoryId = m.categoryId))
                 }
             }
         }
@@ -304,8 +302,8 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         val cats = runCatching { categories(Section.SERIES) }.getOrDefault(emptyList())
         val matching = if (words.isEmpty()) emptyList() else cats.filter { c -> words.any { w -> normalize(c.name).contains(w.take(6)) } }.take(4)
         val pool = LinkedHashMap<String, Series>()
-        for (c in matching) runCatching { series(c.id) }.getOrNull()?.sortedByDescending { it.updated }?.take(40)?.forEach { pool.putIfAbsent(it.id, it) }
-        if (pool.isEmpty() && source.categoryId.isNotBlank()) runCatching { series(source.categoryId) }.getOrNull()?.forEach { pool.putIfAbsent(it.id, it) }
+        for (c in matching) runCatching { series(c.id) }.getOrNull()?.sortedByDescending { it.updated }?.take(40)?.forEach { pool.addIfAbsent(it.id, it) }
+        if (pool.isEmpty() && source.categoryId.isNotBlank()) runCatching { series(source.categoryId) }.getOrNull()?.forEach { pool.addIfAbsent(it.id, it) }
         return pool.values.filter { it.id != source.id }.shuffled(java.util.Random(source.id.hashCode().toLong())).take(limit)
     }
 
@@ -371,4 +369,11 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         fun normalize(s: String): String =
             Normalizer.normalize(s, Normalizer.Form.NFD).replace(MARKS, "").lowercase()
     }
+}
+
+/** Como `putIfAbsent`, pero funciona también en Android 5 y 6 (allí `putIfAbsent` no existe y cerraba la app). */
+private fun <K, V> MutableMap<K, V>.addIfAbsent(key: K, value: V): V? {
+    val old = this[key]
+    if (old == null) this[key] = value
+    return old
 }
