@@ -76,6 +76,7 @@ import com.jox3.iptvexo.tv.ui.Jx
 import com.jox3.iptvexo.tv.ui.RemoteImage
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.jox3.iptvexo.tv.ui.imageOf
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -98,6 +99,8 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
     }
     val progressVersion by lib.progressVersion
     val resume = remember(progressVersion) { lib.continueWatching() }
+    val becauseList = lib.because.value?.second.orEmpty()
+    val fresh = com.jox3.iptvexo.tv.ui.rememberFreshImages(repo, remember(resume, becauseList) { resume.map { it.item } + becauseList })
     val recents = lib.recentChannels.toList()
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(22.dp)) {
@@ -118,10 +121,10 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
                         WideTile(
                             title = r.item.name.substringBefore(" · ").ifBlank { r.item.name },
                             subtitle = (if (isEp) r.item.name.substringAfter(" · ", "") + " · " else "") + "quedan ${r.remainingMin} min",
-                            image = r.item.image, progress = r.fraction,
+                            image = fresh.imageOf(r.item), progress = r.fraction,
                         ) {
                             if (isEp) onOpenSeries(r.item.seriesId, r.item.name.substringBefore(" · "), r.item.image)
-                            else launcher.playMovie(r.item.id, r.item.name, r.item.image, r.item.ext, r.item.categoryId)
+                            else launcher.playMovie(r.item.id, r.item.name, fresh.imageOf(r.item), r.item.ext, r.item.categoryId)
                         }
                     }
                 }
@@ -134,7 +137,7 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
                     SectionTitle("Porque viste $title")
                     LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(recs, key = { "b" + it.kind + it.id }) { r ->
-                            PosterTile(r.name, r.image, Modifier.width(112.dp), favorite = lib.isFavorite(r.kind, r.id)) {
+                            PosterTile(r.name, fresh.imageOf(r), Modifier.width(112.dp), favorite = lib.isFavorite(r.kind, r.id)) {
                                 if (r.kind == "series") onOpenSeries(r.id, r.name, r.image)
                                 else onOpenMovie(Movie(r.id, r.name, r.image, "", r.ext, r.categoryId, 0L))
                             }

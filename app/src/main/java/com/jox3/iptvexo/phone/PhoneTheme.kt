@@ -162,7 +162,7 @@ fun PosterTile(title: String, image: String, modifier: Modifier = Modifier, subt
 @Composable
 fun WideTile(title: String, subtitle: String, image: String, progress: Float?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(modifier.width(220.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(14.dp)).clickable(onClick = onClick)) {
-        RemoteImage(image, title, Modifier.fillMaxSize())
+        RemoteImage(image, title, Modifier.fillMaxSize(), tmdbFallback = true)
         Column(
             Modifier.align(Alignment.BottomStart).fillMaxWidth()
                 .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000))))

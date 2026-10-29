@@ -65,6 +65,7 @@ import com.jox3.iptvexo.tv.ui.Safe
 import com.jox3.iptvexo.tv.ui.ShelfRow
 import com.jox3.iptvexo.tv.ui.StatusBox
 import com.jox3.iptvexo.tv.ui.Type
+import com.jox3.iptvexo.tv.ui.imageOf
 
 private data class HomeData(
     val heroes: List<Movie>,
@@ -88,6 +89,8 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
     val lib = repo.library
     val progressVersion by lib.progressVersion
     val resume = remember(progressVersion) { lib.continueWatching() }
+    val becauseList = lib.because.value?.second.orEmpty()
+    val fresh = com.jox3.iptvexo.tv.ui.rememberFreshImages(repo, remember(resume, becauseList) { resume.map { it.item } + becauseList })
     val heroReq = remember { FocusRequester() }
 
     val result = state
@@ -125,11 +128,11 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
                         title = r.item.name.substringBefore(" · ").ifBlank { r.item.name },
                         subtitle = (if (r.item.kind == "episode") r.item.name.substringAfter(" · ", "") + " — " else "") +
                             "quedan ${r.remainingMin} min",
-                        image = r.item.image,
+                        image = fresh.imageOf(r.item),
                         progress = r.fraction,
                         onClick = {
                             if (r.item.kind == "episode") nav.open(Route.SeriesDetail(r.item.seriesId, r.item.name.substringBefore(" · "), r.item.image))
-                            else host.player.playMovie(r.item.id, r.item.name, r.item.image, r.item.ext, r.item.categoryId)
+                            else host.player.playMovie(r.item.id, r.item.name, fresh.imageOf(r.item), r.item.ext, r.item.categoryId)
                         },
                     )
                 }
@@ -143,7 +146,7 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
             item(key = "because") {
                 ShelfRow("Porque viste $title") {
                     items(recs, key = { "b" + it.kind + it.id }) { r ->
-                        PosterCard(r.name, r.image, onClick = {
+                        PosterCard(r.name, fresh.imageOf(r), onClick = {
                             if (r.kind == "series") nav.open(Route.SeriesDetail(r.id, r.name, r.image))
                             else nav.open(Route.MovieDetail(com.jox3.iptvexo.tv.data.Movie(r.id, r.name, r.image, "", r.ext, r.categoryId, 0L)))
                         }, subtitle = if (r.kind == "series") "Serie" else "Película",
