@@ -81,7 +81,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private val timeFmt = SimpleDateFormat("h:mm a", Locale("es"))
+private val timeFmt get() = SimpleDateFormat("h:mm a", Locale("es"))
 private fun hhmm(ms: Long) = if (ms > 0) timeFmt.format(Date(ms)) else ""
 
 /**

@@ -4,6 +4,7 @@
 //   profile = perfil de la casa ("principal", "p…"); "_perfiles" guarda la lista de perfiles.
 //   → guarda los cambios (gana el de ts más nuevo) y devuelve lo que cambió después de `since`.
 // GET  /         → estado del servidor.
+// GET  /v1/tz    → zona horaria de quien pregunta (según su conexión), p. ej. America/Bogota.
 //
 // Ver juntos:
 // POST /v1/room              → crea una sala y devuelve su código de 6 números.
@@ -26,6 +27,9 @@ export default {
     const url = new URL(req.url);
     try {
       if (url.pathname === "/" && req.method === "GET") return json({ ok: true, app: "jox3-sync", v: 1 });
+      // Zona horaria de la conexión (para corregir TV Box con la hora mal puesta)
+      if (url.pathname === "/v1/tz" && req.method === "GET")
+        return json({ tz: (req.cf && req.cf.timezone) || "", country: (req.cf && req.cf.country) || "" });
       if (url.pathname === "/v1/sync" && req.method === "POST") return await sync(req, env);
       if (url.pathname === "/v1/room" && req.method === "POST") return await createRoom(env);
       const inv = url.pathname.match(/^\/v\/(\d{6})$/);

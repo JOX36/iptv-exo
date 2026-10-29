@@ -19,6 +19,8 @@ import java.util.Locale
 class App : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Hora correcta aunque el TV Box tenga mal la zona horaria
+        com.jox3.iptvexo.tv.data.AppTime.init(this)
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try {

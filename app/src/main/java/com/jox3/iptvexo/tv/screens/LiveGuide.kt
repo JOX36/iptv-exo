@@ -81,7 +81,7 @@ private const val HALF_HOUR = 1_800_000L
 private val PER_MIN = 4.dp          // ancho de un minuto en la línea de tiempo
 private val CH_W = 196.dp           // columna fija de canales
 private val ROW_H = 60.dp
-private val timeFmt = SimpleDateFormat("h:mm a", Locale("es"))
+private val timeFmt get() = SimpleDateFormat("h:mm a", Locale("es"))
 private fun hhmm(ms: Long) = if (ms > 0) timeFmt.format(Date(ms)) else ""
 
 /**
