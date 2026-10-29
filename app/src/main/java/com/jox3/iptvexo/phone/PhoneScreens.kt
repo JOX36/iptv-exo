@@ -664,6 +664,15 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Mis servidores", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false, onClick = onServers)
                 PButton("⏺ Grabaciones", Modifier.fillMaxWidth(), icon = R.drawable.ic_record, primary = false) { recordings = true }
                 PButton("Organizar categorías", Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list, primary = false) { organize = true }
+                val tctx = LocalContext.current
+                var tzAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.data.AppTime.isAuto(tctx)) }
+                var tzTick by remember { mutableStateOf(0) }
+                LaunchedEffect(tzAuto) { repeat(6) { kotlinx.coroutines.delay(1000); tzTick++ } }
+                val nowLabel = remember(tzTick, tzAuto) { SimpleDateFormat("h:mm a", Locale("es")).format(Date()) }
+                PButton("Hora: " + nowLabel +
+                    if (tzAuto) " (automática)" else " (del equipo)", Modifier.fillMaxWidth(), primary = false) {
+                    tzAuto = !tzAuto; com.jox3.iptvexo.tv.data.AppTime.setAuto(tctx, tzAuto)
+                }
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 val sctx = LocalContext.current
                 var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }

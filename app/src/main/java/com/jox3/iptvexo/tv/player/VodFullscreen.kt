@@ -78,7 +78,7 @@ private enum class VOpt(val label: String, val panel: Boolean, val enter: Boolea
 
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 private val SLEEPS = listOf(0, 15, 30, 45, 60, 90, 120, -1)
-private val clockFmt = SimpleDateFormat("h:mm a", Locale("es"))
+private val clockFmt get() = SimpleDateFormat("h:mm a", Locale("es"))
 
 private fun fmt(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)

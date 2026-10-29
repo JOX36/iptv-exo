@@ -11,6 +11,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import com.jox3.iptvexo.tv.ui.FocusSurface
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.ui.focus.onFocusChanged
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -96,14 +98,23 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
         StatusBox("No se pudo cargar el inicio: ${it.message}", onRetry = { reload++ }); return
     }
 
+    // Al volver al destacado se sube del todo: si no, la lista solo mostraba los botones
+    // y el banner quedaba cortado arriba.
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LazyColumn(
         Modifier.fillMaxSize(),
+        state = listState,
         contentPadding = PaddingValues(bottom = 40.dp),
         verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
         // ── Destacado ──
         if (data.heroes.isNotEmpty()) item(key = "hero") {
             HeroCarousel(repo, data.heroes, heroReq,
+                modifier = Modifier.onFocusChanged { f ->
+                    if (f.hasFocus && (listState.firstVisibleItemIndex != 0 || listState.firstVisibleItemScrollOffset != 0))
+                        scope.launch { delay(30); listState.animateScrollToItem(0) }
+                },
                 onPlay = { m, info -> host.player.playMovie(m.id, m.name, m.poster, info?.ext?.ifBlank { null } ?: m.ext, m.categoryId) },
                 onInfo = { m -> nav.open(Route.MovieDetail(m)) })
         } else item(key = "pad") { Box(Modifier.height(Safe.V)) }
@@ -184,7 +195,7 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
  */
 @Composable
 private fun HeroCarousel(
-    repo: TvRepo, movies: List<Movie>, playReq: FocusRequester,
+    repo: TvRepo, movies: List<Movie>, playReq: FocusRequester, modifier: Modifier = Modifier,
     onPlay: (Movie, MovieInfo?) -> Unit, onInfo: (Movie) -> Unit,
 ) {
     var index by remember { mutableIntStateOf(0) }
@@ -202,7 +213,7 @@ private fun HeroCarousel(
         val next = movies[(index + 1) % movies.size]
         if (!infos.containsKey(next.id)) infos[next.id] = runCatching { repo.api.movieInfo(next.id) }.getOrNull()
     }
-    Box(Modifier.fillMaxWidth().height(330.dp)) {
+    Box(modifier.fillMaxWidth().height(330.dp)) {
         Crossfade(targetState = m, animationSpec = tween(600), label = "hero") { cur ->
             Box(Modifier.fillMaxSize()) {
                 val info = infos[cur.id]

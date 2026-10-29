@@ -73,7 +73,7 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.abs
 
-private val clockFmt = SimpleDateFormat("h:mm a", Locale("es"))
+private val clockFmt get() = SimpleDateFormat("h:mm a", Locale("es"))
 internal fun clock(ms: Long): String = if (ms > 0) clockFmt.format(Date(ms)) else ""
 internal fun fmtTime(ms: Long): String {
     val s = (ms / 1000).coerceAtLeast(0)

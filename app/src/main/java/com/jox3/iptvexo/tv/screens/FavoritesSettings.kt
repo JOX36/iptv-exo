@@ -144,6 +144,17 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
                 icon = R.drawable.tv_ic_update)
             ActionButton("⏺ Grabaciones", { recordings = true }, Modifier.fillMaxWidth(), icon = R.drawable.ic_record)
             ActionButton("Organizar categorías", { organize = true }, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list)
+            // Zona horaria: automática (por internet) o la del equipo
+            val tctx = androidx.compose.ui.platform.LocalContext.current
+            var tzAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.data.AppTime.isAuto(tctx)) }
+            var tzTick by remember { mutableStateOf(0) }
+            LaunchedEffect(tzAuto) { repeat(6) { kotlinx.coroutines.delay(1000); tzTick++ } }
+            val nowLabel = remember(tzTick, tzAuto) { SimpleDateFormat("h:mm a", Locale("es")).format(Date()) }
+            ActionButton("Hora: " + nowLabel, {
+                tzAuto = !tzAuto; com.jox3.iptvexo.tv.data.AppTime.setAuto(tctx, tzAuto)
+            }, Modifier.fillMaxWidth())
+            Text("Zona: " + com.jox3.iptvexo.tv.data.AppTime.label(tctx) + ". OK para cambiar entre automática y la del equipo.",
+                style = Type.Small, color = Jx.Faint)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
             // Se pide confirmar: la primera pulsación solo cambia el texto
             ActionButton(if (confirmDelete) "OK otra vez para eliminar" else "Eliminar esta cuenta",

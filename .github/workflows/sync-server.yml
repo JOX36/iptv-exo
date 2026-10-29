@@ -53,6 +53,9 @@ jobs:
             -d "{\"acc\":\"$(printf '0%.0s' {1..64})\",\"profile\":\"prueba\",\"since\":0,\"changes\":[{\"list\":\"fav\",\"item\":\"movie:1\",\"data\":\"{}\",\"ts\":$T}]}" \
             | tee /tmp/r.json ; echo
           grep -q '"movie:1"' /tmp/r.json
+          # Zona horaria de la conexión
+          curl -fsS "$U/v1/tz" | tee /tmp/tz.json ; echo
+          grep -q '"tz":"' /tmp/tz.json
           # Ver juntos: crear una sala
           curl -fsS -X POST "$U/v1/room" | tee /tmp/room.json ; echo
           grep -q '"code":"[0-9]\{6\}"' /tmp/room.json

@@ -73,7 +73,7 @@ import java.util.Locale
 
 private const val FAV_ID = "__fav"
 private const val RECENT_ID = "__recent"
-private val clock = SimpleDateFormat("h:mm a", Locale("es"))
+private val clock get() = SimpleDateFormat("h:mm a", Locale("es"))
 private fun allCatsFor(catList: List<Category>?) =
     listOf(Category(FAV_ID, "Favoritos"), Category(RECENT_ID, "Recientes")) + catList.orEmpty()
 private fun hhmm(ms: Long) = if (ms > 0) clock.format(Date(ms)) else ""
