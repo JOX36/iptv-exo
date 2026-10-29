@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jox3.tvdesktop.data.Channel
+import com.jox3.tvdesktop.data.TvRepo
 import com.jox3.tvdesktop.data.EpgItem
 import kotlinx.coroutines.delay
 
@@ -77,7 +78,7 @@ fun LiveGuideGrid(live: LiveController, channels: List<Channel>, title: String, 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(title.removePrefix("★  "), color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 19.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            RoundButton(Ico.PREV, "Antes (Mayús + rueda)", small = true) { offsetMin = (offsetMin - 60).coerceAtLeast(-120) }
+            RoundButton(Ico.PREV, "Antes (Mayús + rueda)", small = true) { offsetMin = (offsetMin - 60).coerceAtLeast(-240) }
             Spacer(Modifier.width(6.dp))
             PillButton("Ahora") { offsetMin = 0 }
             Spacer(Modifier.width(6.dp))
@@ -93,7 +94,7 @@ fun LiveGuideGrid(live: LiveController, channels: List<Channel>, title: String, 
                     val dx = c.scrollDelta.x
                     val horizontal = if (dx != 0f) dx else if (ev.keyboardModifiers.isShiftPressed) c.scrollDelta.y else 0f
                     if (horizontal != 0f) {
-                        offsetMin = (offsetMin + (if (horizontal > 0) 30 else -30)).coerceIn(-120, 20 * 60)
+                        offsetMin = (offsetMin + (if (horizontal > 0) 30 else -30)).coerceIn(-240, 20 * 60)
                         c.consume()
                     }
                 }
@@ -155,7 +156,9 @@ private fun GuideRow(live: LiveController, ch: Channel, start: Long, spanMin: Lo
             RemoteImage(ch.logo, ch.name, Modifier.size(32.dp).clip(RoundedCornerShape(6.dp)))
             Spacer(Modifier.width(8.dp))
             Text(ch.name, color = if (playing) Jx.Accent else Jx.Text, fontFamily = Exo2, fontSize = 13.sp,
-                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            // ⏪ = este canal guarda programas pasados (se pueden ver desde el inicio)
+            if (ch.archiveDays > 0) Text("⏪", color = Jx.Accent, fontSize = 12.sp)
         }
         Spacer(Modifier.width(6.dp))
         // Programas
@@ -168,14 +171,28 @@ private fun GuideRow(live: LiveController, ch: Channel, start: Long, spanMin: Lo
                         modifier = Modifier.padding(horizontal = 12.dp))
                 }
             }
-            items.forEach { p -> ProgramBlock(p, start, end, now) { onPlay(ch) } }
+            items.forEach { p -> ProgramBlock(live, ch, p, start, end, now) { onPlay(ch) } }
         }
     }
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick: () -> Unit) {
+private fun ProgramBlock(live: LiveController, ch: Channel, p: EpgItem, start: Long, end: Long, now: Long, onWatch: () -> Unit) {
+    val repo = live.repo
+    val acc = repo.api.account
+    val past = p.end <= now
+    val canCu = past && TvRepo.canCatchup(ch, p, now)
+    @Suppress("UNUSED_VARIABLE") val rv = com.jox3.tvdesktop.data.Reminders.version.intValue
+    val rem = p.start > now && com.jox3.tvdesktop.data.Reminders.has(acc, ch, p)
+    // Ya pasó → verlo desde el inicio · Todavía no empieza → ⏰ avisarme · Ahora → ver el canal
+    val onClick: () -> Unit = {
+        when {
+            canCu -> live.playCatchup(ch, p)
+            p.start > now -> live.notice(com.jox3.tvdesktop.data.Reminders.toggle(acc, ch, p))
+            else -> onWatch()
+        }
+    }
     val from = maxOf(p.start, start)
     val to = minOf(p.end, end)
     val x = PX_PER_MIN * ((from - start) / 60_000f)
@@ -194,12 +211,30 @@ private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick:
                 Text(p.label, color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                 Text("${hhmm(p.start)} – ${hhmm(p.end)}", color = Jx.Muted, fontFamily = Exo2, fontSize = 12.sp)
                 if (p.meta.isNotBlank()) Text(p.meta, color = Jx.Accent, fontFamily = Exo2, fontSize = 12.sp)
+                Text(when {
+                    canCu -> "Clic: ⏪ ver este programa desde el inicio"
+                    past -> "Este canal no guarda programas pasados"
+                    p.start > now -> if (rem) "⏰ Te aviso cuando empiece · clic: quitar el aviso" else "Clic: ⏰ avisarme cuando empiece"
+                    else -> "Clic: ver el canal"
+                } + if (!past) " · Clic derecho: ⏺ grabar" else "", color = Jx.Faint, fontFamily = Exo2, fontSize = 11.sp)
                 if (p.description.isNotBlank()) Text(p.description, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 12.sp, maxLines = 6)
             }
         },
         delayMillis = 400,
         modifier = Modifier.offset(x = x),
     ) {
+      androidx.compose.foundation.ContextMenuArea(items = {
+        buildList {
+            if (canCu) add(androidx.compose.foundation.ContextMenuItem("⏪ Ver desde el inicio") { live.playCatchup(ch, p) })
+            if (p.start > now) add(androidx.compose.foundation.ContextMenuItem(if (rem) "⏰ Quitar el aviso" else "⏰ Avisarme cuando empiece") {
+                live.notice(com.jox3.tvdesktop.data.Reminders.toggle(acc, ch, p))
+            })
+            if (!past) add(androidx.compose.foundation.ContextMenuItem("⏺ Grabar este programa") {
+                live.notice(com.jox3.tvdesktop.data.Recorder.schedule(acc, ch, p.cleanTitle, p.start, p.end))
+            })
+            add(androidx.compose.foundation.ContextMenuItem("Ver el canal") { onWatch() })
+        }
+      }) {
         Column(
             Modifier.width(w).fillMaxHeight().clip(RoundedCornerShape(8.dp))
                 .background(if (airing) Jx.SurfaceHi else Jx.Surface)
@@ -208,7 +243,7 @@ private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick:
                 .clickable(onClick = onClick).pointerHoverIcon(PointerIcon.Hand)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         ) {
-            Text(p.label, color = if (airing) Jx.Text else Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
+            Text((if (rem) "⏰ " else "") + p.label, color = if (airing) Jx.Text else Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
                 fontWeight = if (airing) FontWeight.SemiBold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text("${hhmm(p.start)} – ${hhmm(p.end)}", color = Jx.Faint, fontFamily = Exo2, fontSize = 11.sp, maxLines = 1)
             if (airing) {
@@ -216,6 +251,7 @@ private fun ProgramBlock(p: EpgItem, start: Long, end: Long, now: Long, onClick:
                 ProgressLine(p.progress(now), Modifier.fillMaxWidth(), height = 2.dp)
             }
         }
+      }
     }
 }
 

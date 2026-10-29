@@ -230,6 +230,33 @@ fun HomeScreen(
         if (player.state == PlayState.Playing || player.state == PlayState.Paused) WatchTogether.playerReady()
     }
 
+    // ── Grabaciones: las programadas empiezan solas mientras el programa está abierto ──
+    LaunchedEffect(Unit) { com.jox3.tvdesktop.data.Recorder.start { com.jox3.tvdesktop.data.AccountStore().all() } }
+    // Clic en una notificación de Windows: traer la ventana al frente
+    LaunchedEffect(control) {
+        com.jox3.tvdesktop.core.Notify.onClick = {
+            javax.swing.SwingUtilities.invokeLater {
+                control?.window?.let { w ->
+                    if (w.state == java.awt.Frame.ICONIFIED) w.state = java.awt.Frame.NORMAL
+                    w.toFront(); w.requestFocus()
+                }
+            }
+        }
+    }
+    // ── Recordatorios de la guía: revisar cada 20 s si algo empieza ──
+    LaunchedEffect(Unit) {
+        while (true) {
+            com.jox3.tvdesktop.data.Reminders.checkDue()?.let { r ->
+                // Con la ventana minimizada o detrás de otra, también la notificación de Windows
+                if (java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().activeWindow == null) {
+                    val fmt = java.text.SimpleDateFormat("h:mm a", java.util.Locale.forLanguageTag("es"))
+                    com.jox3.tvdesktop.core.Notify.show("⏰ Empieza: ${r.title}", "${r.chName} · ${fmt.format(java.util.Date(r.start))}")
+                }
+            }
+            delay(20_000)
+        }
+    }
+
     // Al cerrar el programa (o al actualizarse) se guarda dónde va la película
     // y lo pendiente se sube a la nube (como mucho 4 s)
     androidx.compose.runtime.DisposableEffect(live) {
@@ -432,6 +459,25 @@ fun HomeScreen(
             ) {
                 PlayerView(live, Modifier.fillMaxSize(), ::expandPip, ::toggleMini, onExitVod = { live.stop() })
             }
+        }
+        // Recordatorio que empieza ahora
+        com.jox3.tvdesktop.data.Reminders.due.value?.let { r ->
+            ReminderBanner(r, Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
+                onWatch = {
+                    com.jox3.tvdesktop.data.Reminders.due.value = null
+                    val acc = accounts.firstOrNull { it.key == r.acc } ?: account.takeIf { it.key == r.acc }
+                    if (acc != null) open(acc, ServerHub.Copy(acc, "live", r.chId, r.chName, r.logo, "", r.cat))
+                    else live.notice("Ese servidor ya no está en este perfil")
+                },
+                onClose = { com.jox3.tvdesktop.data.Reminders.due.value = null })
+        }
+        // Avisos (recordatorio puesto, grabación programada, desde el inicio…)
+        live.notice?.let { (text, at) ->
+            var nowN by remember { mutableStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(at) { while (System.currentTimeMillis() - at < 4_500) { delay(300); nowN = System.currentTimeMillis() } }
+            if (nowN - at < 4_500) Text(text, color = Jx.Text, fontFamily = Exo2, fontSize = 15.sp,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 120.dp).widthIn(max = 640.dp)
+                    .background(Color(0xF0111923), RoundedCornerShape(12.dp)).padding(horizontal = 18.dp, vertical = 12.dp))
         }
         // Ver juntos: aviso de la sala (código, personas, reacciones) encima de todo
         TogetherBadge(Modifier.align(Alignment.TopCenter).padding(top = 64.dp))

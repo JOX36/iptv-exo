@@ -129,7 +129,15 @@ fun main(args: Array<String>) {
         }
 
         fun close() {
+            // Grabando: en el PC la grabación se detiene al cerrar, así que se pregunta antes
+            if (com.jox3.tvdesktop.data.Recorder.busy()) {
+                val ok = javax.swing.JOptionPane.showConfirmDialog(null,
+                    "Hay una grabación en curso. Si cierras el programa, se detiene.\n¿Cerrar de todas formas?",
+                    "JOX3 TV", javax.swing.JOptionPane.YES_NO_OPTION, javax.swing.JOptionPane.WARNING_MESSAGE)
+                if (ok != javax.swing.JOptionPane.YES_OPTION) return
+            }
             Shutdown.runAll()
+            com.jox3.tvdesktop.core.Notify.dispose()
             WindowPrefs.save(floating.copy(maximized = maximized))
             Log.i("Programa cerrado por el usuario")
             runCatching { player.release() }

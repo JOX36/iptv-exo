@@ -108,6 +108,18 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
         }, onReady = onExternalReady)
     }
 
+    // ── Ver desde el inicio (catch-up) ──
+    @Volatile private var serverTz: java.util.TimeZone? = null
+
+    /** Zona horaria del servidor (la del equipo si no la informa). */
+    suspend fun serverTimeZone(): java.util.TimeZone = serverTz ?: run {
+        val id = runCatching { api.serverInfo().timezone }.getOrDefault("")
+        val tz = id.takeIf { it.isNotBlank() }?.let { java.util.TimeZone.getTimeZone(it) }
+            ?.takeIf { it.id == id } ?: java.util.TimeZone.getDefault()
+        serverTz = tz
+        tz
+    }
+
     // ── Elegir la guía de un canal a mano (igual que Android) ──
     class GuideChoice(val key: String, val label: String, val selected: Boolean)
 
@@ -153,12 +165,12 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
         val manual = ExternalEpg.manualFor(ch.name)
         if (manual == "none") { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to emptyList() }; return emptyList() }
         if (manual.isNotEmpty() && ExternalEpg.isReady()) {
-            val picked = ExternalEpg.match(ch.name, null)?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 12 * 3600 }
+            val picked = ExternalEpg.match(ch.name, null)?.progs?.filter { it.stop > nowSec - 4 * 3600 && it.start < nowSec + 12 * 3600 }
                 ?.map { it.toItem() }.orEmpty()
             if (picked.isNotEmpty()) { synchronized(epg) { epg[ch.id] = System.currentTimeMillis() to picked }; return picked }
         }
         // 1. Guía completa del servidor (xmltv.php), si la tiene para este canal
-        val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 3600 }?.map { it.toItem() }.orEmpty()
+        val full = ServerEpg.lookup(api.account, ch.epgId)?.filter { it.stop > nowSec - 4 * 3600 }?.map { it.toItem() }.orEmpty()
         // 2. Si no, la guía corta del servidor (14 programas: alcanza para la guía por horas)
         val server = full.ifEmpty {
             epgPermits.withPermit {
@@ -172,7 +184,7 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
             withContext(Dispatchers.Default) {
                 try {
                     ExternalEpg.match(ch.name, ch.epgId.ifBlank { null }, hint?.ifBlank { null })
-                        ?.progs?.filter { it.stop > nowSec - 3600 && it.start < nowSec + 24 * 3600 }
+                        ?.progs?.filter { it.stop > nowSec - 4 * 3600 && it.start < nowSec + 24 * 3600 }
                         ?.map { it.toItem() }
                         .orEmpty()
                 } catch (e: Exception) {
@@ -362,6 +374,10 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
             normalize(name).replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("[^a-z0-9]+"), " ")
                 .replace(Regex("\\b(4k|uhd|fhd|hd|sd|latino|castellano|subtitulado|dual|19\\d\\d|20\\d\\d)\\b"), " ")
                 .replace(Regex("\\s+"), " ").trim()
+
+        /** ¿Se puede ver este programa desde el inicio? (el canal guarda archivo y ya empezó). */
+        fun canCatchup(ch: Channel, p: EpgItem, now: Long = System.currentTimeMillis()): Boolean =
+            ch.archiveDays > 0 && p.start < now - 60_000 && p.start > now - ch.archiveDays * 86_400_000L
 
         /** Programa que se emite ahora (si la guía lo trae). */
         fun nowPlaying(list: List<EpgItem>, now: Long = System.currentTimeMillis()): EpgItem? =

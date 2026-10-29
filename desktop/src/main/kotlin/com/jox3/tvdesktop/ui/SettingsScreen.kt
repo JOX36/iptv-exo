@@ -59,7 +59,9 @@ fun SettingsScreen(live: LiveController, version: String) {
     val player = live.player
     val scroll = rememberScrollState()
     var organizing by remember { mutableStateOf(false) }
+    var recordings by remember { mutableStateOf(false) }
     if (organizing) { CategoryOrganizer(live.repo, onClose = { organizing = false }); return }
+    if (recordings) { RecordingsScreen(live, onClose = { recordings = false }); return }
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 32.dp, vertical = 24.dp),
@@ -111,6 +113,15 @@ fun SettingsScreen(live: LiveController, version: String) {
                     PillButton("Organizar categorías") { organizing = true }
                 }
 
+                // ── Grabaciones ──
+                Card("⏺ Grabaciones") {
+                    @Suppress("UNUSED_VARIABLE") val rv = com.jox3.tvdesktop.data.Recorder.version.intValue
+                    val n = remember(rv) { com.jox3.tvdesktop.data.Recorder.all().size }
+                    Label("Tus grabaciones", "Graba un canal con el botón ⏺ del reproductor, o programa un programa con clic derecho en la guía. " +
+                        "Se guardan en .ts en ${com.jox3.tvdesktop.data.Recorder.folder().absolutePath}.")
+                    PillButton(if (n > 0) "Ver grabaciones ($n)" else "Ver grabaciones") { recordings = true }
+                }
+
                 // ── Servidores ──
                 Card("Servidores") {
                     var all by remember { mutableStateOf(ServerHub.searchAllEnabled()) }
@@ -147,6 +158,7 @@ fun SettingsScreen(live: LiveController, version: String) {
                         "+ −  /  rueda del mouse" to "Volumen · M: silencio",
                         "A · S · Z" to "Audio · Subtítulos · Formato de imagen",
                         "I · C · V · N" to "Información · Lista de canales · Velocidad · Siguiente episodio",
+                        "G · J" to "En vivo: guía del canal · Películas: Ver juntos",
                         "Ctrl + F" to "Buscador",
                     ).forEach { (k, d) ->
                         Row(Modifier.padding(vertical = 4.dp)) {
