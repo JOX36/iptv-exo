@@ -194,6 +194,30 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     private val indexLock = kotlinx.coroutines.sync.Mutex()
 
     /** Catálogo completo para buscar. Se arma una sola vez y de a una lista (menos memoria). */
+    /**
+     * Carátula actual de lo guardado (Continuar viendo, Porque viste…). Lo guardado puede quedar
+     * sin imagen (si se abrió desde un sitio sin carátula) o con un enlace viejo del servidor:
+     * aquí se busca la que tiene hoy el catálogo. Devuelve "tipo:id" → imagen, solo las que cambian.
+     */
+    suspend fun freshImages(items: List<SavedItem>): Map<String, String> {
+        if (items.isEmpty()) return emptyMap()
+        val idx = runCatching { searchIndex() }.getOrNull() ?: return emptyMap()
+        return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val ids = items.flatMap { listOf(it.id, it.seriesId) }.toSet()
+            val mv = idx.movies.filter { it.id in ids }.associateBy { it.id }
+            val sr = idx.series.filter { it.id in ids }.associateBy { it.id }
+            items.mapNotNull { s ->
+                val p = when (s.kind) {
+                    "movie" -> mv[s.id]?.poster
+                    "series" -> sr[s.id]?.poster
+                    "episode" -> sr[s.seriesId]?.poster
+                    else -> null
+                }
+                p?.takeIf { it.isNotBlank() && it != s.image }?.let { s.kind + ":" + s.id to it }
+            }.toMap()
+        }
+    }
+
     suspend fun searchIndex(): Index = lock.withLock { index } ?: indexLock.withLock {
         lock.withLock { index } ?: run {
             val ch = runCatching { api.channels() }.getOrDefault(emptyList())

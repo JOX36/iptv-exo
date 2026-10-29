@@ -219,7 +219,8 @@ fun LandscapeCard(
             focusedScale = 1.08f,
             container = Jx.Surface,
         ) {
-            RemoteImage(image, title, Modifier.fillMaxSize())
+            // Solo se usa en "Continuar viendo" (películas y series): si falta la carátula, se busca en TMDB
+            RemoteImage(image, title, Modifier.fillMaxSize(), tmdbFallback = true)
             // El nombre va SOBRE la imagen: siempre se ve, aunque la fila quede al borde de la pantalla
             Column(
                 Modifier.align(Alignment.BottomStart).fillMaxWidth()

@@ -86,3 +86,15 @@ fun CastRow(cast: List<Tmdb.Person>, max: Int = 6, photo: androidx.compose.ui.un
         }
     }
 }
+
+/** Carátulas al día para una lista guardada ("tipo:id" → imagen). Ver [TvRepo.freshImages]. */
+@Composable
+fun rememberFreshImages(repo: TvRepo, items: List<com.jox3.iptvexo.tv.data.SavedItem>): Map<String, String> {
+    val fresh by produceState(emptyMap<String, String>(), items) {
+        value = runCatching { repo.freshImages(items) }.getOrDefault(emptyMap())
+    }
+    return fresh
+}
+
+/** La imagen a mostrar: la del catálogo de hoy si cambió, si no la guardada. */
+fun Map<String, String>.imageOf(item: com.jox3.iptvexo.tv.data.SavedItem): String = this[item.kind + ":" + item.id] ?: item.image
