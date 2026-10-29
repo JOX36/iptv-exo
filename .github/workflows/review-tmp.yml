@@ -1,0 +1,40 @@
+name: Revision temporal
+on:
+  push:
+    branches: [ 'revision-tmp' ]
+    paths: [ '.github/workflows/review-tmp.yml' ]
+permissions:
+  contents: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with: { java-version: '17', distribution: 'temurin' }
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.2' }
+      - name: Compilar y lint
+        run: |
+          mkdir -p informe
+          gradle assembleDebug --rerun-tasks 2>&1 | tee build.log || true
+          grep -E "^w: " build.log | sed "s#file://$PWD/##" > informe/warnings-kotlin.txt || true
+          grep -E "warning:" build.log | sed "s#$PWD/##" > informe/warnings-java.txt || true
+          gradle lintDebug --continue 2>&1 | tail -20 || true
+          cp app/build/reports/lint-results-debug.txt informe/lint.txt 2>/dev/null || find app/build/reports -name "lint*" | head > informe/lint-missing.txt
+      - name: Detekt
+        run: |
+          curl -sSL -o detekt.jar https://github.com/detekt/detekt/releases/download/v1.23.7/detekt-cli-1.23.7-all.jar
+          cat > dk.yml <<'Y'
+          style:
+            UnusedPrivateMember: { active: true }
+            UnusedPrivateClass: { active: true }
+            UnusedPrivateProperty: { active: true }
+            UnusedParameter: { active: true }
+            UnusedImports: { active: true }
+          Y
+          java -jar detekt.jar -i app/src/main/java -c dk.yml --build-upon-default-config -r txt:informe/detekt.txt || true
+      - name: Guardar informe
+        run: |
+          git config user.name "JOX36"; git config user.email "controlcajalavacaoriginal1@gmail.com"
+          git add informe && git commit -m "informe [skip ci]" && git push
