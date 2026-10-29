@@ -58,6 +58,8 @@ import java.io.File
 fun SettingsScreen(live: LiveController, version: String) {
     val player = live.player
     val scroll = rememberScrollState()
+    var organizing by remember { mutableStateOf(false) }
+    if (organizing) { CategoryOrganizer(live.repo, onClose = { organizing = false }); return }
     Box(Modifier.fillMaxSize()) {
         Column(
             Modifier.fillMaxSize().verticalScroll(scroll).padding(horizontal = 32.dp, vertical = 24.dp),
@@ -101,6 +103,12 @@ fun SettingsScreen(live: LiveController, version: String) {
                     Divider()
                     Toggle("epg.internet", true, "Guía de internet",
                         "Si tu servidor no trae guía de programación, se descarga de internet (como en la app).")
+                }
+
+                // ── Categorías ──
+                Card("Organizar categorías") {
+                    Label("Ocultar, ordenar y renombrar", "En vivo, Películas y Series: oculta las que no usas (por ejemplo, las de otros países), ponlas en tu orden y cámbiales el nombre. Solo para tu perfil.")
+                    PillButton("Organizar categorías") { organizing = true }
                 }
 
                 // ── Servidores ──

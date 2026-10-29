@@ -76,8 +76,9 @@ fun LiveScreen(live: LiveController, onToggleFull: () -> Unit, onToggleMini: () 
     val lib = repo.library
     var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val cats by produceState<Result<List<Category>>?>(null, reload) {
-        value = runCatching { repo.categories(Section.LIVE) }
+    val catV = lib.catVersion.intValue
+    val cats by produceState<Result<List<Category>>?>(null, reload, catV) {
+        value = runCatching { repo.shownCategories(Section.LIVE) }
     }
     val catList = cats?.getOrNull()
     val allCats = remember(catList) {

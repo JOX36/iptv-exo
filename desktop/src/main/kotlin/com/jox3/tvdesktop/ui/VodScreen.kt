@@ -98,7 +98,8 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
     val kind = if (isMovies) "movie" else "series"
     var reload by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
-    val cats by produceState<Result<List<Category>>?>(null, section, reload) { value = runCatching { repo.categories(section) } }
+    val catV = lib.catVersion.intValue
+    val cats by produceState<Result<List<Category>>?>(null, section, reload, catV) { value = runCatching { repo.shownCategories(section) } }
     val catList = cats?.getOrNull()
     // "Porque viste…": lo recomendado al terminar el último título (como la fila del Inicio en Android)
     val because by lib.because
