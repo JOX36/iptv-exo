@@ -107,6 +107,8 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
     var confirmDelete by remember { mutableStateOf(false) }
     var recordings by remember { mutableStateOf(false) }
     if (recordings) { RecordingsScreen(tv = true) { recordings = false }; return }
+    var downloads by remember { mutableStateOf(false) }
+    if (downloads) { DownloadsScreen(tv = true) { downloads = false }; return }
     var organize by remember { mutableStateOf(false) }
     if (organize) { CategoryOrganizer(repo, tv = true) { organize = false }; return }
     val info by produceState<Result<ServerInfo>?>(null) { value = runCatching { repo.api.serverInfo() } }
@@ -142,6 +144,7 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("Buscar actualizaciones", host::checkUpdates, Modifier.fillMaxWidth().focusRequester(firstReq),
                 icon = R.drawable.tv_ic_update)
             ActionButton("⏺ Grabaciones", { recordings = true }, Modifier.fillMaxWidth(), icon = R.drawable.ic_record)
+            ActionButton("Descargas", { downloads = true }, Modifier.fillMaxWidth(), icon = R.drawable.ic_download)
             ActionButton("Organizar categorías", { organize = true }, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_list)
             // Zona horaria: automática (por internet) o la del equipo
             val tctx = androidx.compose.ui.platform.LocalContext.current

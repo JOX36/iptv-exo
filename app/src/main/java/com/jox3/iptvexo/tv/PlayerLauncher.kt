@@ -71,6 +71,32 @@ class PlayerLauncher {
             r.logo, "rec_${r.id}", item, item, noHistory = true)), 0)
     }
 
+    /**
+     * Ver una descarga (sin internet). En una serie, los demás episodios descargados quedan en
+     * cola para seguir solos. El progreso se comparte con el de la versión en línea.
+     */
+    fun playDownload(d: com.jox3.iptvexo.tv.data.Downloads.Dl, all: List<com.jox3.iptvexo.tv.data.Downloads.Dl>) {
+        val player = vod ?: return
+        val done = com.jox3.iptvexo.tv.data.Downloads.Status.DONE
+        val queue = if (d.kind == "episode")
+            all.filter { it.status == done && it.kind == "episode" && it.seriesId == d.seriesId && it.acc == d.acc }
+                .sortedWith(compareBy({ it.season }, { it.num })).ifEmpty { listOf(d) }
+        else listOf(d)
+        val items = queue.map { x ->
+            if (x.kind == "episode") {
+                val name = "${x.series} · T${x.season}E${x.num}" + if (x.title.isNotBlank()) " - ${x.title}" else ""
+                val resume = SavedItem("episode", x.streamId, name, x.image, ext = x.ext, seriesId = x.seriesId)
+                val fav = SavedItem("series", x.seriesId, x.series, x.image)
+                VodItem(com.jox3.iptvexo.tv.data.Downloads.playUri(x), name.substringAfter(" · "), "${x.series} · descargado",
+                    x.image, x.streamId, resume, fav, season = x.season)
+            } else {
+                val item = SavedItem("movie", x.streamId, x.title, x.image, ext = x.ext)
+                VodItem(com.jox3.iptvexo.tv.data.Downloads.playUri(x), x.title, "Película · descargada", x.image, x.streamId, item, item)
+            }
+        }
+        player.open(items, queue.indexOfFirst { it.id == d.id }.coerceAtLeast(0))
+    }
+
     companion object {
         /** El reproductor de la pantalla actual (TV o celular), para abrir repeticiones desde la guía. */
         @Volatile var current: PlayerLauncher? = null
