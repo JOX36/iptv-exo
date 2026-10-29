@@ -57,6 +57,11 @@ class LibraryStore(
     /** Lo pone CloudSync: avisa que hay algo nuevo para subir pronto. */
     @Volatile internal var onLocalChange: () -> Unit = {}
 
+    /** Organización de categorías por sección (LIVE, VOD, SERIES): ocultas, orden y nombres propios. */
+    private val cats = HashMap<String, CatPrefs>()
+    /** Sube cuando cambia la organización: las pantallas vuelven a pedir las categorías. */
+    val catVersion = mutableIntStateOf(0)
+
     /** "Porque viste…": título que se terminó y lo recomendado (para la fila en Películas y Series). */
     val because = mutableStateOf<Pair<String, List<SavedItem>>?>(null)
 
@@ -77,6 +82,9 @@ class LibraryStore(
                 syncCursor = s.optLong("cursor")
                 s.optJSONObject("pending")?.let { p -> p.keys().forEach { k -> p.optJSONObject(k)?.let { pending[k] = it } } }
                 s.optJSONObject("sent")?.let { p -> p.keys().forEach { k -> sent[k] = p.optLong(k) } }
+            }
+            o.optJSONObject("cats")?.let { c ->
+                c.keys().forEach { k -> c.optJSONObject(k)?.let { cats[k] = catFromJson(it) } }
             }
             o.optJSONObject("because")?.let { b ->
                 val items = load(b.optJSONArray("items"))
@@ -264,6 +272,35 @@ class LibraryStore(
         save()
     }
 
+    // ═══ Organizar categorías (por perfil, igual que Android) ═══
+
+    class CatPrefs(val hidden: Set<String>, val order: List<String>, val names: Map<String, String>)
+
+    fun catPrefs(section: Section): CatPrefs = synchronized(cats) { cats[section.name] } ?: CatPrefs(emptySet(), emptyList(), emptyMap())
+
+    fun saveCatPrefs(section: Section, p: CatPrefs) {
+        synchronized(cats) { cats[section.name] = p }
+        catVersion.intValue++
+        save()
+    }
+
+    fun resetCatPrefs(section: Section) {
+        synchronized(cats) { cats.remove(section.name) }
+        catVersion.intValue++
+        save()
+    }
+
+    private fun catToJson(p: CatPrefs) = JSONObject().put("hidden", JSONArray(p.hidden.toList())).put("order", JSONArray(p.order))
+        .put("names", JSONObject().apply { p.names.forEach { (k, v) -> put(k, v) } })
+
+    private fun catFromJson(o: JSONObject): CatPrefs {
+        val h = o.optJSONArray("hidden") ?: JSONArray()
+        val ord = o.optJSONArray("order") ?: JSONArray()
+        val nm = o.optJSONObject("names") ?: JSONObject()
+        return CatPrefs((0 until h.length()).map { h.optString(it) }.toSet(), (0 until ord.length()).map { ord.optString(it) },
+            nm.keys().asSequence().associateWith { nm.optString(it) })
+    }
+
     // ═══ Porque viste… ═══
 
     /** Guarda la última recomendación (igual que Android: solo en este equipo, no viaja a la nube). */
@@ -291,6 +328,7 @@ class LibraryStore(
                 .put("cursor", syncCursor)
                 .put("pending", JSONObject().apply { pending.forEach { (k, v) -> put(k, v) } })
                 .put("sent", JSONObject().apply { sent.forEach { (k, v) -> put(k, v) } }))
+        synchronized(cats) { if (cats.isNotEmpty()) o.put("cats", JSONObject().apply { cats.forEach { (k, v) -> put(k, catToJson(v)) } }) }
         because.value?.let { (title, items) ->
             o.put("because", JSONObject().put("title", title).put("items", JSONArray().apply { items.forEach { put(toJson(it)) } }))
         }
