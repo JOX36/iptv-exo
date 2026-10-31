@@ -91,8 +91,12 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
 
     fun isPlaying(ch: Channel) = current?.id == ch.id && status == null
 
+    /** Lo llama la interfaz antes de poner un canal (p. ej. cerrar la película que quedó en la ventanita). */
+    var beforePlay: () -> Unit = {}
+
     /** Reproduce el canal (en la vista previa, o en pantalla completa si ya lo está). */
     fun play(ch: Channel, list: List<Channel>, groupName: String) {
+        beforePlay()
         channels = list
         group = groupName
         if (current?.id == ch.id && exo?.playbackState != Player.STATE_IDLE) return
