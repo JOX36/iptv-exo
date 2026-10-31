@@ -204,6 +204,8 @@ private fun MainShell(
     // ── Reproductor de películas y series (pantalla completa) ──
     val vod = remember { VodPlayback(context.applicationContext, repo.library) }
     vod.beforeOpen = { runCatching { baseFocus.saveFocusedChild() }; live.stop() }
+    // Al poner un canal, la película que quedó en la ventanita se cierra (si no, queda encima del canal)
+    live.beforePlay = { if (vod.open) vod.close() }
     host.player.vod = vod
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
