@@ -74,7 +74,7 @@ object MultiView {
     /** Canal que sonaba (para seguir viéndolo en grande al salir). */
     fun audioChannel(): Channel? = tiles.getOrNull(audio)?.channel ?: tiles.firstOrNull { it != null }?.channel
 
-    fun setLayout(l: Layout) {
+    fun changeLayout(l: Layout) {
         if (l == layout) return
         layout = l
         // Si sobran cuadros (de 4 a 2), se cierran los últimos

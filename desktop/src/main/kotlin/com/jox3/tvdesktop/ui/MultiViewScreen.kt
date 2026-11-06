@@ -97,7 +97,7 @@ fun MultiViewScreen(live: LiveController, onExit: () -> Unit) {
             Text("Multipantalla", color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             Text("${MultiView.used()} de ${MultiView.limit()} · suena el resaltado · doble clic agranda",
                 color = Jx.Muted, fontFamily = Exo2, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            MultiView.Layout.entries.forEach { l -> Chip(l.label, selected = MultiView.layout == l) { MultiView.setLayout(l) } }
+            MultiView.Layout.entries.forEach { l -> Chip(l.label, selected = MultiView.layout == l) { MultiView.changeLayout(l) } }
             if (MultiView.maxConnections < MultiView.MAX)
                 Text("Tu cuenta: ${MultiView.maxConnections} conexiones", color = Jx.Gold, fontFamily = Exo2, fontSize = 12.sp)
             GhostButton("Salir (Esc)") { onExit() }
