@@ -20,7 +20,7 @@ import kotlin.math.sin
 
 /** Iconos propios dibujados (no dependen de fuentes ni de paquetes externos). */
 enum class Ico { PLAY, PAUSE, PREV, NEXT, VOLUME, MUTE, FULLSCREEN, EXIT_FULLSCREEN, MINI, STAR, STAR_FILLED,
-    LIST, INFO, SUBTITLES, AUDIO, PICTURE, SLEEP, SEARCH, CLOSE, GUIDE, REFRESH, LIVE, USER, CLOCK, SETTINGS, RECORD, RESTART }
+    LIST, INFO, SUBTITLES, AUDIO, PICTURE, SLEEP, SEARCH, CLOSE, GUIDE, REFRESH, LIVE, USER, CLOCK, SETTINGS, RECORD, RESTART, GRID }
 
 @Composable
 fun JxIcon(ico: Ico, size: Dp = 20.dp, color: Color = Jx.Text, modifier: Modifier = Modifier) {
@@ -132,6 +132,13 @@ private fun DrawScope.drawIco(ico: Ico, c: Color) {
         Ico.CLOCK -> {
             drawCircle(c, s * 0.4f, p(0.5f, 0.5f), style = stroke)
             line(0.5f, 0.5f, 0.5f, 0.28f); line(0.5f, 0.5f, 0.66f, 0.6f)
+        }
+        Ico.GRID -> {
+            val r = CornerRadius(s * 0.05f)
+            drawRoundRect(c, p(0.12f, 0.16f), Size(s * 0.34f, s * 0.3f), r, style = stroke)
+            drawRoundRect(c, p(0.54f, 0.16f), Size(s * 0.34f, s * 0.3f), r, style = stroke)
+            drawRoundRect(c, p(0.12f, 0.54f), Size(s * 0.34f, s * 0.3f), r, style = stroke)
+            drawRoundRect(c, p(0.54f, 0.54f), Size(s * 0.34f, s * 0.3f), r, style = stroke)
         }
         Ico.RECORD -> {
             drawCircle(c, s * 0.4f, p(0.5f, 0.5f), style = stroke)

@@ -362,6 +362,7 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
                 if (vod == null) RoundButton(Ico.RESTART, "Desde el inicio: el programa de ahora desde que empezó") { live.restartCurrent() }
                 if (vod == null) RoundButton(Ico.SEARCH, "Elegir guía", selected = live.panel == Panel.GUIDE_PICK) { live.toggle(Panel.GUIDE_PICK) }
                 if (vod == null) RoundButton(Ico.RECORD, "Grabar", selected = live.panel == Panel.RECORD) { live.toggle(Panel.RECORD) }
+                if (vod == null && live.openMulti != null) RoundButton(Ico.GRID, "Multipantalla: este canal y hasta 3 más") { live.openMulti?.invoke(live.current) }
                 RoundButton(Ico.AUDIO, "Audio (A)", selected = live.panel == Panel.AUDIO) { live.toggle(Panel.AUDIO) }
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }

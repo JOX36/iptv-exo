@@ -125,7 +125,7 @@ fun main(args: Array<String>) {
         }
         // Un solo reproductor para todo el programa
         val player = remember {
-            VideoPlayer().also { p -> KeepAwake.start { p.state == com.jox3.tvdesktop.player.PlayState.Playing } }
+            VideoPlayer().also { p -> KeepAwake.start { p.state == com.jox3.tvdesktop.player.PlayState.Playing || com.jox3.tvdesktop.player.MultiView.anyPlaying() } }
         }
 
         fun close() {
