@@ -232,6 +232,7 @@ fun LiveScreen(live: LiveController, onToggleFull: () -> Unit, onToggleMini: () 
                                         val added = lib.toggleFavorite(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
                                         live.flash(if (added) "Agregado a favoritos" else "Quitado de favoritos")
                                     },
+                                    onMulti = { live.openMulti?.invoke(ch) },
                                 )
                             }
                         }
@@ -288,7 +289,7 @@ private fun emptyText(catId: String?) = when (catId) {
 @Composable
 private fun ChannelRow(
     ch: Channel, repo: TvRepo, favorite: Boolean, playing: Boolean,
-    onClick: () -> Unit, onDoubleClick: () -> Unit, onFavorite: () -> Unit,
+    onClick: () -> Unit, onDoubleClick: () -> Unit, onFavorite: () -> Unit, onMulti: () -> Unit = {},
 ) {
     val version by repo.epgVersion
     // Lo que se emite ahora: se pide solo si la fila queda visible un instante
@@ -302,6 +303,7 @@ private fun ChannelRow(
         listOf(
             ContextMenuItem(if (favorite) "Quitar de favoritos" else "Agregar a favoritos", onFavorite),
             ContextMenuItem("Ver en pantalla completa", onDoubleClick),
+            ContextMenuItem("Agregar a multipantalla", onMulti),
         )
     }) {
         Row(

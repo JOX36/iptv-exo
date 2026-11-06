@@ -315,6 +315,9 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
 
     fun flash(text: String) { toast = text to System.currentTimeMillis() }
 
+    /** Abre la multipantalla (solo PC) con ese canal; lo pone la pantalla principal. */
+    var openMulti: ((Channel?) -> Unit)? = null
+
     /** Aviso más largo abajo al centro, encima de todo (recordatorios, grabaciones, desde el inicio). */
     var notice by mutableStateOf<Pair<String, Long>?>(null); private set
     fun notice(text: String) { notice = text to System.currentTimeMillis() }

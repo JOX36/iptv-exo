@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jox3.tvdesktop.data.Account
+import com.jox3.tvdesktop.data.Channel
 import com.jox3.tvdesktop.data.LibraryStore
 import com.jox3.tvdesktop.data.Section
 import com.jox3.tvdesktop.data.SavedItem
@@ -228,6 +229,25 @@ fun HomeScreen(
     LaunchedEffect(live.vod) { WatchTogether.mediaChanged() }
     LaunchedEffect(player.state) {
         if (player.state == PlayState.Playing || player.state == PlayState.Paused) WatchTogether.playerReady()
+    }
+
+    // ── Multipantalla (solo PC): hasta 4 canales a la vez ──
+    fun openMulti(first: Channel?) {
+        val ch = first
+        if (live.vod != null) live.saveVodProgress()
+        control?.switchMini(false)
+        live.stop()   // libera la conexión del reproductor principal
+        com.jox3.tvdesktop.player.MultiView.start(account, info.maxCons, { c -> repo.api.liveUrl(c.id) }, ch)
+    }
+    fun closeMulti() {
+        val ch = com.jox3.tvdesktop.player.MultiView.audioChannel()
+        com.jox3.tvdesktop.player.MultiView.close()
+        // Se sigue viendo en grande el canal que sonaba
+        if (ch != null) { tab = Tab.LIVE; live.play(ch, listOf(ch), "Multipantalla") }
+    }
+    DisposableEffect(live) {
+        live.openMulti = { ch -> openMulti(ch) }
+        onDispose { live.openMulti = null; if (com.jox3.tvdesktop.player.MultiView.open) com.jox3.tvdesktop.player.MultiView.close() }
     }
 
     // ── Grabaciones: las programadas empiezan solas mientras el programa está abierto ──
@@ -423,6 +443,8 @@ fun HomeScreen(
                     Pill("EN VIVO", Jx.Live)
                     Spacer(Modifier.width(12.dp))
                 }
+                TabButton("Multipantalla", selected = false, icon = Ico.GRID) { openMulti(null) }
+                Spacer(Modifier.width(8.dp))
                 TabButton("Ver juntos", selected = showJoin, icon = Ico.USER) { showJoin = true }
                 Spacer(Modifier.width(8.dp))
                 ProfileChip(profile, account.label, selected = showAccount) { showAccount = !showAccount }
@@ -462,6 +484,8 @@ fun HomeScreen(
                 PlayerView(live, Modifier.fillMaxSize(), ::expandPip, ::toggleMini, onExitVod = { live.stop() })
             }
         }
+        // Multipantalla: encima de todo
+        if (com.jox3.tvdesktop.player.MultiView.open) MultiViewScreen(live, onExit = { closeMulti() })
         // Recordatorio que empieza ahora
         com.jox3.tvdesktop.data.Reminders.due.value?.let { r ->
             ReminderBanner(r, Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
