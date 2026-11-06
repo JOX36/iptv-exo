@@ -34,6 +34,17 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
             if (s == Section.LIVE) startExternalEpg(list)
         }
 
+    /** Carátula actual en el catálogo (películas por id; series por id de serie). Igual que Android. */
+    suspend fun freshImages(movies: Boolean, ids: List<String>): Map<String, String> {
+        if (ids.isEmpty()) return emptyMap()
+        val idx = runCatching { searchIndex() }.getOrNull() ?: return emptyMap()
+        val want = ids.toHashSet()
+        return withContext(Dispatchers.Default) {
+            if (movies) idx.movies.filter { it.id in want && it.poster.startsWith("http") }.associate { it.id to it.poster }
+            else idx.series.filter { it.id in want && it.poster.startsWith("http") }.associate { it.id to it.poster }
+        }
+    }
+
     /**
      * Categorías como las organizó el perfil: sin las ocultas, en su orden y con sus nombres.
      * (Si se ocultaron todas, se muestran todas.) Igual que Android.

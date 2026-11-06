@@ -232,6 +232,8 @@ fun HomeScreen(
 
     // ── Grabaciones: las programadas empiezan solas mientras el programa está abierto ──
     LaunchedEffect(Unit) { com.jox3.tvdesktop.data.Recorder.start { com.jox3.tvdesktop.data.AccountStore().all() } }
+    // Descargas: lo que quedó a medias sigue solo
+    LaunchedEffect(Unit) { com.jox3.tvdesktop.data.Downloads.resumePending { com.jox3.tvdesktop.data.AccountStore().all() } }
     // Clic en una notificación de Windows: traer la ventana al frente
     LaunchedEffect(control) {
         com.jox3.tvdesktop.core.Notify.onClick = {

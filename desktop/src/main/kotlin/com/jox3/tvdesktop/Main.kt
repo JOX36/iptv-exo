@@ -80,6 +80,7 @@ fun main(args: Array<String>) {
     if (st >= 0) exitProcess(SelfTest.run(java.io.File(args.getOrNull(st + 1) ?: "selftest.txt")))
 
     Crash.install()
+    com.jox3.tvdesktop.core.AppTime.init()
     Log.i("=== JOX3 TV $APP_VERSION | Java ${System.getProperty("java.version")} | " +
         "${System.getProperty("os.name")} ${System.getProperty("os.version")} ${System.getProperty("os.arch")} ===")
 
@@ -287,16 +288,19 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
             // se mantiene al cambiar de servidor, sin volver a preguntar.
             val profiles = remember(s.account.key) { com.jox3.tvdesktop.data.ProfileStore(s.account) }
             var backTo by remember { mutableStateOf<com.jox3.tvdesktop.data.Profile?>(null) }
+            // Animación al elegir perfil (el avatar crece con su color y se desvanece)
+            var reveal by remember { mutableStateOf<com.jox3.tvdesktop.data.Profile?>(null) }
             val cur = com.jox3.tvdesktop.data.Profiles.current
             if (cur == null) {
                 com.jox3.tvdesktop.ui.ProfileGate(
                     profiles, store,
-                    onPick = { backTo = null },
+                    onPick = { backTo = null; reveal = com.jox3.tvdesktop.data.Profiles.current },
                     onCancel = backTo?.let { p -> { com.jox3.tvdesktop.data.Profiles.current = p; backTo = null } },
                 )
             } else {
                 // Perfil elegido con otro servidor: se agrega a la lista de este si aún no estaba
                 LaunchedEffect(s.account.key, cur.id) { profiles.adopt(cur) }
+              androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                 key(s.account.key, cur.id) {
                   // Código JOX3 y servidores de cada perfil: si este servidor no es suyo, pasa a uno de los suyos
                   com.jox3.tvdesktop.ui.VaultUnlockGate(profiles, store, cur.id, onSwitch = { acc -> scope.launch { connect(acc) } }) {
@@ -321,6 +325,8 @@ private fun App(player: VideoPlayer, crashedLastTime: Boolean) {
                     )
                   }
                 }
+                reveal?.let { p -> com.jox3.tvdesktop.ui.ProfileReveal(p) { reveal = null } }
+              }
             }
         }
     }

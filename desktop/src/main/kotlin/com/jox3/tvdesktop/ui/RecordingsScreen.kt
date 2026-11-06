@@ -69,9 +69,9 @@ fun RecordingsScreen(live: LiveController, onClose: () -> Unit) {
             "Para grabar: en un canal, botón ⏺ «Grabar»; o en la guía, clic derecho sobre un programa. " +
             "El programa tiene que estar abierto mientras graba (puede estar minimizado).", color = Jx.Muted, fontFamily = Exo2, fontSize = 13.sp)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Guardar en: ${folder.absolutePath} · ${gb(free)} libres", color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
+            Text("Guardar en: ${folder.absolutePath} · ${gbText(free)} libres", color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-            GhostButton("Cambiar carpeta") { chooseFolder(folder)?.let { Recorder.setFolder(it) } }
+            GhostButton("Cambiar carpeta") { pickFolder(folder, "¿Dónde guardar las grabaciones?")?.let { Recorder.setFolder(it) } }
             GhostButton("Abrir carpeta") {
                 runCatching { folder.mkdirs(); java.awt.Desktop.getDesktop().open(folder) }
             }
@@ -84,9 +84,9 @@ fun RecordingsScreen(live: LiveController, onClose: () -> Unit) {
                 items(list, key = { it.id }) { r ->
                     val size = File(r.file).length()
                     val (badge, color) = when (r.status) {
-                        Recorder.Status.RECORDING -> "⏺ Grabando · ${mb(size)}" to Jx.Live
+                        Recorder.Status.RECORDING -> "⏺ Grabando · ${mbText(size)}" to Jx.Live
                         Recorder.Status.SCHEDULED -> "⏰ Programada" to Jx.Gold
-                        Recorder.Status.DONE -> "✓ ${r.durationMin} min · ${mb(size)}" to Jx.Ok
+                        Recorder.Status.DONE -> "✓ ${r.durationMin} min · ${mbText(size)}" to Jx.Ok
                         Recorder.Status.FAILED -> "✗ Falló" to Jx.Live
                         Recorder.Status.CANCELED -> "Cancelada" to Jx.Faint
                     }
@@ -117,14 +117,14 @@ fun RecordingsScreen(live: LiveController, onClose: () -> Unit) {
 }
 
 /** Elegir carpeta con el diálogo de Windows. */
-private fun chooseFolder(current: File): File? = runCatching {
+internal fun pickFolder(current: File, title: String): File? = runCatching {
     val ch = javax.swing.JFileChooser(current.takeIf { it.exists() } ?: File(System.getProperty("user.home"))).apply {
         fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
-        dialogTitle = "¿Dónde guardar las grabaciones?"
+        dialogTitle = title
         approveButtonText = "Elegir"
     }
     if (ch.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) ch.selectedFile else null
 }.getOrNull()
 
-private fun mb(b: Long) = if (b >= 1_000_000_000) String.format(java.util.Locale.US, "%.1f GB", b / 1e9) else "${b / 1_000_000} MB"
-private fun gb(b: Long) = String.format(java.util.Locale.US, "%.1f GB", b / 1e9)
+internal fun mbText(b: Long) = if (b >= 1_000_000_000) String.format(java.util.Locale.US, "%.1f GB", b / 1e9) else "${b / 1_000_000} MB"
+internal fun gbText(b: Long) = String.format(java.util.Locale.US, "%.1f GB", b / 1e9)

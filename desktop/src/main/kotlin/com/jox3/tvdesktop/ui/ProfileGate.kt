@@ -36,7 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -464,4 +464,28 @@ fun digitKey(k: Key): Int? = when (k) {
     Key.Three, Key.NumPad3 -> 3; Key.Four, Key.NumPad4 -> 4; Key.Five, Key.NumPad5 -> 5
     Key.Six, Key.NumPad6 -> 6; Key.Seven, Key.NumPad7 -> 7; Key.Eight, Key.NumPad8 -> 8
     Key.Nine, Key.NumPad9 -> 9; else -> null
+}
+
+/**
+ * Al elegir perfil: el avatar crece hasta llenar la pantalla con su color y luego se desvanece
+ * mostrando el contenido (igual que en el TV Box y el celular). Dura menos de un segundo.
+ */
+@Composable
+fun ProfileReveal(p: com.jox3.tvdesktop.data.Profile, onDone: () -> Unit) {
+    val grow = remember { androidx.compose.animation.core.Animatable(0f) }
+    val fade = remember { androidx.compose.animation.core.Animatable(1f) }
+    LaunchedEffect(p.id) {
+        grow.animateTo(1f, androidx.compose.animation.core.tween(520, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+        fade.animateTo(0f, androidx.compose.animation.core.tween(380))
+        onDone()
+    }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = fade.value }, contentAlignment = Alignment.Center) {
+        // Diagonal de la ventana: así el círculo tapa todo al final
+        val full = kotlin.math.sqrt(maxWidth.value * maxWidth.value + maxHeight.value * maxHeight.value).dp
+        val start = 140.dp
+        val size = start + (full - start) * grow.value
+        Box(Modifier.size(size).clip(RoundedCornerShape(50))
+            .background(Color(p.color)))
+        Text(p.emoji, fontSize = (64 + 40 * grow.value).sp, modifier = Modifier.graphicsLayer { alpha = 1f - grow.value * 0.3f })
+    }
 }
