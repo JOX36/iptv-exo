@@ -60,6 +60,8 @@ fun SettingsScreen(live: LiveController, version: String) {
     val scroll = rememberScrollState()
     var organizing by remember { mutableStateOf(false) }
     var recordings by remember { mutableStateOf(false) }
+    var downloads by remember { mutableStateOf(false) }
+    if (downloads) { DownloadsScreen(live, onClose = { downloads = false }); return }
     if (organizing) { CategoryOrganizer(live.repo, onClose = { organizing = false }); return }
     if (recordings) { RecordingsScreen(live, onClose = { recordings = false }); return }
     Box(Modifier.fillMaxSize()) {
@@ -111,6 +113,27 @@ fun SettingsScreen(live: LiveController, version: String) {
                 Card("Organizar categorías") {
                     Label("Ocultar, ordenar y renombrar", "En vivo, Películas y Series: oculta las que no usas (por ejemplo, las de otros países), ponlas en tu orden y cámbiales el nombre. Solo para tu perfil.")
                     PillButton("Organizar categorías") { organizing = true }
+                }
+
+                // ── Hora ──
+                Card("Hora") {
+                    var auto by remember { mutableStateOf(com.jox3.tvdesktop.core.AppTime.isAuto()) }
+                    Label("Zona horaria", "La que usan la guía, «termina a las…», los recordatorios y las grabaciones. " +
+                        "Ahora: ${com.jox3.tvdesktop.core.AppTime.current().id}")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("La del equipo (Windows)", selected = !auto) { auto = false; com.jox3.tvdesktop.core.AppTime.setAuto(false) }
+                        Chip("Automática (por internet)", selected = auto) { auto = true; com.jox3.tvdesktop.core.AppTime.setAuto(true) }
+                    }
+                }
+
+                // ── Descargas ──
+                Card("⬇ Descargas") {
+                    @Suppress("UNUSED_VARIABLE") val dv = com.jox3.tvdesktop.data.Downloads.version.intValue
+                    val all = remember(dv) { com.jox3.tvdesktop.data.Downloads.all() }
+                    val busy = all.count { it.status == com.jox3.tvdesktop.data.Downloads.Status.DOWNLOADING || it.status == com.jox3.tvdesktop.data.Downloads.Status.QUEUED }
+                    Label("Para ver sin internet", "Descarga películas y series desde su ficha (botón ⬇ Descargar). " +
+                        "Se guardan en ${com.jox3.tvdesktop.data.Downloads.folder().absolutePath}." + if (busy > 0) " Bajando ahora: $busy." else "")
+                    PillButton(if (all.isNotEmpty()) "Ver descargas (${all.size})" else "Ver descargas") { downloads = true }
                 }
 
                 // ── Grabaciones ──

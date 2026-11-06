@@ -72,7 +72,8 @@ import java.util.Date
 import java.util.Locale
 
 private val clockFmt = SimpleDateFormat("h:mm a", Locale.forLanguageTag("es"))
-fun hhmm(ms: Long): String = if (ms > 0) clockFmt.format(Date(ms)) else ""
+// La zona se toma en cada llamada: puede cambiar con Ajustes → Hora
+fun hhmm(ms: Long): String = if (ms > 0) synchronized(clockFmt) { clockFmt.timeZone = java.util.TimeZone.getDefault(); clockFmt.format(Date(ms)) } else ""
 
 /** Cursor invisible (en pantalla completa, cuando los controles se ocultan). */
 private val hiddenCursor: PointerIcon by lazy {

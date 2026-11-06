@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.jox3.tvdesktop.core.Settings
 import com.jox3.tvdesktop.data.Category
+import com.jox3.tvdesktop.data.Downloads
 import com.jox3.tvdesktop.data.Episode
 import com.jox3.tvdesktop.data.Movie
 import com.jox3.tvdesktop.data.Resume
@@ -152,6 +153,15 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
                 }
                 else -> if (isMovies) repo.movies(cat.id).map { Tile(it.id, it.name, it.poster, it.rating, it.categoryId, it.added, movie = it) }
                 else repo.series(cat.id).map { Tile(it.id, it.name, it.poster, it.rating, it.categoryId, it.updated, series = it) }
+            }.let { list ->
+                // Continuar viendo, favoritos y "Porque viste…" usan la imagen guardada al verlos: si quedó vacía
+                // o vieja, se toma la carátula actual del catálogo (igual que Android)
+                if (cat.id == CONTINUE_ID || cat.id == FAV_ID || cat.id == BECAUSE_ID) {
+                    val fresh = repo.freshImages(isMovies, list.map { it.id })
+                    list.map { t -> fresh[t.id]?.takeIf { it != t.poster }?.let { img ->
+                        t.copy(poster = img, movie = t.movie?.copy(poster = img), series = t.series?.copy(poster = img))
+                    } ?: t }
+                } else list
             }
         }
     }
@@ -422,6 +432,10 @@ private fun MovieDetail(live: LiveController, movie: Movie, onBack: () -> Unit, 
                     GhostButton(if (fav) "★  En favoritos" else "☆  Favorito") {
                         lib.toggleFavorite(SavedItem("movie", movie.id, movie.name, poster, ext = ext, categoryId = movie.categoryId))
                     }
+                    @Suppress("UNUSED_VARIABLE") val dv = Downloads.version.intValue
+                    DownloadButton(live, Downloads.find(repo.api.account, "movie", movie.id)) {
+                        Downloads.movie(repo.api.account, movie.id, movie.name, poster, ext)
+                    }
                 }
                 if (resume != null) {
                     Spacer(Modifier.height(10.dp))
@@ -474,6 +488,8 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
             ?: seasons.keys.firstOrNull() ?: 1)
     }
     val allEpisodes = remember(seasons) { seasons.values.flatten() }
+    var dlMenu by remember(series.id) { mutableStateOf(false) }
+    @Suppress("UNUSED_VARIABLE") val dv = Downloads.version.intValue
 
     fun session(ep: Episode): VodSession = episodeSession(repo, series, poster, allEpisodes, ep, onPlay)
 
@@ -501,6 +517,22 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
                     if (!t?.trailerKey.isNullOrBlank()) GhostButton("Tráiler") { playTrailer(live, t!!.trailerKey, series.name, poster, onPlay) }
                     GhostButton(if (fav) "★  En favoritos" else "☆  Favorito") {
                         lib.toggleFavorite(SavedItem("series", series.id, series.name, poster, categoryId = series.categoryId))
+                    }
+                    // Descargar: la temporada que se ve o la serie completa
+                    if (allEpisodes.isNotEmpty()) {
+                        if (!dlMenu) GhostButton("⬇  Descargar") { dlMenu = true }
+                        else {
+                            val name = si?.name?.ifBlank { null } ?: series.name
+                            GhostButton("Temporada $season") {
+                                dlMenu = false
+                                live.notice(Downloads.episodes(repo.api.account, series.id, name, poster, seasons[season].orEmpty()))
+                            }
+                            GhostButton("Serie completa (${allEpisodes.size})") {
+                                dlMenu = false
+                                live.notice(Downloads.episodes(repo.api.account, series.id, name, poster, allEpisodes))
+                            }
+                            GhostButton("✕") { dlMenu = false }
+                        }
                     }
                 }
                 if (plot.isNotBlank()) {
@@ -533,7 +565,12 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
                 item { AlsoOn(live, "series", series.name, series.id) }
                 items(seasons[season].orEmpty(), key = { it.id }) { ep ->
                     val r = lib.positionOf(ep.id)
-                    EpisodeRow(ep, poster, r, playing = false) {
+                    val dl = Downloads.find(repo.api.account, "episode", ep.id)
+                    EpisodeRow(ep, poster, r, playing = false, dl = dl,
+                        onDownload = {
+                            val name = si?.name?.ifBlank { null } ?: series.name
+                            downloadAction(live, dl) { Downloads.episodes(repo.api.account, series.id, name, poster, listOf(ep)) }
+                        }) {
                         onPlay(session(ep), r?.takeUnless { it.finished || it.position < 5_000 }?.position ?: 0)
                     }
                 }
@@ -544,7 +581,8 @@ private fun SeriesDetail(live: LiveController, series: Series, startSeason: Int?
 }
 
 @Composable
-private fun EpisodeRow(ep: Episode, poster: String, resume: Resume?, playing: Boolean, onClick: () -> Unit) {
+private fun EpisodeRow(ep: Episode, poster: String, resume: Resume?, playing: Boolean,
+                       dl: Downloads.Dl? = null, onDownload: (() -> Unit)? = null, onClick: () -> Unit) {
     val source = remember { MutableInteractionSource() }
     val hovered by source.collectIsHoveredAsState()
     Row(
@@ -577,6 +615,16 @@ private fun EpisodeRow(ep: Episode, poster: String, resume: Resume?, playing: Bo
                 Text(ep.plot, color = Jx.TextSoft, fontFamily = Exo2, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
+        if (onDownload != null) {
+            Spacer(Modifier.width(10.dp))
+            Box(
+                Modifier.clip(RoundedCornerShape(10.dp)).background(Jx.SurfaceHi)
+                    .clickable(onClick = onDownload).pointerHoverIcon(PointerIcon.Hand).padding(horizontal = 10.dp, vertical = 6.dp),
+            ) {
+                Text(downloadLabel(dl, short = true), color = if (dl?.status == Downloads.Status.DONE) Jx.Ok else Jx.TextSoft,
+                    fontFamily = Exo2, fontSize = 12.sp, maxLines = 1)
+            }
+        }
     }
 }
 
@@ -597,6 +645,32 @@ private fun playTrailer(live: LiveController, key: String, title: String, image:
 }
 
 /** Nombre del episodio en "Seguir viendo", igual que en Android (PlayerLauncher.episodeName). */
+/** Texto del botón de descarga según cómo va. */
+internal fun downloadLabel(d: Downloads.Dl?, short: Boolean = false): String = when (d?.status) {
+    null -> if (short) "⬇" else "⬇  Descargar"
+    Downloads.Status.QUEUED -> if (short) "⏳ En cola" else "⏳  En cola"
+    Downloads.Status.DOWNLOADING -> "⬇ ${d.percent} %"
+    Downloads.Status.PAUSED -> if (short) "⏸ ${d.percent} %" else "⏸  Pausada · ${d.percent} %"
+    Downloads.Status.DONE -> if (short) "▶ Descargado" else "▶  Ver descargada"
+    Downloads.Status.FAILED -> if (short) "⚠ Reintentar" else "⚠  Falló · reintentar"
+}
+
+/** Clic en el botón de descarga: empezar, pausar, seguir o ver la descargada. */
+internal fun downloadAction(live: LiveController, d: Downloads.Dl?, start: () -> String) {
+    when (d?.status) {
+        null -> live.notice(start())
+        Downloads.Status.QUEUED, Downloads.Status.DOWNLOADING -> { Downloads.pause(d.id); live.notice("Descarga pausada") }
+        Downloads.Status.PAUSED, Downloads.Status.FAILED -> { Downloads.resume(d.id); live.notice("La descarga sigue") }
+        Downloads.Status.DONE -> live.playDownload(d)
+    }
+}
+
+@Composable
+private fun DownloadButton(live: LiveController, d: Downloads.Dl?, start: () -> String) {
+    if (d?.status == Downloads.Status.DONE) PillButton(downloadLabel(d)) { downloadAction(live, d, start) }
+    else GhostButton(downloadLabel(d)) { downloadAction(live, d, start) }
+}
+
 /** Sesión de un episodio, con el siguiente encadenado (lo usan la ficha y "Ver juntos"). */
 fun episodeSession(repo: TvRepo, series: Series, poster: String, all: List<Episode>, ep: Episode,
                    onPlay: (VodSession, Long) -> Unit): VodSession {

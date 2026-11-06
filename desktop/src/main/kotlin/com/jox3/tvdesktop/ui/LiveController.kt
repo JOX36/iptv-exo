@@ -153,6 +153,38 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         mode = ViewMode.FULL
     }
 
+    /**
+     * Ver una descarga (sin internet). El minuto se comparte con la versión en línea, y en series
+     * sigue con el siguiente episodio descargado. Igual que Android.
+     */
+    fun playDownload(d: com.jox3.tvdesktop.data.Downloads.Dl, start: Long = -1L) {
+        val f = java.io.File(d.location)
+        if (!f.exists() || f.length() == 0L) { notice("No encuentro el archivo descargado. ¿Lo moviste o borraste?"); return }
+        val pos = if (start >= 0) start else repo.library.positionOf(d.streamId)?.takeUnless { it.finished || it.position < 5_000 }?.position ?: 0L
+        playVod(downloadSession(d), pos)
+        mode = ViewMode.FULL
+    }
+
+    private fun downloadSession(d: com.jox3.tvdesktop.data.Downloads.Dl): VodSession {
+        val done = com.jox3.tvdesktop.data.Downloads.Status.DONE
+        return if (d.kind == "episode") {
+            val eps = com.jox3.tvdesktop.data.Downloads.all()
+                .filter { it.kind == "episode" && it.seriesId == d.seriesId && it.acc == d.acc && it.status == done }
+                .sortedWith(compareBy({ it.season }, { it.num }))
+            val next = eps.getOrNull(eps.indexOfFirst { it.id == d.id } + 1)
+            val name = d.label
+            VodSession(
+                item = SavedItem("episode", d.streamId, name, d.image, ext = d.ext, seriesId = d.seriesId),
+                title = d.series, subtitle = "T${d.season} E${d.num} · descargado", image = d.image, url = d.location,
+                nextLabel = next?.let { "T${it.season} E${it.num}" + if (it.title.isNotBlank()) " · ${it.title}" else "" },
+                next = next?.let { n -> { playVod(downloadSession(n), 0) } },
+            )
+        } else VodSession(
+            item = SavedItem("movie", d.streamId, d.title, d.image, ext = d.ext),
+            title = d.title, subtitle = "Película · descargada", image = d.image, url = d.location,
+        )
+    }
+
     /** Guarda dónde va la película o episodio (cada pocos segundos y al salir). */
     fun saveVodProgress() {
         val v = vod ?: return
