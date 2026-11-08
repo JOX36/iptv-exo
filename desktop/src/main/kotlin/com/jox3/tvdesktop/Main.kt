@@ -103,6 +103,8 @@ fun main(args: Array<String>) {
     kotlin.concurrent.thread(isDaemon = true, name = "vlc-init") { VlcRuntime.factory() }
 
     val prefs = WindowPrefs.load()
+    // ¿Venimos de una actualización? Se revisa si se instaló de verdad
+    com.jox3.tvdesktop.core.Updater.checkLastInstall(APP_VERSION)
 
     application {
         val pos = prefs.visiblePosition()
@@ -138,6 +140,8 @@ fun main(args: Array<String>) {
                 if (ok != javax.swing.JOptionPane.YES_OPTION) return
             }
             Shutdown.runAll()
+            // La multipantalla tiene sus propios reproductores: se cierran ANTES de apagar VLC
+            runCatching { com.jox3.tvdesktop.player.MultiView.closeNow() }
             com.jox3.tvdesktop.core.Notify.dispose()
             WindowPrefs.save(floating.copy(maximized = maximized))
             Log.i("Programa cerrado por el usuario")
@@ -192,6 +196,11 @@ fun main(args: Array<String>) {
             }
         }
     }
+    // La ventana ya cerró: se termina el programa aunque quede algún hilo vivo (si no, Windows
+    // no puede reemplazar los archivos al actualizar). Si algo se traba al terminar, se fuerza.
+    Thread { Thread.sleep(6_000); Runtime.getRuntime().halt(0) }.apply { isDaemon = true }.start()
+    com.jox3.tvdesktop.core.Settings.flush()
+    exitProcess(0)
 }
 
 /** Qué se muestra: conectando al abrir, inicio de sesión o el inicio de la cuenta. */
