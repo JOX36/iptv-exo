@@ -109,6 +109,8 @@ object MultiView {
         if (tiles[i] == null && used() >= limit()) return limitMessage()
         if (tiles.withIndex().any { (k, t) -> k != i && t?.channel?.id == ch.id }) return "Ese canal ya está en la multipantalla"
         val player = tiles[i]?.player ?: VideoPlayer()
+        // Si no va a ser el que suena, empieza ya en silencio (antes de que llegue el audio)
+        player.setSilent(tiles.any { it != null } && audio != i)
         player.play(urlOf(ch), ch.name, live = true)
         tiles[i] = Tile(ch, player)
         if (tiles.count { it != null } == 1) audio = i
@@ -125,6 +127,9 @@ object MultiView {
         applyAudio(); save()
     }
 
+    /** Lo llama la pantalla cada segundo: que solo suene el resaltado, aunque VLC haya perdido el silencio. */
+    fun enforceAudio() { tiles.forEach { it?.player?.enforceSilence() } }
+
     fun focusAudio(i: Int) { if (tiles.getOrNull(i) != null) { audio = i; applyAudio() } }
 
     fun toggleExpand(i: Int) {
@@ -136,7 +141,7 @@ object MultiView {
     fun collapse() { expanded = -1 }
 
     private fun applyAudio() {
-        tiles.forEachIndexed { k, t -> t?.player?.applyMute(k != audio) }
+        tiles.forEachIndexed { k, t -> t?.player?.setSilent(k != audio) }
     }
 
     private fun limitMessage(): String =
