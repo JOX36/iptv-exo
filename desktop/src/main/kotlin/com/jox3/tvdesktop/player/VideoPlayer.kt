@@ -184,25 +184,31 @@ class VideoPlayer {
     }
 
     /**
-     * Multipantalla: este reproductor no debe sonar. VLC a veces ignora el "silencio" si se pide
-     * antes de que el audio esté listo, así que además se baja su volumen a 0 y se vuelve a
-     * comprobar (lo repite la multipantalla cada segundo con [enforceSilence]).
+     * Multipantalla: este reproductor no debe sonar.
+     *
+     * NO se usa el volumen ni el "silencio" de VLC: en Windows todos los reproductores del programa
+     * comparten el mismo control de volumen de la sesión de audio, así que bajar uno bajaba el
+     * otro (y al revisarlo cada segundo, el sonido se cortaba y volvía). Lo que se hace es
+     * apagar la PISTA de audio del cuadro que no suena, que es propia de cada reproductor.
      */
     @Volatile var silent = false; private set
+    /** Pista de audio que tenía antes de silenciarlo (para volver a ella). */
+    @Volatile private var lastAudioTrack = -1
 
     fun setSilent(s: Boolean) { silent = s; enforceSilence() }
 
-    /** Vuelve a aplicar el silencio (o el volumen) si VLC lo perdió. */
+    /** Vuelve a aplicar el silencio (pista apagada) o la pista de audio si VLC la cambió. */
     fun enforceSilence() {
         val p = mp ?: return
         ctl.execute {
             runCatching {
+                val cur = p.audio().track()
                 if (silent) {
-                    if (p.audio().volume() != 0) p.audio().setVolume(0)
-                    if (!p.audio().isMute) p.audio().setMute(true)
-                } else {
-                    if (p.audio().volume() != volume) p.audio().setVolume(volume)
-                    if (p.audio().isMute != muted) p.audio().setMute(muted)
+                    if (cur >= 0) { lastAudioTrack = cur; p.audio().setTrack(-1) }
+                } else if (cur < 0) {
+                    val ids = p.audio().trackDescriptions().map { it.id() }.filter { it >= 0 }
+                    val pick = lastAudioTrack.takeIf { it in ids } ?: ids.firstOrNull()
+                    if (pick != null) p.audio().setTrack(pick)
                 }
             }
         }
@@ -360,10 +366,7 @@ class VideoPlayer {
             ctl.execute {
                 refreshTracks(mediaPlayer)
                 // Al reconectar se conserva el volumen y el silencio elegidos
-                runCatching {
-                    mediaPlayer.audio().setVolume(if (silent) 0 else volume)
-                    mediaPlayer.audio().setMute(muted || silent)
-                }
+                runCatching { mediaPlayer.audio().setVolume(volume); mediaPlayer.audio().setMute(muted) }
             }
             // El audio de VLC puede terminar de prepararse después: se vuelve a aplicar
             ctl.schedule({ enforceSilence() }, 800, TimeUnit.MILLISECONDS)
