@@ -44,6 +44,51 @@ object Updater {
 
     fun autoEnabled() = Settings.bool("update.auto", true)
 
+    private val updateDir get() = File(System.getProperty("java.io.tmpdir"), "JOX3TV-update")
+    private val resultFile get() = File(updateDir, "resultado.txt")
+    /** Registro de Windows Installer de la última instalación (para el informe si falla). */
+    val installLog get() = File(updateDir, "instalacion.log")
+
+    /** Versión que no se pudo instalar sola la última vez (para ofrecer el instalador a mano). */
+    fun failedVersion(): String = Settings.string("update.failed")
+
+    /**
+     * Al abrir: si venimos de una actualización, se revisa cómo terminó. Si sigue la versión
+     * vieja, se avisa y se ofrece el instalador a mano en vez de repetir lo mismo sin fin.
+     */
+    fun checkLastInstall(current: String) {
+        val f = resultFile
+        if (!f.exists()) return
+        val txt = runCatching { f.readText().trim() }.getOrDefault("")
+        runCatching { f.delete() }
+        val code = txt.substringBefore('|').trim()
+        val wanted = txt.substringAfter('|', "").trim()
+        if (wanted.isEmpty() || current == "dev") return
+        if (compare(current, wanted) >= 0) {
+            Log.i("Actualización a $wanted instalada (código $code)")
+            Settings.put("update.failed", "")
+        } else {
+            Log.w("La actualización a $wanted NO se instaló (código de Windows Installer: $code). Sigue la $current")
+            Settings.put("update.failed", wanted)
+            Settings.put("update.failedCode", code)
+        }
+    }
+
+    /** Explicación del código de Windows Installer. */
+    fun failedReason(): String = when (Settings.string("update.failedCode")) {
+        "1602" -> "se canceló la instalación"
+        "1618" -> "Windows estaba instalando otra cosa al mismo tiempo"
+        "1603" -> "Windows no pudo reemplazar los archivos (quizá el programa seguía abierto)"
+        "3010" -> "Windows pide reiniciar el equipo para terminar"
+        "", "-1" -> "el instalador no llegó a correr"
+        else -> "código ${Settings.string("update.failedCode")}"
+    }
+
+    /** Abre el navegador con el instalador (para instalarlo a mano). */
+    fun openInstallerPage(info: Info) {
+        runCatching { java.awt.Desktop.getDesktop().browse(java.net.URI(info.url)) }
+    }
+
     /** Cierra un aviso de error (se vuelve a revisar en la próxima vuelta). */
     fun reset() { if (state !is State.Downloading && state !is State.Installing) state = State.Idle }
 
@@ -114,9 +159,9 @@ object Updater {
     suspend fun downloadAndInstall(info: Info, beforeExit: () -> Unit) {
         try {
             state = State.Downloading(info, 0)
-            val dir = File(System.getProperty("java.io.tmpdir"), "JOX3TV-update").apply { mkdirs() }
-            // Se borran descargas viejas
-            dir.listFiles()?.forEach { if (it.name != "JOX3-TV-PC-${info.version}.msi") it.delete() }
+            val dir = updateDir.apply { mkdirs() }
+            // Se borran descargas viejas (menos la de esta versión y el registro de la última instalación)
+            dir.listFiles()?.forEach { if (it.name != "JOX3-TV-PC-${info.version}.msi" && it.name != installLog.name) it.delete() }
             val msi = File(dir, "JOX3-TV-PC-${info.version}.msi")
             withContext(Dispatchers.IO) {
                 if (!(msi.exists() && sha256(msi) == info.sha256)) {
@@ -147,8 +192,12 @@ object Updater {
             }
             state = State.Installing(info)
             Log.i("Instalando la versión ${info.version}")
-            launchInstaller(msi)
+            launchInstaller(msi, info.version)
             beforeExit()
+            // Si algo deja el programa abierto, Windows no puede reemplazar sus archivos y la
+            // actualización falla: se cierra a la fuerza a los 8 s.
+            Thread { Thread.sleep(8_000); Log.w("El programa no terminó de cerrar: se fuerza el cierre para actualizar"); Runtime.getRuntime().halt(0) }
+                .apply { isDaemon = true; name = "forzar-cierre" }.start()
         } catch (e: Exception) {
             Log.w("Falló la actualización", e)
             state = State.Error(e.message ?: "No se pudo actualizar", info)
@@ -160,13 +209,22 @@ object Updater {
      * Windows, sin preguntas) y abre el programa otra vez. Se pasa como texto codificado para que
      * las rutas con tildes o eñes (C:\Users\José…) funcionen siempre.
      */
-    private fun launchInstaller(msi: File) {
+    private fun launchInstaller(msi: File, version: String) {
         val exe = ProcessHandle.current().info().command().orElse(null)
             ?.takeIf { it.endsWith(".exe", true) && !it.endsWith("java.exe", true) && !it.endsWith("javaw.exe", true) }
         fun q(s: String) = "'" + s.replace("'", "''") + "'"
+        val pid = ProcessHandle.current().pid()
+        runCatching { resultFile.delete(); installLog.delete() }
         val ps = buildString {
-            append("Wait-Process -Id ${ProcessHandle.current().pid()} -Timeout 60 -ErrorAction SilentlyContinue; ")
-            append("Start-Process msiexec.exe -ArgumentList @('/i', '\"' + ${q(msi.absolutePath)} + '\"', '/passive', '/norestart') -Wait; ")
+            // 1. Esperar a que el programa cierre; si sigue abierto, cerrarlo (si no, Windows no puede reemplazar los archivos)
+            append("Wait-Process -Id $pid -Timeout 30 -ErrorAction SilentlyContinue; ")
+            append("Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; ")
+            if (exe != null) append("Get-Process -ErrorAction SilentlyContinue | Where-Object { \$_.Path -eq ${q(exe)} } | Stop-Process -Force -ErrorAction SilentlyContinue; ")
+            append("Start-Sleep -Seconds 2; ")
+            // 2. Instalar (con registro) y anotar cómo terminó, para revisarlo al abrir
+            append("\$code = -1; try { \$r = Start-Process msiexec.exe -ArgumentList @('/i', '\"' + ${q(msi.absolutePath)} + '\"', '/passive', '/norestart', '/l*v', '\"' + ${q(installLog.absolutePath)} + '\"') -Wait -PassThru; \$code = \$r.ExitCode } catch { }; ")
+            append("Set-Content -LiteralPath ${q(resultFile.absolutePath)} -Value (\"\$code|\" + ${q(version)}) -Encoding ASCII; ")
+            // 3. Abrir el programa otra vez
             if (exe != null) append("Start-Process -FilePath ${q(exe)}")
         }
         val encoded = java.util.Base64.getEncoder().encodeToString(ps.toByteArray(Charsets.UTF_16LE))

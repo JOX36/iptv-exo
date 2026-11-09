@@ -64,6 +64,15 @@ object MultiView {
         applyAudio()
     }
 
+    /** Al cerrar el programa: suelta los reproductores esperando a que terminen (antes de apagar VLC). */
+    fun closeNow() {
+        if (!open && tiles.isEmpty()) return
+        tiles.forEach { t -> runCatching { t?.player?.release() } }
+        tiles.clear()
+        open = false
+        expanded = -1
+    }
+
     fun close() {
         tiles.forEach { t -> t?.player?.let { p -> Thread { runCatching { p.release() } }.apply { isDaemon = true }.start() } }
         tiles.clear()

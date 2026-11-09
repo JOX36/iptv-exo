@@ -27,4 +27,9 @@ object Settings {
             try { SafeFile.write(file, text) } catch (e: Exception) { Log.w("No se pudieron guardar los ajustes", e) }
         }
     }
+
+    /** Espera a que se guarde lo pendiente (al cerrar el programa). */
+    fun flush(timeoutMs: Long = 2_000) {
+        runCatching { saver.submit {}.get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS) }
+    }
 }

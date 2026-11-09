@@ -57,6 +57,13 @@ fun UpdateBanner(modifier: Modifier) {
     ) {
         Text("Nueva versión ${info.version}", color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         Text("Tienes la $APP_VERSION", color = Jx.Faint, fontFamily = Exo2, fontSize = 12.sp)
+        // La vez anterior no se pudo instalar sola: se explica y se ofrece el instalador a mano
+        val failed = Updater.failedVersion() == info.version
+        if (failed && st !is Updater.State.Downloading && st !is Updater.State.Installing) {
+            Spacer(Modifier.height(8.dp))
+            Text("La instalación automática no funcionó (${Updater.failedReason()}). Descarga el instalador, cierra JOX3 TV y ábrelo: " +
+                "se instala encima sin perder nada.", color = Jx.Gold, fontFamily = Exo2, fontSize = 13.sp)
+        }
         if (showNotes && info.notes.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
             Column(Modifier.heightIn(max = 220.dp).verticalScroll(rememberScrollState())) {
@@ -81,7 +88,10 @@ fun UpdateBanner(modifier: Modifier) {
                 }
             }
             else -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PillButton("Actualizar ahora") { startUpdate(scope, info) }
+                if (failed) {
+                    PillButton("Descargar instalador") { Updater.openInstallerPage(info) }
+                    GhostButton("Reintentar") { startUpdate(scope, info) }
+                } else PillButton("Actualizar ahora") { startUpdate(scope, info) }
                 if (info.notes.isNotBlank()) GhostButton(if (showNotes) "Ocultar" else "Novedades") { showNotes = !showNotes }
                 GhostButton("Más tarde") { Updater.dismissed = true }
             }
