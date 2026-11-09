@@ -63,12 +63,18 @@ class VodDataTest {
         val acc = Account("http://a.tv", "ana", "1")
         val lib = LibraryStore(acc, dir = dir)
         lib.saveProgress(SavedItem("episode", "e1", "S · T1 E1", "", seriesId = "s9"), 10_000, 60_000)
-        Thread.sleep(5)
+        Thread.sleep(40)
         lib.saveProgress(SavedItem("episode", "e2", "S · T1 E2", "", seriesId = "s9"), 20_000, 60_000)
         assertEquals("e2", lib.lastEpisodeOf("s9")?.item?.id)
         assertNull(lib.lastEpisodeOf("otra"))
-        Thread.sleep(400)
-        assertEquals("e2", LibraryStore(acc, dir = dir).lastEpisodeOf("s9")?.item?.id) // se recuerda al reabrir
+        // Se guarda en segundo plano: en un equipo lento puede tardar (se espera hasta 5 s)
+        var again: String? = null
+        for (i in 0 until 50) {
+            Thread.sleep(100)
+            again = LibraryStore(acc, dir = dir).lastEpisodeOf("s9")?.item?.id
+            if (again == "e2") break
+        }
+        assertEquals("e2", again) // se recuerda al reabrir
     }
 
     @Test fun calidadDelVideo() {
