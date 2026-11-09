@@ -65,6 +65,8 @@ import kotlinx.coroutines.delay
 fun MultiViewScreen(live: LiveController, onExit: () -> Unit) {
     val repo = live.repo
     var picking by remember { mutableStateOf<Int?>(null) }
+    // Solo suena el cuadro resaltado: se revisa cada segundo
+    LaunchedEffect(Unit) { while (true) { MultiView.enforceAudio(); delay(1000) } }
 
     DisposableEffect(picking) {
         val prev = KeyRouter.handler

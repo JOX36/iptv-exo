@@ -223,6 +223,9 @@ object Updater {
             append("Start-Sleep -Seconds 2; ")
             // 2. Instalar (con registro) y anotar cómo terminó, para revisarlo al abrir
             append("\$code = -1; try { \$r = Start-Process msiexec.exe -ArgumentList @('/i', '\"' + ${q(msi.absolutePath)} + '\"', '/passive', '/norestart', '/l*v', '\"' + ${q(installLog.absolutePath)} + '\"') -Wait -PassThru; \$code = \$r.ExitCode } catch { }; ")
+            // 2b. Si la instalación sin preguntas falla, se abre el instalador normal (con sus pantallas),
+            //     que es el que funciona a mano
+            append("if (\$code -ne 0 -and \$code -ne 3010 -and \$code -ne 1602) { try { \$r = Start-Process msiexec.exe -ArgumentList @('/i', '\"' + ${q(msi.absolutePath)} + '\"', '/l*v+', '\"' + ${q(installLog.absolutePath)} + '\"') -Wait -PassThru; \$code = \$r.ExitCode } catch { } }; ")
             append("Set-Content -LiteralPath ${q(resultFile.absolutePath)} -Value (\"\$code|\" + ${q(version)}) -Encoding ASCII; ")
             // 3. Abrir el programa otra vez
             if (exe != null) append("Start-Process -FilePath ${q(exe)}")

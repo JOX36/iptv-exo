@@ -183,6 +183,31 @@ class VideoPlayer {
         mp?.let { p -> ctl.execute { runCatching { p.audio().setVolume(nv) } } }
     }
 
+    /**
+     * Multipantalla: este reproductor no debe sonar. VLC a veces ignora el "silencio" si se pide
+     * antes de que el audio esté listo, así que además se baja su volumen a 0 y se vuelve a
+     * comprobar (lo repite la multipantalla cada segundo con [enforceSilence]).
+     */
+    @Volatile var silent = false; private set
+
+    fun setSilent(s: Boolean) { silent = s; enforceSilence() }
+
+    /** Vuelve a aplicar el silencio (o el volumen) si VLC lo perdió. */
+    fun enforceSilence() {
+        val p = mp ?: return
+        ctl.execute {
+            runCatching {
+                if (silent) {
+                    if (p.audio().volume() != 0) p.audio().setVolume(0)
+                    if (!p.audio().isMute) p.audio().setMute(true)
+                } else {
+                    if (p.audio().volume() != volume) p.audio().setVolume(volume)
+                    if (p.audio().isMute != muted) p.audio().setMute(muted)
+                }
+            }
+        }
+    }
+
     fun applyMute(m: Boolean) {
         muted = m
         mp?.let { p -> ctl.execute { runCatching { p.audio().setMute(m) } } }
@@ -335,8 +360,14 @@ class VideoPlayer {
             ctl.execute {
                 refreshTracks(mediaPlayer)
                 // Al reconectar se conserva el volumen y el silencio elegidos
-                runCatching { mediaPlayer.audio().setVolume(volume); mediaPlayer.audio().setMute(muted) }
+                runCatching {
+                    mediaPlayer.audio().setVolume(if (silent) 0 else volume)
+                    mediaPlayer.audio().setMute(muted || silent)
+                }
             }
+            // El audio de VLC puede terminar de prepararse después: se vuelve a aplicar
+            ctl.schedule({ enforceSilence() }, 800, TimeUnit.MILLISECONDS)
+            ctl.schedule({ enforceSilence() }, 2500, TimeUnit.MILLISECONDS)
             // Si sigue bien 15 s, los intentos de reconexión vuelven a cero
             val my = token
             ctl.schedule({ if (my == token && state == PlayState.Playing) retries = 0 }, 15, TimeUnit.SECONDS)
