@@ -80,6 +80,7 @@ object Updater {
         "1618" -> "Windows estaba instalando otra cosa al mismo tiempo"
         "1603" -> "Windows no pudo reemplazar los archivos (quizá el programa seguía abierto)"
         "3010" -> "Windows pide reiniciar el equipo para terminar"
+        "1619", "1622" -> "el programa le pasó mal la ruta al instalador (ya está corregido)"
         "", "-1" -> "el instalador no llegó a correr"
         else -> "código ${Settings.string("update.failedCode")}"
     }
@@ -221,11 +222,17 @@ object Updater {
             append("Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; ")
             if (exe != null) append("Get-Process -ErrorAction SilentlyContinue | Where-Object { \$_.Path -eq ${q(exe)} } | Stop-Process -Force -ErrorAction SilentlyContinue; ")
             append("Start-Sleep -Seconds 2; ")
-            // 2. Instalar (con registro) y anotar cómo terminó, para revisarlo al abrir
-            append("\$code = -1; try { \$r = Start-Process msiexec.exe -ArgumentList @('/i', '\"' + ${q(msi.absolutePath)} + '\"', '/passive', '/norestart', '/l*v', '\"' + ${q(installLog.absolutePath)} + '\"') -Wait -PassThru; \$code = \$r.ExitCode } catch { }; ")
-            // 2b. Si la instalación sin preguntas falla, se abre el instalador normal (con sus pantallas),
-            //     que es el que funciona a mano
-            append("if (\$code -ne 0 -and \$code -ne 3010 -and \$code -ne 1602) { try { \$r = Start-Process msiexec.exe -ArgumentList @('/i', '\"' + ${q(msi.absolutePath)} + '\"', '/l*v+', '\"' + ${q(installLog.absolutePath)} + '\"') -Wait -PassThru; \$code = \$r.ExitCode } catch { } }; ")
+            // 2. Instalar (con registro) y anotar cómo terminó, para revisarlo al abrir.
+            //    OJO: los argumentos van en UN solo texto. Antes iban en una lista @('/i', '"' + ruta + '"', …) y en
+            //    PowerShell la coma pesa más que el +, así que las comillas quedaban sueltas (" C:\… ") y Windows
+            //    Installer no encontraba el registro (código 1622) o el instalador.
+            append("\$msi = ${q(msi.absolutePath)}; \$log = ${q(installLog.absolutePath)}; ")
+            append("function Inst([string]\$a) { try { return (Start-Process msiexec.exe -ArgumentList \$a -Wait -PassThru).ExitCode } catch { return -1 } }; ")
+            append("\$code = Inst ('/i \"' + \$msi + '\" /passive /norestart /l*v \"' + \$log + '\"'); ")
+            // 2b. Si no se pudo escribir el registro, se instala igual sin él
+            append("if (\$code -eq 1622) { \$code = Inst ('/i \"' + \$msi + '\" /passive /norestart') }; ")
+            // 2c. Si la instalación sin preguntas falla, se abre el instalador normal (con sus pantallas)
+            append("if (\$code -ne 0 -and \$code -ne 3010 -and \$code -ne 1602) { \$code = Inst ('/i \"' + \$msi + '\"') }; ")
             append("Set-Content -LiteralPath ${q(resultFile.absolutePath)} -Value (\"\$code|\" + ${q(version)}) -Encoding ASCII; ")
             // 3. Abrir el programa otra vez
             if (exe != null) append("Start-Process -FilePath ${q(exe)}")
