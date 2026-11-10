@@ -205,10 +205,18 @@ class VideoPlayer {
                 val cur = p.audio().track()
                 if (silent) {
                     if (cur >= 0) { lastAudioTrack = cur; p.audio().setTrack(-1) }
-                } else if (cur < 0) {
-                    val ids = p.audio().trackDescriptions().map { it.id() }.filter { it >= 0 }
-                    val pick = lastAudioTrack.takeIf { it in ids } ?: ids.firstOrNull()
-                    if (pick != null) p.audio().setTrack(pick)
+                } else {
+                    if (cur < 0) {
+                        val ids = p.audio().trackDescriptions().map { it.id() }.filter { it >= 0 }
+                        val pick = lastAudioTrack.takeIf { it in ids } ?: ids.firstOrNull()
+                        if (pick != null) p.audio().setTrack(pick)
+                    }
+                    // El que suena (solo uno a la vez) deja el volumen y el silencio como los eligió la
+                    // persona. Hace falta porque la versión anterior podía dejar en 0 o silenciado el
+                    // volumen compartido del programa (Windows lo recuerda en el mezclador de volumen).
+                    val v = p.audio().volume()
+                    if (v >= 0 && v != volume) p.audio().setVolume(volume)
+                    if (p.audio().isMute != muted) p.audio().setMute(muted)
                 }
             }
         }
