@@ -100,6 +100,13 @@ class VideoPlayer {
     // Las imágenes viejas NUNCA se liberan a mano: si la ventana todavía estaba dibujando
     // una y se liberaba, el programa se cerraba de golpe. Las libera Java cuando ya nadie las usa.
     private val bitmaps = arrayOfNulls<Bitmap>(3)
+
+    /**
+     * Dibuja el cuadro actual SIN que VLC lo esté reescribiendo al mismo tiempo. Skia copia los
+     * píxeles al dibujar; si justo en ese momento VLC escribía en esa misma imagen (pasa con
+     * varios videos a la vez, como en la multipantalla), el programa se cerraba de golpe.
+     */
+    fun <T> withFrame(block: (androidx.compose.ui.graphics.ImageBitmap) -> T): T? = synchronized(bitmaps) { frame?.let(block) }
     private var back = 0
     private var bytes = ByteArray(0)
     private var info: ImageInfo? = null
