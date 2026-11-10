@@ -23,17 +23,19 @@ fun VideoSurface(player: VideoPlayer, modifier: Modifier = Modifier) {
     Canvas(modifier) {
         drawRect(Color.Black)
         @Suppress("UNUSED_VARIABLE") val v = player.frameVersion // repintar con cada cuadro
-        val img = player.frame ?: return@Canvas
         val box = size
-        val (dst, srcRect) = layout(player.aspect, player.videoAspect, img.width, img.height, box)
-        drawImage(
-            image = img,
-            srcOffset = IntOffset(srcRect.first, srcRect.second),
-            srcSize = IntSize(srcRect.third, srcRect.fourth),
-            dstOffset = IntOffset(dst.first.x.roundToInt(), dst.first.y.roundToInt()),
-            dstSize = IntSize(dst.second.width.roundToInt().coerceAtLeast(1), dst.second.height.roundToInt().coerceAtLeast(1)),
-            filterQuality = FilterQuality.Medium,
-        )
+        // Con el cuadro "bloqueado": VLC no puede escribir en él mientras se dibuja
+        player.withFrame { img ->
+            val (dst, srcRect) = layout(player.aspect, player.videoAspect, img.width, img.height, box)
+            drawImage(
+                image = img,
+                srcOffset = IntOffset(srcRect.first, srcRect.second),
+                srcSize = IntSize(srcRect.third, srcRect.fourth),
+                dstOffset = IntOffset(dst.first.x.roundToInt(), dst.first.y.roundToInt()),
+                dstSize = IntSize(dst.second.width.roundToInt().coerceAtLeast(1), dst.second.height.roundToInt().coerceAtLeast(1)),
+                filterQuality = FilterQuality.Medium,
+            )
+        }
     }
 }
 
