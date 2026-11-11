@@ -507,8 +507,10 @@ fun PhoneSearch(
 ) {
     val lib = repo.library
     val ctx = LocalContext.current
-    var query by remember { mutableStateOf("") }
-    var only by remember { mutableStateOf<String?>(null) }
+    // Se recuerda la búsqueda: al volver de un canal o de otro servidor sigue ahí
+    var query by remember { mutableStateOf(com.jox3.iptvexo.tv.data.SearchMemory.query) }
+    var only by remember { mutableStateOf<String?>(com.jox3.iptvexo.tv.data.SearchMemory.only) }
+    LaunchedEffect(query, only) { com.jox3.iptvexo.tv.data.SearchMemory.query = query; com.jox3.iptvexo.tv.data.SearchMemory.only = only }
     var choose by remember { mutableStateOf<ServerHub.Hit?>(null) }
     val multi = account != null && accounts.size > 1 && ServerHub.searchAllEnabled(ctx)
     LaunchedEffect(multi) { if (multi) ServerHub.ensureIndexes(accounts.filter { it.key != account?.key }) }
@@ -529,6 +531,8 @@ fun PhoneSearch(
     fun openCopy(c: ServerHub.Copy) {
         choose = null
         lib.addSearch(query)
+        // Canales (pasan a En vivo) o de otro servidor (la app cambia): Atrás debe volver aquí
+        com.jox3.iptvexo.tv.data.SearchMemory.fromSearch = c.kind == "live" || c.account.key != me.key
         if (c.account.key != me.key) { ServerHub.pendingOpen = c; onSwitch(c.account); return }
         when (c.kind) {
             "movie" -> onOpenMovie(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L))

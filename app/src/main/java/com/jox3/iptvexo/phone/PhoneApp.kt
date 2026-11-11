@@ -239,9 +239,13 @@ private fun PhoneShell(
         joinTogether = true
     }
     fun openSeries(id: String, name: String, poster: String) { pages.add(Page.SeriesDetail(id, name, poster)) }
+    // Pestaña a la que vuelve Atrás desde En vivo (el buscador, si el canal se eligió ahí)
+    var backTab by remember { mutableStateOf<Tab?>(null) }
     fun playChannel(list: List<com.jox3.iptvexo.tv.data.Channel>, i: Int) {
         val c = list.getOrNull(i) ?: return
         repo.library.addRecentChannel(SavedItem("live", c.id, c.name, c.logo, categoryId = c.categoryId))
+        backTab = if (com.jox3.iptvexo.tv.data.SearchMemory.fromSearch) Tab.Search else null
+        com.jox3.iptvexo.tv.data.SearchMemory.fromSearch = false
         vod.close(); pages.clear(); tab = Tab.Live
         live.play(c, list, "")
     }
@@ -274,6 +278,8 @@ private fun PhoneShell(
         val p = ServerHub.pendingOpen ?: return@LaunchedEffect
         if (p.account.key != account.key) return@LaunchedEffect
         ServerHub.pendingOpen = null
+        // Venía del buscador: dejarlo debajo para que Atrás vuelva a los resultados
+        if (com.jox3.iptvexo.tv.data.SearchMemory.fromSearch && p.kind != "live") { tab = Tab.Search; com.jox3.iptvexo.tv.data.SearchMemory.fromSearch = false }
         when (p.kind) {
             "movie" -> openMovie(Movie(p.id, p.name, p.image, p.rating, p.ext, p.categoryId, 0L))
             "series" -> openSeries(p.id, p.name, p.image)
@@ -286,6 +292,7 @@ private fun PhoneShell(
             fullscreen -> act.exitLandscape()
             vod.open -> vod.close()
             pages.isNotEmpty() -> pages.removeAt(pages.lastIndex)
+            tab == Tab.Live && backTab != null -> { tab = backTab!!; backTab = null }
             tab != Tab.Home -> tab = Tab.Home
             else -> act.finish()
         }
@@ -376,7 +383,7 @@ private fun PhoneShell(
                     }
                 }
             }
-            if (!vod.open) BottomBar(tab) { t -> pages.clear(); tab = t }
+            if (!vod.open) BottomBar(tab) { t -> pages.clear(); backTab = null; tab = t }
         }
     }
     }

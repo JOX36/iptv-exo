@@ -296,6 +296,8 @@ private fun MainShell(
         val p = ServerHub.pendingOpen ?: return@LaunchedEffect
         if (p.account.key != account.key) return@LaunchedEffect
         ServerHub.pendingOpen = null
+        // Venía del buscador: dejarlo debajo para que Atrás vuelva a los resultados
+        if (com.jox3.iptvexo.tv.data.SearchMemory.fromSearch) { com.jox3.iptvexo.tv.data.SearchMemory.fromSearch = false; nav.open(Route.Search) }
         delay(150)
         when (p.kind) {
             "movie" -> nav.open(Route.MovieDetail(com.jox3.iptvexo.tv.data.Movie(p.id, p.name, p.image, p.rating, p.ext, p.categoryId, 0L)))

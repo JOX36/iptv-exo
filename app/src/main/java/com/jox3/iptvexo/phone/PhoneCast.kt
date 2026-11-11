@@ -89,10 +89,14 @@ class PhoneCast(context: Context) {
         override fun onStatusUpdated() { remotePlaying = client?.isPlaying == true }
     }
 
+    /** Lo que dice el SDK de Cast (solo se entera si alguien está buscando dispositivos). */
+    private var castSaysAvailable = false
     private val stateListener = CastStateListener { state ->
-        available = state != CastState.NO_DEVICES_AVAILABLE
+        castSaysAvailable = state != CastState.NO_DEVICES_AVAILABLE
         connecting = state == CastState.CONNECTING
+        updateAvailable()
     }
+    private fun updateAvailable() { available = castSaysAvailable || routes.isNotEmpty() }
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarted(s: CastSession, id: String) = connected(s)
@@ -137,12 +141,14 @@ class PhoneCast(context: Context) {
         refreshRoutes()
     }
 
-    fun stopScan() { router?.removeCallback(routerCallback) }
+    /** Se cerró la hoja: dejar de buscar (no gasta batería mientras no se usa). */
+    fun stopScan() { runCatching { router?.removeCallback(routerCallback) } }
 
     private fun refreshRoutes() {
         val r = router ?: return; val sel = selector ?: return
         routes.clear()
         routes.addAll(r.routes.filter { !it.isDefault && it.isEnabled && it.matchesSelector(sel) })
+        updateAvailable()
     }
 
     /** Elegir un dispositivo: el SDK de Cast abre la sesión solo. */
@@ -227,7 +233,9 @@ val LocalCast = staticCompositionLocalOf<PhoneCast?> { null }
 @Composable
 fun CastButton(onClick: () -> Unit) {
     val cast = LocalCast.current ?: return
-    if (!cast.ready || (!cast.available && cast.connectedTo == null)) return
+    // Siempre visible (si el celular tiene Servicios de Google): la búsqueda de Chromecast
+    // empieza solo al tocarlo, así no gasta batería mientras no se usa.
+    if (!cast.ready) return
     RoundIcon(if (cast.connectedTo != null) R.drawable.ic_cast_connected else R.drawable.ic_cast,
         if (cast.connectedTo != null) "Chromecast conectado" else "Transmitir a Chromecast",
         tint = if (cast.connectedTo != null) Jx.Accent else Jx.Text, onClick = onClick)
@@ -251,8 +259,11 @@ fun CastSheet(onDismiss: () -> Unit) {
                 Text("Transmitir a", style = PType.H2, color = Jx.Text)
                 if (cast.connecting) Text("Conectando…", style = PType.Small, color = Jx.Accent)
                 cast.lastError?.let { Text(it, style = PType.Small, color = Jx.Live) }
+                val waited by produceState(false) { delay(12_000); value = true }
                 if (cast.routes.isEmpty()) {
-                    Text("Buscando dispositivos en tu WiFi…", style = PType.Body, color = Jx.TextSoft)
+                    if (waited) Text("No encontré ningún Chromecast. Revisa que esté encendido y en la misma red WiFi; sigo buscando…",
+                        style = PType.Body, color = Jx.Gold)
+                    else Text("Buscando dispositivos en tu WiFi…", style = PType.Body, color = Jx.TextSoft)
                     Text("El Chromecast o TV con Chromecast debe estar en la misma red WiFi que el celular.",
                         style = PType.Small, color = Jx.Faint)
                 }
