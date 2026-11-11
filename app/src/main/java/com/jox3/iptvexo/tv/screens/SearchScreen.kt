@@ -63,9 +63,11 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
     val live = LocalLive.current
     val lib = repo.library
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    var query by rememberSaveable { mutableStateOf("") }
+    // Se recuerda la búsqueda: al volver de un canal o de otro servidor sigue ahí
+    var query by rememberSaveable { mutableStateOf(com.jox3.iptvexo.tv.data.SearchMemory.query) }
     // Servidor elegido en el filtro (null = todos)
-    var only by rememberSaveable { mutableStateOf<String?>(null) }
+    var only by rememberSaveable { mutableStateOf<String?>(com.jox3.iptvexo.tv.data.SearchMemory.only) }
+    LaunchedEffect(query, only) { com.jox3.iptvexo.tv.data.SearchMemory.query = query; com.jox3.iptvexo.tv.data.SearchMemory.only = only }
     var choose by remember { mutableStateOf<ServerHub.Hit?>(null) }
     val multi = accounts.size > 1 && ServerHub.searchAllEnabled(ctx)
     val others = remember(accounts, account) { accounts.filter { it.key != account.key } }
@@ -87,7 +89,8 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
     }
     fun openCopy(c: ServerHub.Copy, channels: List<Channel>) {
         choose = null
-        if (c.account.key != account.key) { ServerHub.pendingOpen = c; onSwitch(c.account); return }
+        // En este servidor la búsqueda queda debajo sola; al cambiar de servidor hay que recordarlo
+        if (c.account.key != account.key) { com.jox3.iptvexo.tv.data.SearchMemory.fromSearch = true; ServerHub.pendingOpen = c; onSwitch(c.account); return }
         when (c.kind) {
             "movie" -> nav.open(Route.MovieDetail(Movie(c.id, c.name, c.image, c.rating, c.ext, c.categoryId, 0L)))
             "series" -> nav.open(Route.SeriesDetail(c.id, c.name, c.image))

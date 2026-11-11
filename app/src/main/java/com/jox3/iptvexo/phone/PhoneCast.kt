@@ -89,10 +89,14 @@ class PhoneCast(context: Context) {
         override fun onStatusUpdated() { remotePlaying = client?.isPlaying == true }
     }
 
+    /** Lo que dice el SDK de Cast (solo se entera si alguien está buscando dispositivos). */
+    private var castSaysAvailable = false
     private val stateListener = CastStateListener { state ->
-        available = state != CastState.NO_DEVICES_AVAILABLE
+        castSaysAvailable = state != CastState.NO_DEVICES_AVAILABLE
         connecting = state == CastState.CONNECTING
+        updateAvailable()
     }
+    private fun updateAvailable() { available = castSaysAvailable || routes.isNotEmpty() }
 
     private val sessionListener = object : SessionManagerListener<CastSession> {
         override fun onSessionStarted(s: CastSession, id: String) = connected(s)
@@ -120,11 +124,26 @@ class PhoneCast(context: Context) {
         stateListener.onCastStateChanged(cc.castState)
         cc.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         cc.sessionManager.currentCastSession?.takeIf { it.isConnected }?.let { connected(it) }
+        resumeDiscovery()
     }
+
+    /**
+     * Búsqueda "pasiva" de Chromecast mientras la app está abierta: así el botón aparece apenas
+     * hay uno en la red. (Antes se dependía de que el SDK buscara solo, y a veces no lo hacía:
+     * el botón no salía aunque hubiera Chromecast disponibles.)
+     */
+    fun resumeDiscovery() {
+        val r = router ?: return; val sel = selector ?: return
+        runCatching { r.addCallback(sel, routerCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY) }
+        refreshRoutes()
+    }
+
+    /** La app pasó a segundo plano: dejar de buscar (ahorra batería). */
+    fun pauseDiscovery() { runCatching { router?.removeCallback(routerCallback) } }
 
     fun release() {
         val cc = castContext ?: return
-        stopScan()
+        pauseDiscovery()
         cc.removeCastStateListener(stateListener)
         cc.sessionManager.removeSessionManagerListener(sessionListener, CastSession::class.java)
         client?.unregisterCallback(clientCallback)
@@ -137,12 +156,14 @@ class PhoneCast(context: Context) {
         refreshRoutes()
     }
 
-    fun stopScan() { router?.removeCallback(routerCallback) }
+    /** Se cerró la hoja: volver a la búsqueda pasiva (no se apaga del todo, para que el botón siga). */
+    fun stopScan() { resumeDiscovery() }
 
     private fun refreshRoutes() {
         val r = router ?: return; val sel = selector ?: return
         routes.clear()
         routes.addAll(r.routes.filter { !it.isDefault && it.isEnabled && it.matchesSelector(sel) })
+        updateAvailable()
     }
 
     /** Elegir un dispositivo: el SDK de Cast abre la sesión solo. */

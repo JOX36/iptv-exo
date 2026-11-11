@@ -161,6 +161,8 @@ class PhoneActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // Chromecast: iniciar el SDK al abrir (así ya está atento cuando la pantalla se muestra)
+        runCatching { com.google.android.gms.cast.framework.CastContext.getSharedInstance(this) }
         com.jox3.iptvexo.tv.data.Downloads.resumePending(this)
 
         Coil.setImageLoader(
