@@ -134,11 +134,12 @@ class SkipDetector(context: Context) {
     /** Se cambió de capítulo o se cerró: terminar de analizar lo escuchado. */
     fun end() {
         val g = gen
+        val d = durMs     // la duración de ESTE capítulo (begin() la borra para el siguiente)
         listening = false
         worker.execute {
             val ep = cur ?: return@execute
             if (ep.gen != g) return@execute
-            runCatching { finishAnalysis(ep) }.onFailure { Log.w("JOX3", "Saltos: ${it.message}") }
+            runCatching { finishAnalysis(ep, d) }.onFailure { Log.w("JOX3", "Saltos: ${it.message}") }
             if (cur === ep) cur = null
         }
     }
@@ -185,8 +186,8 @@ class SkipDetector(context: Context) {
 
     // ── Análisis (hilo worker) ──
 
-    private fun introWindowMs(): Long = if (durMs > 0) minOf(INTRO_WIN_MS, (durMs * 0.4).toLong()) else INTRO_WIN_MS
-    private fun creditsWindowMs(): Long = if (durMs > 0) minOf(CREDITS_WIN_MS, (durMs * 0.3).toLong()) else CREDITS_WIN_MS
+    private fun introWindowMs(d: Long = durMs): Long = if (d > 0) minOf(INTRO_WIN_MS, (d * 0.4).toLong()) else INTRO_WIN_MS
+    private fun creditsWindowMs(d: Long = durMs): Long = if (d > 0) minOf(CREDITS_WIN_MS, (d * 0.3).toLong()) else CREDITS_WIN_MS
 
     private fun check(ep: Ep) {
         val nowMs = AudioPrint.msOf(ep.latest[0])
@@ -236,14 +237,14 @@ class SkipDetector(context: Context) {
         return best?.let { it.second to it.third }
     }
 
-    private fun analyzeIntro(ep: Ep) {
-        val win = AudioPrint.frames(introWindowMs())
+    private fun analyzeIntro(ep: Ep, d: Long = durMs) {
+        val win = AudioPrint.frames(introWindowMs(d))
         if (ep.phases[0].coverage(0, win) < 0.5f) return
         val mine = Array(4) { ep.phases[it].slice(0, win) }
         val others = candidates(ep, "intro")
         val found = bestPair(mine, others, AudioPrint.frames(MIN_LEN_MS), AudioPrint.frames(MAX_INTRO_MS))
         if (found == null) {
-            sharePrint(ep, "intro", 0, mine[0])
+            sharePrint(ep, "intro", 0, mine[0], d)
             publish(ep, "Aprendiendo esta serie: falta otro capítulo para comparar")
             return
         }
@@ -251,7 +252,7 @@ class SkipDetector(context: Context) {
         val myStart = ((seg.aStart + p / 4.0) * AudioPrint.HOP_MS).toLong()
         val myEnd = ((seg.aEnd + p / 4.0) * AudioPrint.HOP_MS).toLong()
         val oStart = AudioPrint.msOf(other.first + seg.bStart); val oEnd = AudioPrint.msOf(other.first + seg.bEnd)
-        ep.res = ep.res.copy(introStart = myStart, introEnd = myEnd, dur = durMs)
+        ep.res = ep.res.copy(introStart = myStart, introEnd = myEnd, dur = d)
         val otherRes = store.result(ep.srv, other.ep).copy(introStart = oStart, introEnd = oEnd)
         val tpl = Tpl("intro", ep.season, other.fp.copyOfRange(seg.bStart, seg.bEnd))
         store.saveTemplates(ep.srv, ep.series, listOf(tpl))
@@ -260,21 +261,20 @@ class SkipDetector(context: Context) {
         publish(ep, "Intro aprendida: desde el próximo capítulo aparece «Saltar intro»")
     }
 
-    private fun finishAnalysis(ep: Ep) {
-        val d = durMs
+    private fun finishAnalysis(ep: Ep, d: Long) {
         if (!ep.heard || d <= 0) return
         val nowMs = AudioPrint.msOf(ep.latest[0])
-        if (!ep.triedIntro && !ep.res.hasIntro && !ep.badIntro && nowMs >= introWindowMs()) { ep.triedIntro = true; analyzeIntro(ep) }
+        if (!ep.triedIntro && !ep.res.hasIntro && !ep.badIntro && nowMs >= introWindowMs(d)) { ep.triedIntro = true; analyzeIntro(ep, d) }
         if (ep.triedCredits || ep.res.hasCredits || ep.badCredits || nowMs < d - 20_000) return
         ep.triedCredits = true
-        val from = AudioPrint.frameOf(d - creditsWindowMs())
+        val from = AudioPrint.frameOf(d - creditsWindowMs(d))
         val to = AudioPrint.frameOf(d)
         if (ep.phases[0].coverage(from, to) < 0.5f) return
         val mine = Array(4) { ep.phases[it].slice(from, to) }
         val others = candidates(ep, "credits")
         val found = bestPair(mine, others, AudioPrint.frames(MIN_LEN_MS), AudioPrint.frames(MAX_CREDITS_MS))
             ?.takeIf { (seg, _, _) -> AudioPrint.msOf(from + seg.aEnd) >= d - 150_000 }
-        if (found == null) { sharePrint(ep, "credits", from, mine[0]); return }
+        if (found == null) { sharePrint(ep, "credits", from, mine[0], d); return }
         val (seg, p, other) = found
         val myStart = ((from + seg.aStart + p / 4.0) * AudioPrint.HOP_MS).toLong()
         val oStart = AudioPrint.msOf(other.first + seg.bStart)
@@ -305,8 +305,8 @@ class SkipDetector(context: Context) {
         return best
     }
 
-    private fun sharePrint(ep: Ep, kind: String, first: Int, fp: IntArray) {
-        val rec = PrintRec(ep.id, kind, ep.season, first, fp, durMs)
+    private fun sharePrint(ep: Ep, kind: String, first: Int, fp: IntArray, d: Long) {
+        val rec = PrintRec(ep.id, kind, ep.season, first, fp, d)
         store.savePrint(ep.srv, ep.series, rec)
         SkipCloud.push(ep.srv, ep.series, ep.season, prints = listOf(rec))
     }

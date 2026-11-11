@@ -128,7 +128,8 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     val creditsAt: Long get() = skip.state.takeIf { it.epId == item?.id }?.creditsAt ?: -1
     /** Se ofrece pasar al siguiente episodio: empezaron los créditos y hay otro en cola. */
     val creditsVisible: Boolean get() = hasNext && !creditsDismissed && !ended && creditsAt > 0 &&
-        position >= creditsAt && (duration <= 0 || position < duration - 1500)
+        // Por seguridad: los créditos nunca están antes del 60 % del capítulo
+        duration > 0 && creditsAt > duration * 0.6 && position >= creditsAt && position < duration - 1500
 
     fun skipIntro() {
         val r = intro ?: return

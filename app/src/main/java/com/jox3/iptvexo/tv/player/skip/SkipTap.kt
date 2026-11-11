@@ -79,6 +79,8 @@ private class TapSink(
             C.ENCODING_PCM_24BIT -> 3
             else -> return
         }
+        // Tiempo fuera de lo razonable (p. ej. sin el desfase del reproductor): no escuchar
+        if (mediaUs < 0 || mediaUs > 6 * 3600 * 1_000_000L) return
         val b = src.duplicate().order(ByteOrder.LITTLE_ENDIAN)
         val frames = b.remaining() / (bytesPer * channels)
         if (frames <= 0) return
