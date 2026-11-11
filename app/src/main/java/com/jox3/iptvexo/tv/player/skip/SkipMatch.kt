@@ -28,11 +28,12 @@ object SkipMatch {
     }
 
     /**
-     * El tramo común más largo entre [a] y [b] cuyo largo está entre [minLen] y [maxLen] cuadros.
+     * El tramo común más largo entre [a] y [b] cuyo largo está entre [minLen] y [maxLen] cuadros
+     * (con [latest] = true, el que termina más tarde: para los créditos, que van al final).
      * Prueba todos los desplazamientos (cuesta ~n×m operaciones simples: con 10 minutos por lado,
      * menos de un segundo incluso en un TV Box).
      */
-    fun common(a: IntArray, b: IntArray, minLen: Int, maxLen: Int, stop: () -> Boolean = { false }): Segment? {
+    fun common(a: IntArray, b: IntArray, minLen: Int, maxLen: Int, latest: Boolean = false, stop: () -> Boolean = { false }): Segment? {
         if (a.size < W || b.size < W) return null
         val n = minOf(a.size, b.size) + 1
         val h = IntArray(n); val v = IntArray(n)
@@ -62,7 +63,8 @@ object SkipMatch {
                 else if (start >= 0 && (k == len || k - last > GAP)) {
                     val s = i0 + start; val e = i0 + last + 1
                     val l = e - s
-                    if (l in minLen..maxLen && (best == null || l > best.length)) best = Segment(s, e, d)
+                    val better = best == null || if (latest) e > best.aEnd + 10 || (e >= best.aEnd - 10 && l > best.length) else l > best.length
+                    if (l in minLen..maxLen && better) best = Segment(s, e, d)
                     start = -1
                 }
             }

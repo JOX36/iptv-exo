@@ -98,10 +98,23 @@ class SkipMatchTest {
         val dur get() = audio.size.toDouble() / rate
     }
 
-    /** [escena][INTRO][escena][CRÉDITOS][avance opcional], a [rate] Hz, con otro volumen y ruido. */
+    /** Pasa de 48 kHz a otra frecuencia (interpolación lineal): como otra copia del mismo audio. */
+    private fun resample(x: FloatArray, to: Int): FloatArray {
+        if (to == BASE) return x
+        val n = (x.size.toLong() * to / BASE).toInt()
+        return FloatArray(n) { i ->
+            val pos = i.toDouble() * BASE / to; val k = pos.toInt(); val f = (pos - k).toFloat()
+            if (k + 1 < x.size) x[k] * (1 - f) + x[k + 1] * f else x[x.size - 1]
+        }
+    }
+
+    /**
+     * [escena][INTRO][escena][CRÉDITOS][avance opcional]: todo se genera a 48 kHz (así la intro es
+     * idéntica en todos) y luego se pasa a [rate], con otro volumen y un poco de ruido.
+     */
     private fun episode(seed: Long, rate: Int, cold: Double, mid: Double, tail: Double, introSeed: Long = 1234, creditsSeed: Long = 999): Ep {
-        val parts = listOf(scene(cold, seed, rate), music(55.0, introSeed, rate), scene(mid, seed + 10, rate), music(40.0, creditsSeed, rate)) +
-            (if (tail > 0) listOf(scene(tail, seed + 20, rate)) else emptyList())
+        val parts = (listOf(scene(cold, seed, BASE), music(55.0, introSeed, BASE), scene(mid, seed + 10, BASE), music(40.0, creditsSeed, BASE)) +
+            (if (tail > 0) listOf(scene(tail, seed + 20, BASE)) else emptyList())).map { resample(it, rate) }
         val all = FloatArray(parts.sumOf { it.size })
         var o = 0; for (p in parts) { System.arraycopy(p, 0, all, o, p.size); o += p.size }
         val r = Random(seed * 31); val gain = 0.5f + r.nextFloat() * 0.7f
@@ -119,6 +132,7 @@ class SkipMatchTest {
     }
 
     private fun sec(f: Int) = f * AudioPrint.HOP_MS / 1000
+    private companion object { const val BASE = 48000 }
     private val report = StringBuilder()
     private fun note(s: String) { println(s); report.append(s).append('\n') }
     private fun save() = runCatching { File("build/skip-report.txt").appendText(report.toString()) }
@@ -137,8 +151,10 @@ class SkipMatchTest {
         assertEquals(a.introStart, sec(s.aStart), 1.0); assertEquals(a.introEnd, sec(s.aEnd), 1.0)
         assertEquals(b.introStart, sec(s.bStart), 1.0); assertEquals(b.introEnd, sec(s.bEnd), 1.0)
 
-        val fa = AudioPrint.frameOf(((a.dur - 180) * 1000).toLong()); val fb = AudioPrint.frameOf(((b.dur - 180) * 1000).toLong())
-        val c = SkipMatch.common(pa.slice(fa, pa.last), pb.slice(fb, pb.last), AudioPrint.frames(15_000), AudioPrint.frames(360_000))
+        // Como el detector: los créditos se buscan en el último 30 % (máx. 6 min), prefiriendo lo que termina más tarde.
+        // (Estos capítulos de prueba duran ~3,5 min: la ventana incluye parte de la intro, y aun así debe elegir los créditos.)
+        val fa = AudioPrint.frameOf(((a.dur * 0.6) * 1000).toLong()); val fb = AudioPrint.frameOf(((b.dur * 0.6) * 1000).toLong())
+        val c = SkipMatch.common(pa.slice(fa, pa.last), pb.slice(fb, pb.last), AudioPrint.frames(15_000), AudioPrint.frames(360_000), latest = true)
         note("créditos: ${c?.let { "A ${"%.2f".format(sec(fa + it.aStart))} (real ${"%.2f".format(a.credits)}), B ${"%.2f".format(sec(fb + it.bStart))} (real ${"%.2f".format(b.credits)})" }}")
         assertNotNull("no encontró los créditos", c); c!!
         assertEquals(a.credits, sec(fa + c.aStart), 1.0); assertEquals(b.credits, sec(fb + c.bStart), 1.0)
@@ -163,10 +179,12 @@ class SkipMatchTest {
                 val lf = ((t * 1000 - p * AudioPrint.HOP_MS / 4) / AudioPrint.HOP_MS).toInt()
                 val r = SkipMatch.locate(tpl, ph[p].slice(lf - SkipMatch.K + 1, lf + 1)) ?: continue
                 val start = ((lf - SkipMatch.K + 1 - r.first) + p / 4.0) * AudioPrint.HOP_MS / 1000
-                if (best == null || r.second < best.first) best = Triple(r.second, start, start + tpl.size * AudioPrint.HOP_MS / 1000)
+                val prev = best
+                if (prev == null || r.second < prev.first) best = Triple(r.second, start, start + tpl.size * AudioPrint.HOP_MS / 1000)
             }
-            if (best == null) misses++
-            else { assertEquals(c.introStart, best.second, 1.2); assertEquals(c.introEnd, best.third, 1.2) }
+            val found = best
+            if (found == null) misses++
+            else { assertEquals(c.introStart, found.second, 1.2); assertEquals(c.introEnd, found.third, 1.2) }
             t += 1.7
         }
         note("en vivo: reconocida en ${n - misses} de $n momentos")

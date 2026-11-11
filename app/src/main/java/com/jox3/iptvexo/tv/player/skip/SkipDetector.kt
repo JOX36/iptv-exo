@@ -272,7 +272,7 @@ class SkipDetector(context: Context) {
         if (ep.phases[0].coverage(from, to) < 0.5f) return
         val mine = Array(4) { ep.phases[it].slice(from, to) }
         val others = candidates(ep, "credits")
-        val found = bestPair(mine, others, AudioPrint.frames(MIN_LEN_MS), AudioPrint.frames(MAX_CREDITS_MS))
+        val found = bestPair(mine, others, AudioPrint.frames(MIN_LEN_MS), AudioPrint.frames(MAX_CREDITS_MS), latest = true)
             ?.takeIf { (seg, _, _) -> AudioPrint.msOf(from + seg.aEnd) >= d - 150_000 }
         if (found == null) { sharePrint(ep, "credits", from, mine[0], d); return }
         val (seg, p, other) = found
@@ -293,14 +293,18 @@ class SkipDetector(context: Context) {
     }
 
     /** El mejor tramo común con alguno de los capítulos (se prueban los 4 desfases de la grilla). */
-    private fun bestPair(mine: Array<IntArray>, others: List<PrintRec>, minL: Int, maxL: Int): Triple<SkipMatch.Segment, Int, PrintRec>? {
+    private fun bestPair(mine: Array<IntArray>, others: List<PrintRec>, minL: Int, maxL: Int, latest: Boolean = false): Triple<SkipMatch.Segment, Int, PrintRec>? {
+        // Comparar cuesta (~n×m): se prueba la grilla normal y la desfasada medio cuadro (cubre el peor
+        // caso), y al primer capítulo que coincide con un tramo claro (≥ 20 s) se para.
         var best: Triple<SkipMatch.Segment, Int, PrintRec>? = null
-        for (o in others) {
-            for (p in intArrayOf(0, 2, 1, 3)) {
-                val s = SkipMatch.common(mine[p], o.fp, minL, maxL) ?: continue
-                if (best == null || s.length > best.first.length) best = Triple(s, p, o)
+        for (o in others.take(3)) {
+            for (p in intArrayOf(0, 2)) {
+                val s = SkipMatch.common(mine[p], o.fp, minL, maxL, latest) ?: continue
+                val prev = best
+                if (prev == null || s.length > prev.first.length) best = Triple(s, p, o)
                 break
             }
+            if ((best?.first?.length ?: 0) >= AudioPrint.frames(20_000)) break
         }
         return best
     }
