@@ -77,6 +77,8 @@ class SkipDetector(context: Context) {
 
     private class Ep(
         val gen: Int, val srv: String, val series: String, val season: Int, val id: String,
+        /** Nombre de la serie "normalizado" (para usar lo aprendido en tus otros servidores). */
+        val name: String,
     ) {
         val phases = Array(4) { Prints() }
         var latest = IntArray(4) { -1 }
@@ -90,12 +92,18 @@ class SkipDetector(context: Context) {
         var triedCredits = false
         var lastCheckFrame = -1
         var heard = false
+        /** La intro se reconoció en vivo con una plantilla: se sigue afinando dónde termina. */
+        var introLive = false
+        var introDirty = false
+        /** Cuánto duran los créditos en otros capítulos (ms desde que empiezan hasta el final). */
+        var tails: List<Long> = emptyList()
+        var predictedCredits = -1L
     }
 
     // ── Lo llama el reproductor ──
 
     /** Empieza un capítulo (o algo que no es capítulo: entonces no hace nada). */
-    fun begin(epId: String?, seriesId: String?, season: Int, allowListen: Boolean) {
+    fun begin(epId: String?, seriesId: String?, season: Int, seriesName: String, allowListen: Boolean) {
         val g = ++gen
         armed = false
         durMs = 0
@@ -105,24 +113,32 @@ class SkipDetector(context: Context) {
         state = SkipState(epId.orEmpty())
         if (!ok) { worker.execute { if (gen == g) cur = null }; return }
         val srv = srvKey(acc!!.host)
+        val name = normName(seriesName)
+        // Tus otros servidores (lo aprendido allá sirve aquí: la intro suena igual)
+        val mine = runCatching { com.jox3.iptvexo.tv.data.AccountStore(app).all().map { srvKey(it.host) } }.getOrDefault(emptyList())
+            .filter { it != srv }.distinct().take(9)
         worker.execute {
             if (gen != g) return@execute
-            val ep = Ep(g, srv, seriesId!!, season, epId!!)
+            val ep = Ep(g, srv, seriesId!!, season, epId!!, name)
             cur = ep
             ep.badIntro = store.isBad(srv, epId, "intro"); ep.badCredits = store.isBad(srv, epId, "credits")
             ep.res = store.result(srv, epId)
-            ep.templates = store.templates(srv, seriesId)
+            ep.templates = allTemplates(srv, seriesId, name)
+            ep.tails = store.tails(srv, seriesId)
             publish(ep, if (ep.res.hasIntro || ep.res.hasCredits) "Tiempos de este capítulo ya conocidos" else "")
-            // Lo que saben los demás equipos de este servidor (una vez cada 10 min por serie)
+            // Lo que saben los demás equipos de este servidor y de tus otros servidores (una vez cada 10 min por serie)
             val key = "$srv|$seriesId"
             val now = System.currentTimeMillis()
-            val cloud = if (now - (fetchedAt[key] ?: 0L) > 600_000L) SkipCloud.fetch(srv, seriesId)?.also { fetchedAt[key] = now } else null
+            val cloud = if (now - (fetchedAt[key] ?: 0L) > 600_000L) SkipCloud.fetch(srv, seriesId, name, mine)?.also { fetchedAt[key] = now } else null
             if (gen != g) return@execute
             if (cloud != null) {
-                cloud.first.forEach { (id, r) -> store.saveResult(srv, id, r, merge = true) }
-                if (cloud.second.isNotEmpty()) store.saveTemplates(srv, seriesId, cloud.second)
+                cloud.eps.forEach { (id, r) -> store.saveResult(srv, id, r, merge = true) }
+                if (cloud.tpl.isNotEmpty()) store.saveTemplates(srv, seriesId, name, cloud.tpl)
+                if (cloud.byName.isNotEmpty()) store.saveByName(name, cloud.byName)
+                store.saveTails(srv, seriesId, cloud.eps.values.filter { it.hasCredits && it.dur > it.creditsStart }.map { it.dur - it.creditsStart })
                 ep.res = store.result(srv, epId)
-                ep.templates = store.templates(srv, seriesId)
+                ep.templates = allTemplates(srv, seriesId, name)
+                ep.tails = store.tails(srv, seriesId)
             }
             run {
                 publish(ep, when {
@@ -133,6 +149,10 @@ class SkipDetector(context: Context) {
             }
         }
     }
+
+    /** Las de esta serie en este servidor primero; luego las de tus otros servidores (mismo nombre). */
+    private fun allTemplates(srv: String, series: String, name: String): List<Tpl> =
+        (store.templates(srv, series) + store.templatesByName(name)).distinctBy { it.kind + it.season + it.id }
 
     /** Cada medio segundo: posición y duración. */
     fun tick(durationMs: Long) { if (durationMs > 0) durMs = durationMs }
@@ -161,7 +181,7 @@ class SkipDetector(context: Context) {
             else { ep.badCredits = true; ep.res = ep.res.copy(creditsStart = -2) }
             store.saveResult(ep.srv, ep.id, ep.res, merge = false)
             publish(ep, "Gracias: no se volverá a mostrar en este capítulo")
-            SkipCloud.push(ep.srv, ep.series, ep.season, bad = listOf(ep.id to kind))
+            SkipCloud.push(ep.srv, ep.series, ep.season, ep.name, bad = listOf(ep.id to kind))
         }
     }
 
@@ -202,12 +222,37 @@ class SkipDetector(context: Context) {
             locate(ep, "intro")?.let { (start, end) ->
                 if (end > nowMs && end - start in MIN_LEN_MS..MAX_INTRO_MS) {
                     ep.res = ep.res.copy(introStart = start, introEnd = end, dur = durMs)
-                    saveAndShare(ep, listOf(ep.id to ep.res))
+                    ep.introLive = true; ep.introDirty = true
+                    store.saveResult(ep.srv, ep.id, ep.res, merge = true)
+                    publish(ep, "Intro reconocida")
+                }
+            }
+        } else if (ep.introLive && ep.res.hasIntro && nowMs in ep.res.introStart..ep.res.introEnd + 25_000) {
+            // Seguir escuchando durante la intro: si tiene una parte que cambia de largo (Los Simpson),
+            // al reconocer el final se corrige dónde termina exactamente
+            locate(ep, "intro")?.let { (_, end) ->
+                if (end > nowMs && kotlin.math.abs(end - ep.res.introEnd) > 700 && end - ep.res.introStart in MIN_LEN_MS..MAX_INTRO_MS) {
+                    ep.res = ep.res.copy(introEnd = end)
+                    ep.introDirty = true
+                    store.saveResult(ep.srv, ep.id, ep.res, merge = true)
                     publish(ep, "Intro reconocida")
                 }
             }
         }
+        if (ep.introDirty && ep.res.hasIntro && nowMs > ep.res.introEnd + 25_000) {
+            ep.introDirty = false
+            SkipCloud.push(ep.srv, ep.series, ep.season, ep.name, results = listOf(ep.id to ep.res))
+        }
         val d = durMs
+        // Créditos estimados: si en otros capítulos duran siempre lo mismo (±4 s), se ofrece el
+        // siguiente episodio a esa altura aunque su música no se reconozca
+        if (d > 0 && ep.predictedCredits < 0 && !ep.res.hasCredits && ep.res.creditsStart != -2L && !ep.badCredits && ep.tails.size >= 3) {
+            val t = ep.tails.sorted()
+            if (t.last() - t.first() <= 8_000) {
+                ep.predictedCredits = d - t[t.size / 2]
+                publish(ep, "Créditos estimados por los otros capítulos")
+            }
+        }
         if (d > 0 && !ep.res.hasCredits && ep.res.creditsStart != -2L && !ep.badCredits && nowMs >= d - creditsWindowMs()) {
             locate(ep, "credits")?.let { (start, _) ->
                 if (start > d - creditsWindowMs() - 30_000 && start < d - 5_000) {
@@ -260,14 +305,19 @@ class SkipDetector(context: Context) {
         val oStart = AudioPrint.msOf(other.first + seg.bStart); val oEnd = AudioPrint.msOf(other.first + seg.bEnd)
         ep.res = ep.res.copy(introStart = myStart, introEnd = myEnd, dur = d)
         val otherRes = store.result(ep.srv, other.ep).copy(introStart = oStart, introEnd = oEnd)
-        val tpl = Tpl("intro", ep.season, other.fp.copyOfRange(seg.bStart, seg.bEnd))
-        store.saveTemplates(ep.srv, ep.series, listOf(tpl))
-        ep.templates = store.templates(ep.srv, ep.series)
+        // La plantilla sale del capítulo con la intro más corta: si tiene una parte que cambia de largo,
+        // el final que se calcula al reconocerla nunca se pasa (y al oír el final se corrige)
+        val tpl = Tpl("intro", ep.season, shorter(mine[p], seg.aStart, seg.aEnd, other.fp, seg.bStart, seg.bEnd))
+        store.saveTemplates(ep.srv, ep.series, ep.name, listOf(tpl))
+        ep.templates = allTemplates(ep.srv, ep.series, ep.name)
         saveAndShare(ep, listOf(ep.id to ep.res, other.ep to otherRes), listOf(tpl))
+        // Su huella también queda para comparar (más variedad = se aprende mejor)
+        sharePrint(ep, "intro", 0, mine[0], d)
         publish(ep, "Intro aprendida: desde el próximo capítulo aparece «Saltar intro»")
     }
 
     private fun finishAnalysis(ep: Ep, d: Long) {
+        if (ep.introDirty && ep.res.hasIntro) { ep.introDirty = false; SkipCloud.push(ep.srv, ep.series, ep.season, ep.name, results = listOf(ep.id to ep.res.copy(dur = d))) }
         if (!ep.heard || d <= 0) return
         val nowMs = AudioPrint.msOf(ep.latest[0])
         if (!ep.triedIntro && !ep.res.hasIntro && !ep.badIntro && nowMs >= introWindowMs(d)) { ep.triedIntro = true; analyzeIntro(ep, d) }
@@ -286,10 +336,14 @@ class SkipDetector(context: Context) {
         val oStart = AudioPrint.msOf(other.first + seg.bStart)
         ep.res = ep.res.copy(creditsStart = myStart, dur = d)
         val otherRes = store.result(ep.srv, other.ep).copy(creditsStart = oStart, dur = other.dur)
-        val tpl = Tpl("credits", ep.season, other.fp.copyOfRange(seg.bStart, seg.bEnd))
-        store.saveTemplates(ep.srv, ep.series, listOf(tpl))
+        val tpl = Tpl("credits", ep.season, shorter(mine[p], seg.aStart, seg.aEnd, other.fp, seg.bStart, seg.bEnd))
+        store.saveTemplates(ep.srv, ep.series, ep.name, listOf(tpl))
         saveAndShare(ep, listOf(ep.id to ep.res, other.ep to otherRes), listOf(tpl))
+        sharePrint(ep, "credits", from, mine[0], d)
     }
+
+    private fun shorter(a: IntArray, aS: Int, aE: Int, b: IntArray, bS: Int, bE: Int): IntArray =
+        if (aE - aS < bE - bS) a.copyOfRange(aS, aE) else b.copyOfRange(bS, bE)
 
     /** Huellas de otros capítulos de la temporada (este equipo + el servidor de la app). */
     private fun candidates(ep: Ep, kind: String): List<PrintRec> {
@@ -318,12 +372,14 @@ class SkipDetector(context: Context) {
     private fun sharePrint(ep: Ep, kind: String, first: Int, fp: IntArray, d: Long) {
         val rec = PrintRec(ep.id, kind, ep.season, first, fp, d)
         store.savePrint(ep.srv, ep.series, rec)
-        SkipCloud.push(ep.srv, ep.series, ep.season, prints = listOf(rec))
+        SkipCloud.push(ep.srv, ep.series, ep.season, ep.name, prints = listOf(rec))
     }
 
     private fun saveAndShare(ep: Ep, results: List<Pair<String, EpSkip>>, tpls: List<Tpl> = emptyList()) {
         results.forEach { (id, r) -> store.saveResult(ep.srv, id, r, merge = true) }
-        SkipCloud.push(ep.srv, ep.series, ep.season, results = results, tpls = tpls)
+        // Cuánto duran los créditos (para estimarlos en capítulos donde no se reconozcan)
+        store.saveTails(ep.srv, ep.series, results.map { it.second }.filter { it.hasCredits && it.dur > it.creditsStart }.map { it.dur - it.creditsStart })
+        SkipCloud.push(ep.srv, ep.series, ep.season, ep.name, results = results, tpls = tpls)
     }
 
     private fun publish(ep: Ep, note: String) {
@@ -331,7 +387,11 @@ class SkipDetector(context: Context) {
         val s = SkipState(
             epId = ep.id,
             intro = if (r.hasIntro && !ep.badIntro) r.introStart..r.introEnd else null,
-            creditsAt = if (r.hasCredits && !ep.badCredits) r.creditsStart else -1,
+            creditsAt = when {
+                ep.badCredits -> -1
+                r.hasCredits -> r.creditsStart
+                else -> ep.predictedCredits
+            },
             note = note,
         )
         val g = ep.gen
@@ -351,6 +411,22 @@ class SkipDetector(context: Context) {
         fun setAutoSkip(ctx: Context, v: Boolean) { prefs(ctx).edit().putBoolean("auto", v).apply() }
         fun detect(ctx: Context) = prefs(ctx).getBoolean("detect", true)
         fun setDetect(ctx: Context, v: Boolean) { prefs(ctx).edit().putBoolean("detect", v).apply() }
+
+        /**
+         * Nombre de serie comparable entre servidores: "Los Simpson (1989) [LAT] 4K" y
+         * "THE SIMPSONS" → "simpson". Sin tildes, años, etiquetas de idioma o calidad, artículos ni plurales.
+         */
+        fun normName(raw: String): String {
+            var x = java.text.Normalizer.normalize(raw.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
+            x = x.replace(Regex("\\[[^\\]]*\\]|\\([^)]*\\)|\\{[^}]*\\}"), " ")
+            x = x.replace(Regex("^\\s*[a-z]{2,3}\\s*[:|]\\s*"), " ")     // "ES: ", "LAT | "
+            x = x.replace(Regex("[^a-z0-9]+"), " ")
+            val drop = setOf("the", "los", "las", "el", "la", "le", "les", "un", "una", "a", "4k", "uhd", "fhd", "hd", "sd", "hevc",
+                "h264", "h265", "x264", "x265", "latino", "lat", "castellano", "cast", "espanol", "spanish", "sub", "subs",
+                "subtitulado", "subtitulada", "dual", "vose", "multi", "temporada", "season", "serie", "series", "tv")
+            return x.split(' ').filter { it.isNotBlank() && it !in drop && !Regex("(19|20)\\d\\d|s\\d{1,2}|t\\d{1,2}").matches(it) }
+                .joinToString(" ") { if (it.length > 3 && it.endsWith("s")) it.dropLast(1) else it }.take(80)
+        }
 
         /** Huella del servidor IPTV (lo que agrupa a quienes comparten tiempos). Nunca el usuario ni la clave. */
         fun srvKey(host: String): String {
@@ -375,7 +451,7 @@ internal class SkipStore(ctx: Context) {
     private val dir = File(ctx.filesDir, "skip")
 
     fun result(srv: String, ep: String): EpSkip {
-        val s = prefs.getString("r|$srv|$ep", null) ?: return EpSkip()
+        val s = prefs.getString("r2|$srv|$ep", null) ?: return EpSkip()
         val p = s.split(",").map { it.toLongOrNull() ?: -1 }
         return EpSkip(p.getOrElse(0) { -1 }, p.getOrElse(1) { -1 }, p.getOrElse(2) { -1 }, p.getOrElse(3) { 0 })
     }
@@ -394,29 +470,55 @@ internal class SkipStore(ctx: Context) {
             introEnd = if (old.introEnd == -2L && merge) -2 else n.introEnd,
             creditsStart = if (old.creditsStart == -2L && merge) -2 else n.creditsStart,
         )
-        prefs.edit().putString("r|$srv|$ep", "${keep.introStart},${keep.introEnd},${keep.creditsStart},${keep.dur}").apply()
+        prefs.edit().putString("r2|$srv|$ep", "${keep.introStart},${keep.introEnd},${keep.creditsStart},${keep.dur}").apply()
     }
 
     fun isBad(srv: String, ep: String, kind: String) = prefs.getBoolean("b|$srv|$ep|$kind", false)
     fun markBad(srv: String, ep: String, kind: String) { prefs.edit().putBoolean("b|$srv|$ep|$kind", true).apply() }
 
-    private fun tplFile(srv: String, series: String) = File(printDir(srv, series), "plantillas.json")
+    // "2": versión del método (la 1 no unía las partes de intros como la de Los Simpson)
+    private fun tplFile(srv: String, series: String) = File(printDir(srv, series), "plantillas2.json")
+    private fun nameFile(name: String) = File(dir, "nombres2/" + sha1(name) + ".json")
+    private fun sha1(x: String) = MessageDigest.getInstance("SHA-1").digest(x.toByteArray()).take(10).joinToString("") { "%02x".format(it) }
 
-    /** Plantillas de la serie (en un archivo: pueden pesar decenas de KB). */
-    fun templates(srv: String, series: String): List<Tpl> = runCatching {
-        val f = tplFile(srv, series)
+    private fun readTpls(f: File): List<Tpl> = runCatching {
         if (!f.exists()) return emptyList()
         val a = JSONArray(f.readText())
         (0 until a.length()).map { a.getJSONObject(it) }.map { Tpl(it.getString("k"), it.optInt("s"), Prints.decode(it.getString("fp"))) }
             .filter { it.fp.size >= SkipMatch.K }
     }.getOrDefault(emptyList())
 
-    fun saveTemplates(srv: String, series: String, add: List<Tpl>) {
-        val all = (add + templates(srv, series)).distinctBy { it.kind + it.season + it.id }
-            .groupBy { it.kind + "|" + it.season }.values.flatMap { it.take(3) }
+    private fun writeTpls(f: File, list: List<Tpl>) {
         val a = JSONArray()
-        all.forEach { a.put(JSONObject().put("k", it.kind).put("s", it.season).put("fp", Prints.encode(it.fp))) }
-        runCatching { tplFile(srv, series).apply { parentFile?.mkdirs() }.writeText(a.toString()) }
+        list.forEach { a.put(JSONObject().put("k", it.kind).put("s", it.season).put("fp", Prints.encode(it.fp))) }
+        runCatching { f.apply { parentFile?.mkdirs() }.writeText(a.toString()) }
+    }
+
+    private fun merge(add: List<Tpl>, old: List<Tpl>) = (add + old).distinctBy { it.kind + it.season + it.id }
+        .groupBy { it.kind + "|" + it.season }.values.flatMap { it.take(3) }
+
+    /** Plantillas de tus otros servidores para una serie con el mismo nombre. */
+    fun templatesByName(name: String): List<Tpl> = if (name.isBlank()) emptyList() else readTpls(nameFile(name))
+
+    fun saveByName(name: String, add: List<Tpl>) { if (name.isNotBlank() && add.isNotEmpty()) writeTpls(nameFile(name), merge(add, templatesByName(name))) }
+
+    /** Duración de los créditos en capítulos de la serie (las últimas 12). */
+    fun tails(srv: String, series: String): List<Long> =
+        prefs.getString("tl|$srv|$series", "").orEmpty().split(",").mapNotNull { it.toLongOrNull() }
+
+    fun saveTails(srv: String, series: String, add: List<Long>) {
+        val ok = add.filter { it in 5_000L..400_000L }
+        if (ok.isEmpty()) return
+        prefs.edit().putString("tl|$srv|$series", (ok + tails(srv, series)).take(12).joinToString(",")).apply()
+    }
+
+    /** Plantillas de la serie (en un archivo: pueden pesar decenas de KB). */
+    fun templates(srv: String, series: String): List<Tpl> = readTpls(tplFile(srv, series))
+
+    /** Guarda las plantillas de la serie y también por nombre (para tus otros servidores). */
+    fun saveTemplates(srv: String, series: String, name: String, add: List<Tpl>) {
+        writeTpls(tplFile(srv, series), merge(add, templates(srv, series)))
+        saveByName(name, add)
     }
 
     private fun printDir(srv: String, series: String) = File(dir, "$srv/${series.filter { it.isLetterOrDigit() }}")
@@ -446,8 +548,17 @@ internal object SkipCloud {
     private val JSON = "application/json".toMediaType()
     private fun client() = NetClient.api()
 
-    fun fetch(srv: String, series: String): Pair<Map<String, EpSkip>, List<Tpl>>? = runCatching {
-        val req = Request.Builder().url("${CloudSync.SERVER}/v1/skip?s=$srv&series=${enc(series)}").build()
+    class Fetched(val eps: Map<String, EpSkip>, val tpl: List<Tpl>, val byName: List<Tpl>)
+
+    private fun tplList(a: JSONArray?): List<Tpl> {
+        if (a == null) return emptyList()
+        return (0 until a.length()).map { a.getJSONObject(it) }.map { Tpl(it.getString("kind"), it.optInt("season"), Prints.decode(it.getString("fp"))) }
+    }
+
+    /** Tiempos y plantillas de esta serie; y por nombre, las de tus otros servidores ([also]). */
+    fun fetch(srv: String, series: String, name: String, also: List<String>): Fetched? = runCatching {
+        val q = "s=$srv&series=${enc(series)}" + (if (name.isNotBlank()) "&name=${enc(name)}&also=${also.joinToString(",")}" else "")
+        val req = Request.Builder().url("${CloudSync.SERVER}/v2/skip?$q").build()
         client().newCall(req).execute().use { r ->
             if (!r.isSuccessful) return null
             val o = JSONObject(r.body?.string().orEmpty())
@@ -458,14 +569,7 @@ internal object SkipCloud {
                     eps[e.getString("ep")] = EpSkip(e.optLong("is", -1), e.optLong("ie", -1), e.optLong("cs", -1), e.optLong("d", 0))
                 }
             }
-            val tpl = ArrayList<Tpl>()
-            o.optJSONArray("tpl")?.let { a ->
-                for (i in 0 until a.length()) {
-                    val t = a.getJSONObject(i)
-                    tpl += Tpl(t.getString("kind"), t.optInt("season"), Prints.decode(t.getString("fp")))
-                }
-            }
-            eps to tpl
+            Fetched(eps, tplList(o.optJSONArray("tpl")), tplList(o.optJSONArray("byName")))
         }
     }.getOrNull()
 
@@ -481,12 +585,12 @@ internal object SkipCloud {
     }.getOrNull()
 
     fun push(
-        srv: String, series: String, season: Int,
+        srv: String, series: String, season: Int, name: String,
         results: List<Pair<String, EpSkip>> = emptyList(), tpls: List<Tpl> = emptyList(),
         prints: List<PrintRec> = emptyList(), bad: List<Pair<String, String>> = emptyList(),
     ) {
         runCatching {
-            val body = JSONObject().put("s", srv).put("series", series).put("season", season)
+            val body = JSONObject().put("s", srv).put("series", series).put("season", season).put("name", name)
             body.put("eps", JSONArray().apply {
                 results.forEach { (id, r) ->
                     put(JSONObject().put("ep", id).put("is", r.introStart).put("ie", r.introEnd).put("cs", r.creditsStart).put("d", r.dur))
@@ -497,7 +601,7 @@ internal object SkipCloud {
                 prints.forEach { put(JSONObject().put("ep", it.ep).put("kind", it.kind).put("first", it.first).put("d", it.dur).put("fp", Prints.encode(it.fp))) }
             })
             body.put("bad", JSONArray().apply { bad.forEach { (ep, k) -> put(JSONObject().put("ep", ep).put("kind", k)) } })
-            val req = Request.Builder().url("${CloudSync.SERVER}/v1/skip").post(body.toString().toRequestBody(JSON)).build()
+            val req = Request.Builder().url("${CloudSync.SERVER}/v2/skip").post(body.toString().toRequestBody(JSON)).build()
             client().newCall(req).execute().use { }
         }.onFailure { Log.w("JOX3", "Saltos: no se pudo compartir: ${it.message}") }
     }

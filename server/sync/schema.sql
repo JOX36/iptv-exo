@@ -55,3 +55,33 @@ CREATE TABLE IF NOT EXISTS skip_print (
   ts      INTEGER NOT NULL,
   PRIMARY KEY (srv, series, season, kind, ep)
 );
+
+-- Versión 2 del método (une las partes de intros que cambian en el medio, como Los Simpson).
+-- Los tiempos y plantillas de la versión 1 no se usan más; las huellas (skip_print) sí sirven.
+CREATE TABLE IF NOT EXISTS skip_ep2 (
+  srv     TEXT    NOT NULL,
+  ep      TEXT    NOT NULL,
+  series  TEXT    NOT NULL,
+  season  INTEGER NOT NULL DEFAULT 0,
+  i_s     INTEGER,
+  i_e     INTEGER,
+  c_s     INTEGER,
+  dur     INTEGER,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (srv, ep)
+);
+CREATE INDEX IF NOT EXISTS skip_ep2_series ON skip_ep2 (srv, series);
+
+CREATE TABLE IF NOT EXISTS skip_tpl2 (
+  srv     TEXT    NOT NULL,
+  series  TEXT    NOT NULL,
+  season  INTEGER NOT NULL,
+  kind    TEXT    NOT NULL,
+  id      TEXT    NOT NULL,
+  fp      TEXT    NOT NULL,
+  name    TEXT    NOT NULL DEFAULT '',   -- nombre normalizado de la serie (para tus otros servidores)
+  bad     INTEGER NOT NULL DEFAULT 0,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (srv, series, season, kind, id)
+);
+CREATE INDEX IF NOT EXISTS skip_tpl2_name ON skip_tpl2 (name, srv);

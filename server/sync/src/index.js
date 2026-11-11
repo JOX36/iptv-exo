@@ -10,6 +10,8 @@
 // GET  /v1/skip?s=<srv>&series=<id>                          → tiempos por capítulo + plantillas.
 // GET  /v1/skip/prints?s=&series=&season=&kind=intro|credits  → huellas para comparar.
 // POST /v1/skip { s, series, season, eps, tpl, prints, bad } → guardar lo aprendido.
+// /v2/skip: igual, con el método nuevo; además ?name=&also=srv1,srv2 trae las plantillas de esa
+//   serie (por nombre) en tus otros servidores, y el POST guarda el nombre.
 //
 // Ver juntos:
 // POST /v1/room              → crea una sala y devuelve su código de 6 números.
@@ -36,9 +38,11 @@ export default {
       if (url.pathname === "/v1/tz" && req.method === "GET")
         return json({ tz: (req.cf && req.cf.timezone) || "", country: (req.cf && req.cf.country) || "" });
       if (url.pathname === "/v1/sync" && req.method === "POST") return await sync(req, env);
-      if (url.pathname === "/v1/skip" && req.method === "GET") return await skipGet(url, env);
+      if (url.pathname === "/v1/skip" && req.method === "GET") return await skipGet(url, env, 1);
+      if (url.pathname === "/v2/skip" && req.method === "GET") return await skipGet(url, env, 2);
       if (url.pathname === "/v1/skip/prints" && req.method === "GET") return await skipPrints(url, env);
-      if (url.pathname === "/v1/skip" && req.method === "POST") return await skipPost(req, env);
+      if (url.pathname === "/v1/skip" && req.method === "POST") return await skipPost(req, env, 1);
+      if (url.pathname === "/v2/skip" && req.method === "POST") return await skipPost(req, env, 2);
       if (url.pathname === "/v1/room" && req.method === "POST") return await createRoom(env);
       const inv = url.pathname.match(/^\/v\/(\d{6})$/);
       if (inv && req.method === "GET") return await invitePage(env, inv[1]);
@@ -125,16 +129,31 @@ const ms = v => {
 };
 const season = v => Math.max(0, Math.min(999, Math.floor(Number(v) || 0)));
 
-async function skipGet(url, env) {
+const NAME_RE = /^[a-z0-9 ]{1,80}$/;
+const T = v => (v === 2 ? { ep: "skip_ep2", tpl: "skip_tpl2" } : { ep: "skip_ep", tpl: "skip_tpl" });
+
+async function skipGet(url, env, v) {
   const s = url.searchParams.get("s") || "", series = url.searchParams.get("series") || "";
   if (!SRV_RE.test(s) || !ID_RE.test(series)) return json({ error: "datos inválidos" }, 400);
-  const [eps, tpl] = await Promise.all([
-    env.DB.prepare(`SELECT ep, i_s, i_e, c_s, dur FROM skip_ep WHERE srv = ?1 AND series = ?2 LIMIT 3000`).bind(s, series).all(),
-    env.DB.prepare(`SELECT kind, season, id, fp FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND bad < 2 ORDER BY ts DESC LIMIT 40`).bind(s, series).all(),
-  ]);
+  const t = T(v);
+  const name = url.searchParams.get("name") || "";
+  const also = (url.searchParams.get("also") || "").split(",").filter(x => SRV_RE.test(x) && x !== s).slice(0, 9);
+  const q = [
+    env.DB.prepare(`SELECT ep, i_s, i_e, c_s, dur FROM ${t.ep} WHERE srv = ?1 AND series = ?2 LIMIT 3000`).bind(s, series).all(),
+    env.DB.prepare(`SELECT kind, season, id, fp FROM ${t.tpl} WHERE srv = ?1 AND series = ?2 AND bad < 2 ORDER BY ts DESC LIMIT 40`).bind(s, series).all(),
+  ];
+  // Plantillas de la misma serie (mismo nombre) en tus otros servidores
+  if (v === 2 && NAME_RE.test(name) && also.length) {
+    const marks = also.map((_, i) => `?${i + 2}`).join(",");
+    q.push(env.DB.prepare(`SELECT kind, season, id, fp FROM skip_tpl2 WHERE name = ?1 AND srv IN (${marks}) AND bad < 2 ORDER BY ts DESC LIMIT 12`)
+      .bind(name, ...also).all());
+  }
+  const [eps, tpl, byName] = await Promise.all(q);
+  const tl = r => (r?.results || []).map(x => ({ kind: x.kind, season: x.season, id: x.id, fp: x.fp }));
   return json({
     eps: (eps.results || []).map(r => ({ ep: r.ep, is: r.i_s ?? -1, ie: r.i_e ?? -1, cs: r.c_s ?? -1, d: r.dur ?? 0 })),
-    tpl: (tpl.results || []).map(r => ({ kind: r.kind, season: r.season, id: r.id, fp: r.fp })),
+    tpl: tl(tpl),
+    byName: tl(byName),
   });
 }
 
@@ -148,7 +167,8 @@ async function skipPrints(url, env) {
   return json({ prints: (r.results || []).map(x => ({ ep: x.ep, first: x.first, d: x.dur ?? 0, fp: x.fp })) });
 }
 
-async function skipPost(req, env) {
+async function skipPost(req, env, v) {
+  const t = T(v);
   const len = Number(req.headers.get("content-length") || 0);
   if (len > MAX_BODY) return json({ error: "demasiado grande" }, 413);
   const text = await req.text();
@@ -157,6 +177,7 @@ async function skipPost(req, env) {
   try { b = JSON.parse(text); } catch { return json({ error: "json inválido" }, 400); }
   const s = String(b.s || ""), series = String(b.series || ""), sea = season(b.season);
   if (!SRV_RE.test(s) || !ID_RE.test(series)) return json({ error: "datos inválidos" }, 400);
+  const name = NAME_RE.test(String(b.name || "")) ? String(b.name) : "";
   const now = Date.now();
   const st = [];
   const list = v => (Array.isArray(v) ? v.slice(0, 20) : []);
@@ -171,26 +192,28 @@ async function skipPost(req, env) {
     const dur = ms(e.d);
     if (is == null && ie == null && cs == null) continue;
     st.push(env.DB.prepare(
-      `INSERT INTO skip_ep (srv, ep, series, season, i_s, i_e, c_s, dur, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      `INSERT INTO ${t.ep} AS e (srv, ep, series, season, i_s, i_e, c_s, dur, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
        ON CONFLICT (srv, ep) DO UPDATE SET
-         i_s = CASE WHEN skip_ep.i_s = -2 THEN -2 ELSE COALESCE(excluded.i_s, skip_ep.i_s) END,
-         i_e = CASE WHEN skip_ep.i_e = -2 THEN -2 ELSE COALESCE(excluded.i_e, skip_ep.i_e) END,
-         c_s = CASE WHEN skip_ep.c_s = -2 THEN -2 ELSE COALESCE(excluded.c_s, skip_ep.c_s) END,
-         dur = COALESCE(excluded.dur, skip_ep.dur), ts = excluded.ts`
+         i_s = CASE WHEN e.i_s = -2 THEN -2 ELSE COALESCE(excluded.i_s, e.i_s) END,
+         i_e = CASE WHEN e.i_e = -2 THEN -2 ELSE COALESCE(excluded.i_e, e.i_e) END,
+         c_s = CASE WHEN e.c_s = -2 THEN -2 ELSE COALESCE(excluded.c_s, e.c_s) END,
+         dur = COALESCE(excluded.dur, e.dur), ts = excluded.ts`
     ).bind(s, ep, series, sea, is, ie, cs, dur && dur > 0 ? dur : null, now));
   }
-  for (const t of list(b.tpl).slice(0, 4)) {
-    const kind = String(t.kind || ""), fp = String(t.fp || "");
+  for (const tp of list(b.tpl).slice(0, 4)) {
+    const kind = String(tp.kind || ""), fp = String(tp.fp || "");
     if (!KINDS.has(kind) || fp.length < 200 || fp.length > 40000 || !B64_RE.test(fp)) continue;
     const id = await shortHash(fp);
     st.push(env.DB.prepare(
-      `INSERT OR IGNORE INTO skip_tpl (srv, series, season, kind, id, fp, bad, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)`
-    ).bind(s, series, season(t.season ?? sea), kind, id, fp, now));
+      v === 2
+        ? `INSERT OR IGNORE INTO skip_tpl2 (srv, series, season, kind, id, fp, name, bad, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?8, 0, ?7)`
+        : `INSERT OR IGNORE INTO skip_tpl (srv, series, season, kind, id, fp, bad, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)`
+    ).bind(...[s, series, season(tp.season ?? sea), kind, id, fp, now].concat(v === 2 ? [name] : [])));
     // No más de 3 por temporada y tipo (quedan las más nuevas)
     st.push(env.DB.prepare(
-      `DELETE FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND id NOT IN
-         (SELECT id FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 3)`
-    ).bind(s, series, season(t.season ?? sea), kind));
+      `DELETE FROM ${t.tpl} WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND id NOT IN
+         (SELECT id FROM ${t.tpl} WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 3)`
+    ).bind(s, series, season(tp.season ?? sea), kind));
   }
   for (const p of list(b.prints).slice(0, 2)) {
     const kind = String(p.kind || ""), ep = String(p.ep || ""), fp = String(p.fp || "");
@@ -211,12 +234,12 @@ async function skipPost(req, env) {
     if (!ID_RE.test(ep) || !KINDS.has(kind)) continue;
     // Ese capítulo queda marcado; si la plantilla de la temporada falla en 2 capítulos, se descarta
     st.push(kind === "intro"
-      ? env.DB.prepare(`INSERT INTO skip_ep (srv, ep, series, season, i_s, i_e, ts) VALUES (?1, ?2, ?3, ?4, -2, -2, ?5)
+      ? env.DB.prepare(`INSERT INTO ${t.ep} (srv, ep, series, season, i_s, i_e, ts) VALUES (?1, ?2, ?3, ?4, -2, -2, ?5)
           ON CONFLICT (srv, ep) DO UPDATE SET i_s = -2, i_e = -2, ts = excluded.ts`).bind(s, ep, series, sea, now)
-      : env.DB.prepare(`INSERT INTO skip_ep (srv, ep, series, season, c_s, ts) VALUES (?1, ?2, ?3, ?4, -2, ?5)
+      : env.DB.prepare(`INSERT INTO ${t.ep} (srv, ep, series, season, c_s, ts) VALUES (?1, ?2, ?3, ?4, -2, ?5)
           ON CONFLICT (srv, ep) DO UPDATE SET c_s = -2, ts = excluded.ts`).bind(s, ep, series, sea, now));
-    st.push(env.DB.prepare(`UPDATE skip_tpl SET bad = bad + 1 WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4`).bind(s, series, sea, kind));
-    st.push(env.DB.prepare(`DELETE FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND bad >= 2`).bind(s, series, sea, kind));
+    st.push(env.DB.prepare(`UPDATE ${t.tpl} SET bad = bad + 1 WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4`).bind(s, series, sea, kind));
+    st.push(env.DB.prepare(`DELETE FROM ${t.tpl} WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND bad >= 2`).bind(s, series, sea, kind));
   }
   if (st.length) await env.DB.batch(st);
   return json({ ok: true, saved: st.length });
