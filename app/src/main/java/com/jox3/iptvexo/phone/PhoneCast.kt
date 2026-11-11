@@ -124,26 +124,11 @@ class PhoneCast(context: Context) {
         stateListener.onCastStateChanged(cc.castState)
         cc.sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
         cc.sessionManager.currentCastSession?.takeIf { it.isConnected }?.let { connected(it) }
-        resumeDiscovery()
     }
-
-    /**
-     * Búsqueda "pasiva" de Chromecast mientras la app está abierta: así el botón aparece apenas
-     * hay uno en la red. (Antes se dependía de que el SDK buscara solo, y a veces no lo hacía:
-     * el botón no salía aunque hubiera Chromecast disponibles.)
-     */
-    fun resumeDiscovery() {
-        val r = router ?: return; val sel = selector ?: return
-        runCatching { r.addCallback(sel, routerCallback, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY) }
-        refreshRoutes()
-    }
-
-    /** La app pasó a segundo plano: dejar de buscar (ahorra batería). */
-    fun pauseDiscovery() { runCatching { router?.removeCallback(routerCallback) } }
 
     fun release() {
         val cc = castContext ?: return
-        pauseDiscovery()
+        stopScan()
         cc.removeCastStateListener(stateListener)
         cc.sessionManager.removeSessionManagerListener(sessionListener, CastSession::class.java)
         client?.unregisterCallback(clientCallback)
@@ -156,8 +141,8 @@ class PhoneCast(context: Context) {
         refreshRoutes()
     }
 
-    /** Se cerró la hoja: volver a la búsqueda pasiva (no se apaga del todo, para que el botón siga). */
-    fun stopScan() { resumeDiscovery() }
+    /** Se cerró la hoja: dejar de buscar (no gasta batería mientras no se usa). */
+    fun stopScan() { runCatching { router?.removeCallback(routerCallback) } }
 
     private fun refreshRoutes() {
         val r = router ?: return; val sel = selector ?: return
@@ -248,7 +233,9 @@ val LocalCast = staticCompositionLocalOf<PhoneCast?> { null }
 @Composable
 fun CastButton(onClick: () -> Unit) {
     val cast = LocalCast.current ?: return
-    if (!cast.ready || (!cast.available && cast.connectedTo == null)) return
+    // Siempre visible (si el celular tiene Servicios de Google): la búsqueda de Chromecast
+    // empieza solo al tocarlo, así no gasta batería mientras no se usa.
+    if (!cast.ready) return
     RoundIcon(if (cast.connectedTo != null) R.drawable.ic_cast_connected else R.drawable.ic_cast,
         if (cast.connectedTo != null) "Chromecast conectado" else "Transmitir a Chromecast",
         tint = if (cast.connectedTo != null) Jx.Accent else Jx.Text, onClick = onClick)
@@ -272,8 +259,11 @@ fun CastSheet(onDismiss: () -> Unit) {
                 Text("Transmitir a", style = PType.H2, color = Jx.Text)
                 if (cast.connecting) Text("Conectando…", style = PType.Small, color = Jx.Accent)
                 cast.lastError?.let { Text(it, style = PType.Small, color = Jx.Live) }
+                val waited by produceState(false) { delay(12_000); value = true }
                 if (cast.routes.isEmpty()) {
-                    Text("Buscando dispositivos en tu WiFi…", style = PType.Body, color = Jx.TextSoft)
+                    if (waited) Text("No encontré ningún Chromecast. Revisa que esté encendido y en la misma red WiFi; sigo buscando…",
+                        style = PType.Body, color = Jx.Gold)
+                    else Text("Buscando dispositivos en tu WiFi…", style = PType.Body, color = Jx.TextSoft)
                     Text("El Chromecast o TV con Chromecast debe estar en la misma red WiFi que el celular.",
                         style = PType.Small, color = Jx.Faint)
                 }

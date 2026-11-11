@@ -188,17 +188,7 @@ private fun PhoneShell(
             else live.player?.play()
         }
         cast.start()
-        // Buscar Chromecast solo con la app en pantalla
-        val lc = (context as? androidx.lifecycle.LifecycleOwner)?.lifecycle
-        val obs = androidx.lifecycle.LifecycleEventObserver { _, e ->
-            when (e) {
-                androidx.lifecycle.Lifecycle.Event.ON_START -> cast.resumeDiscovery()
-                androidx.lifecycle.Lifecycle.Event.ON_STOP -> if (cast.connectedTo == null) cast.pauseDiscovery()
-                else -> {}
-            }
-        }
-        lc?.addObserver(obs)
-        onDispose { lc?.removeObserver(obs); cast.release() }
+        onDispose { cast.release() }
     }
     val castingTo = cast.connectedTo
     // Lo que se ve (canal, película o episodio) se manda al Chromecast; al cambiar de canal o episodio, también
