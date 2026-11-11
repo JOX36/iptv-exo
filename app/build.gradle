@@ -4,6 +4,12 @@ plugins {
 }
 
 android {
+    // Pruebas automáticas (src/test): si alguna falla, mostrar el detalle en el registro
+    testOptions {
+        unitTests.all {
+            testLogging { events 'failed'; exceptionFormat 'full' }
+        }
+    }
     namespace 'com.jox3.iptvexo'
     compileSdk 35
 

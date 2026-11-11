@@ -53,16 +53,23 @@ jobs:
             TASK=assembleDebug
           fi
           gradle $TASK 2>&1 | tee build.log
+          # Ramas de prueba: también las pruebas automáticas (detector de intro y créditos…)
+          if [ "$TASK" = "assembleDebug" ]; then
+            gradle testDebugUnitTest 2>&1 | tee -a build.log
+            if [ -f app/build/skip-report.txt ]; then sed 's/^/::notice::/' app/build/skip-report.txt; fi
+          fi
 
       # Si falla, los errores aparecen como anotaciones en la pestaña del PR / Actions
       - name: Resumen de errores
         if: failure()
         run: |
           # Primero los errores de compilación (Kotlin "e: ", Java "error:"), luego el resto
-          { grep -E "^e: |error:" build.log; grep -E -A3 "What went wrong|Could not (find|resolve)" build.log; } \
+          { grep -E "^e: |error:" build.log; grep -E -B1 -A4 "FAILED$|AssertionError|Exception at" build.log; grep -E -A3 "What went wrong|Could not (find|resolve)" build.log; } \
             | head -45 | while IFS= read -r line; do
             echo "::error::${line}"
           done
+          # Y las últimas líneas del registro, por si el error no tiene la forma de arriba
+          grep -v "^\s*$" build.log | tail -25 | while IFS= read -r line; do echo "::notice::${line}"; done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4

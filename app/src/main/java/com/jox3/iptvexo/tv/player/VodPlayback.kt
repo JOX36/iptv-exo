@@ -111,6 +111,34 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
     fun plotOf(it: VodItem): String = extras[it.id]?.first?.ifBlank { null } ?: it.plot
     fun metaOf(it: VodItem): String = extras[it.id]?.second?.ifBlank { null } ?: it.meta
 
+    // ── Saltar intro / créditos (series) ──
+    /** Detector automático de intro y créditos (escucha el audio que ya suena). */
+    val skip = com.jox3.iptvexo.tv.player.skip.SkipDetector(context)
+    /** "Intro saltada" unos segundos tras saltarla sola. */
+    var skipNotice by mutableStateOf(""); private set
+    /** Se eligió "Ver créditos" en este capítulo: no volver a ofrecer el siguiente. */
+    var creditsDismissed by mutableStateOf(false); private set
+    private var autoSkippedFor = ""
+
+    /** El tramo de la intro de este capítulo, si se conoce. */
+    val intro: LongRange? get() = skip.state.takeIf { it.epId == item?.id }?.intro
+    /** Se ve el botón "Saltar intro": estamos dentro de la intro (hasta 1,5 s antes de que termine). */
+    val introVisible: Boolean get() = intro?.let { position >= it.first - 300 && position < it.last - 1500 } == true
+    /** Dónde empiezan los créditos (-1 = no se sabe). */
+    val creditsAt: Long get() = skip.state.takeIf { it.epId == item?.id }?.creditsAt ?: -1
+    /** Se ofrece pasar al siguiente episodio: empezaron los créditos y hay otro en cola. */
+    val creditsVisible: Boolean get() = hasNext && !creditsDismissed && !ended && creditsAt > 0 &&
+        // Por seguridad: los créditos nunca están antes del 60 % del capítulo
+        duration > 0 && creditsAt > duration * 0.6 && position >= creditsAt && position < duration - 1500
+
+    fun skipIntro() {
+        val r = intro ?: return
+        exo?.seekTo(r.last)
+        position = r.last
+    }
+
+    fun watchCredits() { creditsDismissed = true }
+
     /** Lo llama la interfaz antes de abrir (detener el canal en vivo, recordar el foco). */
     var beforeOpen: () -> Unit = {}
 
@@ -139,6 +167,8 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
             if (done && !hasNext && !cur.noHistory) (if (cur.resume.kind == "episode") cur.fav else cur.resume) else null
         }
         saveProgress()
+        skip.tick(exo?.duration ?: 0)
+        skip.end()
         main.removeCallbacks(ticker)
         exo?.stop()
         exo?.clearMediaItems()
@@ -231,6 +261,10 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
 
     private fun load(resume: Boolean) {
         val it = item ?: return
+        // Intro y créditos: cerrar el análisis del capítulo anterior y empezar el de este
+        skip.end()
+        skip.begin(if (it.resume.kind == "episode") it.id else null, it.resume.seriesId, it.season, allowListen = !it.noHistory)
+        creditsDismissed = false; skipNotice = ""
         if (!it.noHistory) lib.rememberPlayback(it.resume)
         retries = 0
         failed = false; ended = false; quality = ""
@@ -259,7 +293,9 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(androidx.media3.datasource.DefaultDataSource.Factory(context, OkHttpDataSource.Factory(NetClient.player()))))
             .setRenderersFactory(
-                DefaultRenderersFactory(context)
+                // Igual que el de siempre, más el "oído" que reconoce intros y créditos
+                com.jox3.iptvexo.tv.player.skip.SkipRenderersFactory(context,
+                    sink = { r, st, smp, n -> skip.onAudio(r, st, smp, n) }, onReset = { skip.onAudioReset() })
                     .setExtensionRendererMode(
                         if (PlayerSafety.ffmpegAllowed(context)) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
                         else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
@@ -304,6 +340,15 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
             val now = System.currentTimeMillis()
             if (now - lastSave > 10_000) { lastSave = now; saveProgress() }
             if (sleepAt > 0 && now >= sleepAt) { sleepAt = 0L; sleepFired = true; p.pause(); saveProgress() }
+            skip.tick(duration)
+            // Saltar la intro sola (si se eligió en Ajustes), una vez por capítulo
+            val cur = item
+            if (cur != null && skip.autoSkip && introVisible && autoSkippedFor != cur.id && p.isPlaying) {
+                autoSkippedFor = cur.id
+                skipIntro()
+                skipNotice = "Intro saltada"
+                main.postDelayed({ if (skipNotice == "Intro saltada") skipNotice = "" }, 3500)
+            }
             main.postDelayed(this, 500)
         }
     }

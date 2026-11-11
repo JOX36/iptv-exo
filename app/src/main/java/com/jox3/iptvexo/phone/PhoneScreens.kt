@@ -729,6 +729,15 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                     if (tzAuto) " (automática)" else " (del equipo)", Modifier.fillMaxWidth(), primary = false) {
                     tzAuto = !tzAuto; com.jox3.iptvexo.tv.data.AppTime.setAuto(tctx, tzAuto)
                 }
+                // Series: saltar la intro solo / aprender intros y créditos
+                var skipAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.autoSkip(tctx)) }
+                var skipLearn by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.detect(tctx)) }
+                PButton("Saltar la intro solo: " + if (skipAuto) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
+                    skipAuto = !skipAuto; com.jox3.iptvexo.tv.player.skip.SkipDetector.setAutoSkip(tctx, skipAuto)
+                }
+                PButton("Aprender intros y créditos: " + if (skipLearn) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
+                    skipLearn = !skipLearn; com.jox3.iptvexo.tv.player.skip.SkipDetector.setDetect(tctx, skipLearn)
+                }
                 PButton("Agregar otro servidor", Modifier.fillMaxWidth(), primary = false, onClick = onAddAccount)
                 val sctx = LocalContext.current
                 var bgTrailer by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Tmdb.backgroundTrailers(sctx)) }

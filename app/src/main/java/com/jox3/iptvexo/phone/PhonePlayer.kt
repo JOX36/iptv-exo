@@ -275,7 +275,49 @@ fun VodVideo(vod: VodPlayback, fullscreen: Boolean, onFullscreen: () -> Unit, on
                 }
             }
         }
+        // Saltar intro / siguiente episodio (abajo a la derecha, con o sin controles)
+        SkipOverlay(vod, Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = when {
+            controls && fullscreen -> 104.dp
+            controls -> 52.dp
+            else -> 14.dp
+        }))
     }
+}
+
+/** "Saltar intro" y, en los créditos, "Siguiente episodio" con cuenta regresiva. */
+@Composable
+private fun SkipOverlay(vod: VodPlayback, modifier: Modifier) {
+    val showCredits = vod.creditsVisible
+    val showSkip = vod.introVisible
+    var left by remember { mutableIntStateOf(10) }
+    LaunchedEffect(showCredits, vod.index) {
+        if (!showCredits) return@LaunchedEffect
+        left = 10
+        while (left > 0) { delay(1000); left-- }
+        if (vod.creditsVisible) vod.next()
+    }
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        when {
+            showCredits -> {
+                Text("Siguiente en $left s", style = PType.Tiny, color = Jx.Accent,
+                    modifier = Modifier.background(Color(0xCC070A0F), RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SkipPill("Ver créditos", primary = false) { vod.watchCredits() }
+                    SkipPill("Siguiente episodio", primary = true) { vod.next() }
+                }
+            }
+            showSkip -> SkipPill("Saltar intro", primary = true) { vod.skipIntro() }
+            vod.skipNotice.isNotEmpty() -> Text(vod.skipNotice, style = PType.Small, color = Jx.Text,
+                modifier = Modifier.background(Color(0xCC070A0F), RoundedCornerShape(16.dp)).padding(horizontal = 12.dp, vertical = 6.dp))
+        }
+    }
+}
+
+@Composable
+private fun SkipPill(label: String, primary: Boolean, onClick: () -> Unit) {
+    Text(label, style = PType.Label, color = if (primary) Jx.Bg else Jx.Text, maxLines = 1,
+        modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(if (primary) Jx.Text else Color(0xCC101722))
+            .clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp))
 }
 
 /**
@@ -404,6 +446,7 @@ internal fun vodOptions(vod: VodPlayback): List<Triple<String, String, Int>> = b
     add(Triple("picture", "Imagen", R.drawable.ic_resize))
     add(Triple("info", "Información", R.drawable.tv_ic_info))
     add(Triple("together", "Ver juntos", R.drawable.ic_together))
+    if (vod.item?.resume?.kind == "episode") add(Triple("skip", "Intro y créditos", R.drawable.ic_next))
 }
 
 /** Pastilla translúcida sobre el video (pantalla completa). */
@@ -461,6 +504,7 @@ fun VodSheets(vod: VodPlayback, sheet: String?, onDismiss: () -> Unit) {
             subtitle = listOf(if (cur.season == 0 && vod.queue.size == 1) "Película" else cur.title, vod.metaOf(cur)).filter { it.isNotBlank() }.joinToString(" · "),
             body = vod.plotOf(cur), tech = techInfo(ctx, vod.player, cur.url), onDismiss = onDismiss)
         "together" -> PhoneTogetherSheet(vod, onDismiss)
+        "skip" -> SkipSheet(vod, onDismiss)
         else -> VodChoiceSheets(vod, sheet, onDismiss)
     }
 }
@@ -622,4 +666,37 @@ fun PipButton() {
     val act = LocalContext.current as? PhoneActivity ?: return
     if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.O) return
     RoundIcon(R.drawable.ic_pip, "Ventana flotante") { act.enterPip() }
+}
+
+/** "Intro y créditos": qué se sabe de este capítulo, saltar solo y reportar si está mal. */
+@Composable
+private fun SkipSheet(vod: VodPlayback, onDismiss: () -> Unit) {
+    var auto by remember { mutableStateOf(vod.skip.autoSkip) }
+    var detect by remember { mutableStateOf(vod.skip.detectEnabled) }
+    PlayerSheet(onDismiss) {
+        Column(Modifier.padding(horizontal = 22.dp, vertical = 6.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Intro y créditos", style = PType.H2, color = Jx.Text)
+            val intro = vod.intro
+            Text(if (intro != null) "Intro: ${fmtTime(intro.first)} a ${fmtTime(intro.last)}" else "Intro: aún no se conoce",
+                style = PType.Small, color = Jx.TextSoft)
+            Text(if (vod.creditsAt > 0) "Créditos desde ${fmtTime(vod.creditsAt)}" else "Créditos: aún no se conocen",
+                style = PType.Small, color = Jx.TextSoft)
+            vod.skip.state.note.takeIf { it.isNotBlank() }?.let { Text(it, style = PType.Small, color = Jx.Accent) }
+            SheetToggle("Saltar la intro solo", auto) { auto = !auto; vod.skip.autoSkip = auto }
+            SheetToggle("Aprender intros y créditos", detect) { detect = !detect; vod.skip.detectEnabled = detect }
+            if (intro != null) PButton("La intro está mal", Modifier.fillMaxWidth(), primary = false) { vod.skip.reportWrong("intro"); onDismiss() }
+            if (vod.creditsAt > 0) PButton("Los créditos están mal", Modifier.fillMaxWidth(), primary = false) { vod.skip.reportWrong("credits"); onDismiss() }
+            Text("Se aprende sola al ver 2 capítulos de la temporada; los tiempos se comparten con quienes usan este mismo servidor.",
+                style = PType.Tiny, color = Jx.Faint)
+        }
+    }
+}
+
+@Composable
+private fun SheetToggle(label: String, on: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Jx.Surface).clickable(onClick = onClick).padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = PType.Label, color = Jx.Text, modifier = Modifier.weight(1f))
+        Text(if (on) "Sí" else "No", style = PType.Label, color = if (on) Jx.Accent else Jx.Muted)
+    }
 }

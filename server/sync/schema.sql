@@ -11,3 +11,47 @@ CREATE TABLE IF NOT EXISTS items (
   PRIMARY KEY (acc, profile, list, item)
 );
 CREATE INDEX IF NOT EXISTS items_seq ON items (acc, profile, seq);
+
+-- ── Saltar intro y créditos ──
+-- srv = huella del dominio del servidor IPTV (agrupa a quienes lo comparten; nunca usuario ni clave).
+-- Tiempos en ms del video. NULL = no se sabe; -2 = no tiene / se reportó mal.
+CREATE TABLE IF NOT EXISTS skip_ep (
+  srv     TEXT    NOT NULL,
+  ep      TEXT    NOT NULL,   -- id del capítulo en ese servidor
+  series  TEXT    NOT NULL,
+  season  INTEGER NOT NULL DEFAULT 0,
+  i_s     INTEGER,            -- intro: empieza
+  i_e     INTEGER,            -- intro: termina
+  c_s     INTEGER,            -- créditos: empiezan
+  dur     INTEGER,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (srv, ep)
+);
+CREATE INDEX IF NOT EXISTS skip_ep_series ON skip_ep (srv, series);
+
+-- Plantillas: huella de la intro / créditos de una temporada (hasta 3 por tipo)
+CREATE TABLE IF NOT EXISTS skip_tpl (
+  srv     TEXT    NOT NULL,
+  series  TEXT    NOT NULL,
+  season  INTEGER NOT NULL,
+  kind    TEXT    NOT NULL,   -- intro | credits
+  id      TEXT    NOT NULL,
+  fp      TEXT    NOT NULL,   -- huella en base64
+  bad     INTEGER NOT NULL DEFAULT 0,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (srv, series, season, kind, id)
+);
+
+-- Huellas de capítulos sueltos (para comparar cuando aún no hay plantilla)
+CREATE TABLE IF NOT EXISTS skip_print (
+  srv     TEXT    NOT NULL,
+  series  TEXT    NOT NULL,
+  season  INTEGER NOT NULL,
+  kind    TEXT    NOT NULL,
+  ep      TEXT    NOT NULL,
+  first   INTEGER NOT NULL DEFAULT 0,
+  dur     INTEGER,
+  fp      TEXT    NOT NULL,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (srv, series, season, kind, ep)
+);
