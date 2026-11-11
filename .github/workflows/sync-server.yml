@@ -56,13 +56,18 @@ jobs:
           # Zona horaria de la conexión
           curl -fsS "$U/v1/tz" | tee /tmp/tz.json ; echo
           grep -q '"tz":"' /tmp/tz.json
-          # Saltar intro y créditos: guardar y leer (servidor de prueba "000…")
-          S=$(printf '0%.0s' {1..32}); FP=$(head -c 3000 /dev/urandom | base64 -w0)
-          curl -fsS -X POST "$U/v1/skip" -H 'content-type: application/json' \
-            -d "{\"s\":\"$S\",\"series\":\"prueba\",\"season\":1,\"eps\":[{\"ep\":\"e1\",\"is\":60000,\"ie\":120000,\"cs\":-1,\"d\":2400000}],\"tpl\":[{\"kind\":\"intro\",\"season\":1,\"fp\":\"$FP\"}],\"prints\":[{\"ep\":\"e1\",\"kind\":\"intro\",\"first\":0,\"d\":2400000,\"fp\":\"$FP\"}]}" | tee /tmp/sk.json; echo
-          grep -q '"ok":true' /tmp/sk.json
-          curl -fsS "$U/v1/skip?s=$S&series=prueba" | head -c 300 | tee /tmp/sk2.json; echo
-          grep -q '"ep":"e1","is":60000,"ie":120000' /tmp/sk2.json
+          # Saltar intro y créditos: guardar y leer (servidores de prueba "000…" y "111…")
+          S=$(printf '0%.0s' {1..32}); S2=$(printf '1%.0s' {1..32}); FP=$(head -c 3000 /dev/urandom | base64 -w0)
+          for V in v1 v2; do
+            curl -fsS -X POST "$U/$V/skip" -H 'content-type: application/json' \
+              -d "{\"s\":\"$S\",\"series\":\"prueba\",\"season\":1,\"name\":\"serie de prueba\",\"eps\":[{\"ep\":\"e1\",\"is\":60000,\"ie\":120000,\"cs\":-1,\"d\":2400000}],\"tpl\":[{\"kind\":\"intro\",\"season\":1,\"fp\":\"$FP\"}],\"prints\":[{\"ep\":\"e1\",\"kind\":\"intro\",\"first\":0,\"d\":2400000,\"fp\":\"$FP\"}]}" | tee /tmp/sk.json; echo
+            grep -q '"ok":true' /tmp/sk.json
+            curl -fsS "$U/$V/skip?s=$S&series=prueba" | head -c 300 | tee /tmp/sk2.json; echo
+            grep -q '"ep":"e1","is":60000,"ie":120000' /tmp/sk2.json
+          done
+          # La misma serie vista desde otro servidor tuyo: llegan sus plantillas por nombre
+          curl -fsS "$U/v2/skip?s=$S2&series=otra&name=serie%20de%20prueba&also=$S" | tee /tmp/sk3.json | head -c 200; echo
+          grep -q '"byName":\[{"kind":"intro"' /tmp/sk3.json
           curl -fsS "$U/v1/skip/prints?s=$S&series=prueba&season=1&kind=intro" | head -c 120; echo
           # Ver juntos: crear una sala
           curl -fsS -X POST "$U/v1/room" | tee /tmp/room.json ; echo

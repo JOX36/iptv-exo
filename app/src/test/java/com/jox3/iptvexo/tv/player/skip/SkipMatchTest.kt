@@ -230,6 +230,72 @@ class SkipMatchTest {
         save()
     }
 
+    /** Intro con una parte del medio que cambia de capítulo a capítulo (y de largo), como Los Simpson. */
+    private fun varIntro(middleSeed: Long, middleSec: Double): FloatArray {
+        val a = music(18.0, 4001, BASE); val m = music(middleSec, middleSeed, BASE); val c = music(20.0, 4002, BASE)
+        return FloatArray(a.size + m.size + c.size).also {
+            System.arraycopy(a, 0, it, 0, a.size); System.arraycopy(m, 0, it, a.size, m.size); System.arraycopy(c, 0, it, a.size + m.size, c.size)
+        }
+    }
+
+    private fun episodeWith(seed: Long, rate: Int, cold: Double, intro: FloatArray, mid: Double): Ep {
+        val parts = listOf(scene(cold, seed, BASE), intro, scene(mid, seed + 10, BASE), music(40.0, 999, BASE)).map { resample(it, rate) }
+        val all = FloatArray(parts.sumOf { it.size }); var o = 0
+        for (p in parts) { System.arraycopy(p, 0, all, o, p.size); o += p.size }
+        val r = Random(seed * 17); val gain = 0.5f + r.nextFloat() * 0.7f
+        for (i in all.indices) all[i] = all[i] * gain + (r.nextGaussian() * 0.003).toFloat()
+        val s0 = parts[0].size.toDouble() / rate; val s1 = s0 + parts[1].size.toDouble() / rate
+        return Ep(all, rate, s0, s1, s1 + parts[2].size.toDouble() / rate)
+    }
+
+    @Test fun intro_con_parte_que_cambia_como_los_simpson() {
+        val a = episodeWith(1100, 48000, 35.2, varIntro(71, 9.0), 200.0)
+        val b = episodeWith(1200, 44100, 61.7, varIntro(72, 13.0), 200.0)
+        // Como el detector: la intro se busca en el primer 40 % del capítulo
+        val s = SkipMatch.common(prints(a).slice(0, AudioPrint.frames((a.dur * 400).toLong())), prints(b).slice(0, AudioPrint.frames((b.dur * 400).toLong())),
+            AudioPrint.frames(15_000), AudioPrint.frames(200_000))
+        note("intro que cambia: ${s?.let { "A ${"%.2f".format(sec(it.aStart))}-${"%.2f".format(sec(it.aEnd))} (real ${"%.2f".format(a.introStart)}-${"%.2f".format(a.introEnd)}), B ${"%.2f".format(sec(it.bStart))}-${"%.2f".format(sec(it.bEnd))} (real ${"%.2f".format(b.introStart)}-${"%.2f".format(b.introEnd)})" }}")
+        assertNotNull("no encontró la intro", s); s!!
+        assertEquals(a.introStart, sec(s.aStart), 1.0); assertEquals(a.introEnd, sec(s.aEnd), 1.0)
+        assertEquals(b.introStart, sec(s.bStart), 1.0); assertEquals(b.introEnd, sec(s.bEnd), 1.0)
+        // Como el detector: la plantilla sale del capítulo con la intro más corta (A)
+        val tpl = if (s.aEnd - s.aStart < s.bEnd - s.bStart) prints(a).slice(s.aStart, s.aEnd) else prints(b).slice(s.bStart, s.bEnd)
+        // En otro capítulo (con la parte del medio de otro largo): se reconoce al empezar y el final se corrige al oírlo
+        val c = episodeWith(1300, 48000, 47.9, varIntro(73, 11.0), 30.0)
+        val ph = (0..3).map { prints(c, it) }
+        fun at(t: Double): Pair<Double, Double>? {
+            var best: Triple<Double, Double, Double>? = null
+            for (p in 0..3) {
+                val lf = ((t * 1000 - p * AudioPrint.HOP_MS / 4) / AudioPrint.HOP_MS).toInt()
+                val r = SkipMatch.locate(tpl, ph[p].slice(lf - SkipMatch.K + 1, lf + 1)) ?: continue
+                val start = ((lf - SkipMatch.K + 1 - r.first) + p / 4.0) * AudioPrint.HOP_MS / 1000
+                val prev = best
+                if (prev == null || r.second < prev.first) best = Triple(r.second, start, start + tpl.size * AudioPrint.HOP_MS / 1000)
+            }
+            return best?.let { it.second to it.third }
+        }
+        val early = at(c.introStart + 4.5)
+        note("intro que cambia, en vivo a los 4,5 s: $early (real ${"%.2f".format(c.introStart)}-${"%.2f".format(c.introEnd)})")
+        assertNotNull("no la reconoció al empezar", early)
+        assertEquals(c.introStart, early!!.first, 1.0)
+        // El final estimado al empezar no se pasa (no salta parte del capítulo)
+        assertTrue(early.second <= c.introEnd + 0.5)
+        val late = at(c.introEnd - 6.0)
+        note("intro que cambia, en vivo cerca del final: $late")
+        assertNotNull("no reconoció el final", late)
+        assertEquals(c.introEnd, late!!.second, 1.0)
+        save()
+    }
+
+    @Test fun nombres_de_series_entre_servidores() {
+        val n = SkipDetector.Companion::normName
+        assertEquals(n("Los Simpson (1989) [LAT] 4K"), n("THE SIMPSONS"))
+        assertEquals(n("ES: Breaking Bad"), n("Breaking Bad (2008)"))
+        assertEquals(n("La Casa de Papel | Castellano"), n("La casa de papel"))
+        assertEquals("she ra", n("She-Ra"))
+        assertTrue(n("Friends") != n("Seinfeld"))
+    }
+
     @Test fun base64_y_tramos() {
         val r = Random(5); val arr = IntArray(1234) { r.nextInt() }
         assertTrue(Prints.decode(Prints.encode(arr)).contentEquals(arr))

@@ -263,7 +263,7 @@ class VodPlayback(private val context: Context, private val lib: LibraryStore) {
         val it = item ?: return
         // Intro y créditos: cerrar el análisis del capítulo anterior y empezar el de este
         skip.end()
-        skip.begin(if (it.resume.kind == "episode") it.id else null, it.resume.seriesId, it.season, allowListen = !it.noHistory)
+        skip.begin(if (it.resume.kind == "episode") it.id else null, it.resume.seriesId, it.season, it.fav.name, allowListen = !it.noHistory)
         creditsDismissed = false; skipNotice = ""
         if (!it.noHistory) lib.rememberPlayback(it.resume)
         retries = 0
