@@ -157,6 +157,17 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             }, Modifier.fillMaxWidth())
             Text("Zona: " + com.jox3.iptvexo.tv.data.AppTime.label(tctx) + ". OK para cambiar entre automática y la del equipo.",
                 style = Type.Small, color = Jx.Faint)
+            // Series: saltar la intro solo / aprender intros y créditos
+            var skipAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.autoSkip(tctx)) }
+            var skipLearn by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.detect(tctx)) }
+            ActionButton("Saltar la intro solo: " + if (skipAuto) "Sí" else "No", {
+                skipAuto = !skipAuto; com.jox3.iptvexo.tv.player.skip.SkipDetector.setAutoSkip(tctx, skipAuto)
+            }, Modifier.fillMaxWidth())
+            ActionButton("Aprender intros y créditos: " + if (skipLearn) "Sí" else "No", {
+                skipLearn = !skipLearn; com.jox3.iptvexo.tv.player.skip.SkipDetector.setDetect(tctx, skipLearn)
+            }, Modifier.fillMaxWidth())
+            Text("En series aparece «Saltar intro» y, en los créditos, «Siguiente episodio». Se aprende al ver 2 capítulos y se comparte con quienes usan el mismo servidor.",
+                style = Type.Small, color = Jx.Faint)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
             // Se pide confirmar: la primera pulsación solo cambia el texto
             ActionButton(if (confirmDelete) "OK otra vez para eliminar" else "Eliminar esta cuenta",

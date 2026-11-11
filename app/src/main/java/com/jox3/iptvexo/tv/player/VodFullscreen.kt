@@ -72,6 +72,8 @@ private enum class VOpt(val label: String, val panel: Boolean, val enter: Boolea
     Picture("Imagen", true),
     Info("Información", true, enter = false),
     Together("Ver juntos", true),
+    /** Solo en series: estado de la intro y los créditos, saltar solo y reportar errores. */
+    Skip("Intro y créditos", true),
     Favorite("Favorito", false),
     Close("Cerrar", false),
 }
@@ -113,6 +115,11 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
     var focusSeekTick by remember { mutableIntStateOf(0) }
     var focusRootTick by remember { mutableIntStateOf(0) }
     var focusOptTick by remember { mutableIntStateOf(0) }
+    // Saltar intro / siguiente episodio en los créditos
+    val skipReq = remember { FocusRequester() }
+    val creditsReq = remember { FocusRequester() }
+    val showSkip = vod.introVisible
+    val showCredits = vod.creditsVisible
 
     // Diálogos: error, siguiente episodio, apagado automático
     val nextPending = vod.ended && vod.hasNext && !vod.sleepFired
@@ -129,6 +136,8 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
     fun goBack() {
         when {
             dialog -> onExit()
+            // En los créditos, Atrás = quedarse viendo los créditos
+            showCredits && !bars -> vod.watchCredits()
             inPanel && option != null -> focusOptTick++
             bars -> hideAll()
             // Atrás con los controles ocultos: sigue en un reproductor pequeño mientras eliges otra cosa
@@ -155,6 +164,23 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
         } else { delay(1200); onExit() }
     }
     LaunchedEffect(dialog) { if (dialog) { bars = false; option = null; delay(40); runCatching { dialogReq.requestFocus() } } }
+    // Apareció "Saltar intro" o "Siguiente episodio" con los controles ocultos: OK lo elige
+    LaunchedEffect(showSkip, showCredits, bars, dialog) {
+        if (bars || dialog) return@LaunchedEffect
+        delay(60)
+        when {
+            showCredits -> runCatching { creditsReq.requestFocus() }
+            showSkip -> runCatching { skipReq.requestFocus() }
+        }
+    }
+    // Cuenta regresiva de los créditos → siguiente episodio
+    var creditsLeft by remember { mutableIntStateOf(10) }
+    LaunchedEffect(showCredits, vod.index) {
+        if (!showCredits) return@LaunchedEffect
+        creditsLeft = 10
+        while (creditsLeft > 0) { delay(1000); creditsLeft-- }
+        if (vod.creditsVisible) vod.next()
+    }
     LaunchedEffect(anyFocus) {
         if (anyFocus) return@LaunchedEffect
         delay(120)
@@ -286,6 +312,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                     }
                     VOpt.Info -> InfoPanel(vod)
                     VOpt.Together -> TogetherPanel(vod, panelReq)
+                    VOpt.Skip -> SkipPanel(vod, panelReq)
                     else -> Unit
                 }
             }
@@ -301,12 +328,12 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 SeekBar(vod, Modifier.focusRequester(seekReq).focusProperties {
-                    up = FocusRequester.Cancel
+                    up = when { showCredits -> creditsReq; showSkip -> skipReq; else -> FocusRequester.Cancel }
                     down = optReqs.getValue(option ?: VOpt.Play)
                 }, onFocused = { option = null }, onActivity = { activity = System.currentTimeMillis() })
                 // Con muchas opciones la fila se desplaza (la opción enfocada siempre se ve)
                 Row(Modifier.horizontalScroll(androidx.compose.foundation.rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    VOpt.values().filter { op -> op != VOpt.Next || vod.hasNext }.forEach { opt ->
+                    VOpt.values().filter { op -> (op != VOpt.Next || vod.hasNext) && (op != VOpt.Skip || cur.resume.kind == "episode") }.forEach { opt ->
                         OptionTab(
                             label = when (opt) {
                                 VOpt.Play -> if (vod.playing) "Pausa" else "Reproducir"
@@ -325,6 +352,7 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                                 VOpt.Picture -> R.drawable.ic_resize
                                 VOpt.Info -> R.drawable.tv_ic_info
                                 VOpt.Together -> R.drawable.ic_together
+                                VOpt.Skip -> R.drawable.ic_next
                                 VOpt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
                                 VOpt.Close -> R.drawable.ic_close
                             },
@@ -346,6 +374,43 @@ fun VodFullscreen(vod: VodPlayback, lib: LibraryStore, onExit: () -> Unit, onMin
                     }
                 }
             }
+        }
+
+        // ── Saltar intro / Siguiente episodio (abajo a la derecha, como en Netflix) ──
+        if (!dialog && (showSkip || showCredits)) {
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (bars) 170.dp else 48.dp)
+                    .onPreviewKeyEvent { ev ->
+                        if (ev.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when (ev.nativeKeyEvent.keyCode) {
+                            AndroidKey.KEYCODE_DPAD_DOWN -> { if (bars) { focusSeekTick++ } else showBars(); true }
+                            AndroidKey.KEYCODE_DPAD_UP -> { if (!bars) showBars(); true }
+                            AndroidKey.KEYCODE_DPAD_LEFT -> if (showCredits) false else { vod.seekBy(-10_000); showBars(); true }
+                            AndroidKey.KEYCODE_DPAD_RIGHT -> if (showCredits) false else { vod.seekBy(10_000); showBars(); true }
+                            else -> false
+                        }
+                    }
+                    .focusGroup(),
+                horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (showCredits) {
+                    val next = vod.queue.getOrNull(vod.index + 1)
+                    Text("SIGUIENTE EPISODIO EN $creditsLeft s", style = Type.Eyebrow, color = Jx.Accent)
+                    if (next != null) Text(next.title, style = Type.Label, color = Jx.Text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 360.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SkipButton("Ver créditos", primary = false, Modifier) { vod.watchCredits(); focusRootTick++ }
+                        SkipButton("Siguiente episodio", primary = true, Modifier.focusRequester(creditsReq)) { vod.next() }
+                    }
+                } else {
+                    SkipButton("Saltar intro", primary = true, Modifier.focusRequester(skipReq)) { vod.skipIntro(); focusRootTick++ }
+                }
+            }
+        }
+        if (vod.skipNotice.isNotEmpty() && !dialog) {
+            Text(vod.skipNotice, style = Type.Label, color = Jx.Text,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(end = 48.dp, bottom = if (bars) 170.dp else 48.dp)
+                    .background(Color(0xCC070A0F), RoundedCornerShape(20.dp)).padding(horizontal = 16.dp, vertical = 8.dp))
         }
 
         // ── Diálogos ──
@@ -513,5 +578,48 @@ fun VodMini(vod: VodPlayback, modifier: Modifier = Modifier) {
             Text(if (vod.playing) "Ábrelo de nuevo para verlo en grande · ⏯ pausa" else "En pausa · ⏯ para seguir",
                 style = Type.Small, color = Jx.Faint, maxLines = 1)
         }
+    }
+}
+
+/** Botón grande de "Saltar intro" / "Siguiente episodio" (blanco al enfocarlo). */
+@Composable
+private fun SkipButton(label: String, primary: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    FocusSurface(
+        onClick = onClick,
+        modifier = modifier.height(48.dp),
+        shape = RoundedCornerShape(10.dp),
+        focusedScale = 1.06f,
+        container = if (primary) Color(0xE6101722) else Color(0x99101722),
+        focusedContainer = Jx.Text,
+        focusedContent = Jx.Bg,
+        ring = false,
+    ) {
+        Text(label, style = Type.Label, modifier = Modifier.align(Alignment.Center).padding(horizontal = 22.dp))
+    }
+}
+
+/** Panel "Intro y créditos": qué se sabe de este capítulo, saltar solo y reportar si está mal. */
+@Composable
+private fun SkipPanel(vod: VodPlayback, req: FocusRequester) {
+    val st = vod.skip.state
+    var auto by remember { mutableStateOf(vod.skip.autoSkip) }
+    var detect by remember { mutableStateOf(vod.skip.detectEnabled) }
+    PanelBox("Intro y créditos") {
+        val intro = vod.intro
+        Text(
+            buildString {
+                append(if (intro != null) "Intro: ${fmt(intro.first)} a ${fmt(intro.last)}" else "Intro: aún no se conoce")
+                append("\n")
+                append(if (vod.creditsAt > 0) "Créditos desde ${fmt(vod.creditsAt)}" else "Créditos: aún no se conocen")
+                if (st.note.isNotBlank()) append("\n").append(st.note)
+            },
+            style = Type.Small, color = Jx.Muted, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+        )
+        ChoiceRow("Saltar la intro solo", auto, Modifier.focusRequester(req)) { auto = !auto; vod.skip.autoSkip = auto }
+        ChoiceRow("Aprender intros y créditos", detect, Modifier) { detect = !detect; vod.skip.detectEnabled = detect }
+        if (intro != null) ChoiceRow("La intro está mal", false, Modifier) { vod.skip.reportWrong("intro") }
+        if (vod.creditsAt > 0) ChoiceRow("Los créditos están mal", false, Modifier) { vod.skip.reportWrong("credits") }
+        Text("Se aprende sola al ver 2 capítulos de la temporada; los tiempos se comparten con quienes usan este mismo servidor.",
+            style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
     }
 }

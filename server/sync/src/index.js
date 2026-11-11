@@ -6,6 +6,11 @@
 // GET  /         → estado del servidor.
 // GET  /v1/tz    → zona horaria de quien pregunta (según su conexión), p. ej. America/Bogota.
 //
+// Saltar intro y créditos (compartido entre quienes usan el mismo servidor IPTV):
+// GET  /v1/skip?s=<srv>&series=<id>                          → tiempos por capítulo + plantillas.
+// GET  /v1/skip/prints?s=&series=&season=&kind=intro|credits  → huellas para comparar.
+// POST /v1/skip { s, series, season, eps, tpl, prints, bad } → guardar lo aprendido.
+//
 // Ver juntos:
 // POST /v1/room              → crea una sala y devuelve su código de 6 números.
 // GET  /v1/room/<código>/ws  → WebSocket de la sala (órdenes de reproducir, pausar, adelantar…).
@@ -31,6 +36,9 @@ export default {
       if (url.pathname === "/v1/tz" && req.method === "GET")
         return json({ tz: (req.cf && req.cf.timezone) || "", country: (req.cf && req.cf.country) || "" });
       if (url.pathname === "/v1/sync" && req.method === "POST") return await sync(req, env);
+      if (url.pathname === "/v1/skip" && req.method === "GET") return await skipGet(url, env);
+      if (url.pathname === "/v1/skip/prints" && req.method === "GET") return await skipPrints(url, env);
+      if (url.pathname === "/v1/skip" && req.method === "POST") return await skipPost(req, env);
       if (url.pathname === "/v1/room" && req.method === "POST") return await createRoom(env);
       const inv = url.pathname.match(/^\/v\/(\d{6})$/);
       if (inv && req.method === "GET") return await invitePage(env, inv[1]);
@@ -100,6 +108,123 @@ async function sync(req, env) {
     more,
     items: items.map(r => ({ list: r.list, item: r.item, data: r.data, ts: r.ts, deleted: !!r.deleted })),
   });
+}
+
+// ───────────────────────── Saltar intro y créditos ─────────────────────────
+
+const SRV_RE = /^[0-9a-f]{32}$/;
+const ID_RE = /^[\w.-]{1,40}$/;
+const B64_RE = /^[A-Za-z0-9+/=]+$/;
+const KINDS = new Set(["intro", "credits"]);
+const MAX_MS = 6 * 3600 * 1000;
+const ms = v => {
+  const n = Math.floor(Number(v));
+  if (!Number.isFinite(n)) return null;
+  if (n === -2) return -2;           // "no tiene" / se reportó mal
+  return n >= 0 && n <= MAX_MS ? n : null;
+};
+const season = v => Math.max(0, Math.min(999, Math.floor(Number(v) || 0)));
+
+async function skipGet(url, env) {
+  const s = url.searchParams.get("s") || "", series = url.searchParams.get("series") || "";
+  if (!SRV_RE.test(s) || !ID_RE.test(series)) return json({ error: "datos inválidos" }, 400);
+  const [eps, tpl] = await Promise.all([
+    env.DB.prepare(`SELECT ep, i_s, i_e, c_s, dur FROM skip_ep WHERE srv = ?1 AND series = ?2 LIMIT 3000`).bind(s, series).all(),
+    env.DB.prepare(`SELECT kind, season, id, fp FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND bad < 2 ORDER BY ts DESC LIMIT 40`).bind(s, series).all(),
+  ]);
+  return json({
+    eps: (eps.results || []).map(r => ({ ep: r.ep, is: r.i_s ?? -1, ie: r.i_e ?? -1, cs: r.c_s ?? -1, d: r.dur ?? 0 })),
+    tpl: (tpl.results || []).map(r => ({ kind: r.kind, season: r.season, id: r.id, fp: r.fp })),
+  });
+}
+
+async function skipPrints(url, env) {
+  const s = url.searchParams.get("s") || "", series = url.searchParams.get("series") || "";
+  const kind = url.searchParams.get("kind") || "";
+  if (!SRV_RE.test(s) || !ID_RE.test(series) || !KINDS.has(kind)) return json({ error: "datos inválidos" }, 400);
+  const r = await env.DB.prepare(
+    `SELECT ep, first, dur, fp FROM skip_print WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 5`
+  ).bind(s, series, season(url.searchParams.get("season")), kind).all();
+  return json({ prints: (r.results || []).map(x => ({ ep: x.ep, first: x.first, d: x.dur ?? 0, fp: x.fp })) });
+}
+
+async function skipPost(req, env) {
+  const len = Number(req.headers.get("content-length") || 0);
+  if (len > MAX_BODY) return json({ error: "demasiado grande" }, 413);
+  const text = await req.text();
+  if (text.length > MAX_BODY) return json({ error: "demasiado grande" }, 413);
+  let b;
+  try { b = JSON.parse(text); } catch { return json({ error: "json inválido" }, 400); }
+  const s = String(b.s || ""), series = String(b.series || ""), sea = season(b.season);
+  if (!SRV_RE.test(s) || !ID_RE.test(series)) return json({ error: "datos inválidos" }, 400);
+  const now = Date.now();
+  const st = [];
+  const list = v => (Array.isArray(v) ? v.slice(0, 20) : []);
+
+  for (const e of list(b.eps)) {
+    const ep = String(e.ep || "");
+    if (!ID_RE.test(ep)) continue;
+    let is = ms(e.is), ie = ms(e.ie), cs = ms(e.cs);
+    // Una intro tiene que tener sentido (15 s a 4 min, dentro de los primeros 15 min)
+    if (is != null && is >= 0 && (ie == null || ie - is < 10000 || ie - is > 240000 || is > 900000)) { is = null; ie = null; }
+    if (is == null && ie != null && ie !== -2) ie = null;
+    const dur = ms(e.d);
+    if (is == null && ie == null && cs == null) continue;
+    st.push(env.DB.prepare(
+      `INSERT INTO skip_ep (srv, ep, series, season, i_s, i_e, c_s, dur, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+       ON CONFLICT (srv, ep) DO UPDATE SET
+         i_s = CASE WHEN skip_ep.i_s = -2 THEN -2 ELSE COALESCE(excluded.i_s, skip_ep.i_s) END,
+         i_e = CASE WHEN skip_ep.i_e = -2 THEN -2 ELSE COALESCE(excluded.i_e, skip_ep.i_e) END,
+         c_s = CASE WHEN skip_ep.c_s = -2 THEN -2 ELSE COALESCE(excluded.c_s, skip_ep.c_s) END,
+         dur = COALESCE(excluded.dur, skip_ep.dur), ts = excluded.ts`
+    ).bind(s, ep, series, sea, is, ie, cs, dur && dur > 0 ? dur : null, now));
+  }
+  for (const t of list(b.tpl).slice(0, 4)) {
+    const kind = String(t.kind || ""), fp = String(t.fp || "");
+    if (!KINDS.has(kind) || fp.length < 200 || fp.length > 20000 || !B64_RE.test(fp)) continue;
+    const id = await shortHash(fp);
+    st.push(env.DB.prepare(
+      `INSERT OR IGNORE INTO skip_tpl (srv, series, season, kind, id, fp, bad, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)`
+    ).bind(s, series, season(t.season ?? sea), kind, id, fp, now));
+    // No más de 3 por temporada y tipo (quedan las más nuevas)
+    st.push(env.DB.prepare(
+      `DELETE FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND id NOT IN
+         (SELECT id FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 3)`
+    ).bind(s, series, season(t.season ?? sea), kind));
+  }
+  for (const p of list(b.prints).slice(0, 2)) {
+    const kind = String(p.kind || ""), ep = String(p.ep || ""), fp = String(p.fp || "");
+    if (!KINDS.has(kind) || !ID_RE.test(ep) || fp.length < 200 || fp.length > 60000 || !B64_RE.test(fp)) continue;
+    const first = Math.max(0, Math.min(400000, Math.floor(Number(p.first) || 0)));
+    st.push(env.DB.prepare(
+      `INSERT INTO skip_print (srv, series, season, kind, ep, first, dur, fp, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+       ON CONFLICT (srv, series, season, kind, ep) DO UPDATE SET first = excluded.first, dur = excluded.dur, fp = excluded.fp, ts = excluded.ts`
+    ).bind(s, series, sea, kind, ep, first, ms(p.d), fp, now));
+    // Se guardan las 5 más nuevas por temporada y tipo
+    st.push(env.DB.prepare(
+      `DELETE FROM skip_print WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND ep NOT IN
+         (SELECT ep FROM skip_print WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 5)`
+    ).bind(s, series, sea, kind));
+  }
+  for (const x of list(b.bad).slice(0, 5)) {
+    const ep = String(x.ep || ""), kind = String(x.kind || "");
+    if (!ID_RE.test(ep) || !KINDS.has(kind)) continue;
+    // Ese capítulo queda marcado; si la plantilla de la temporada falla en 2 capítulos, se descarta
+    st.push(kind === "intro"
+      ? env.DB.prepare(`INSERT INTO skip_ep (srv, ep, series, season, i_s, i_e, ts) VALUES (?1, ?2, ?3, ?4, -2, -2, ?5)
+          ON CONFLICT (srv, ep) DO UPDATE SET i_s = -2, i_e = -2, ts = excluded.ts`).bind(s, ep, series, sea, now)
+      : env.DB.prepare(`INSERT INTO skip_ep (srv, ep, series, season, c_s, ts) VALUES (?1, ?2, ?3, ?4, -2, ?5)
+          ON CONFLICT (srv, ep) DO UPDATE SET c_s = -2, ts = excluded.ts`).bind(s, ep, series, sea, now));
+    st.push(env.DB.prepare(`UPDATE skip_tpl SET bad = bad + 1 WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4`).bind(s, series, sea, kind));
+    st.push(env.DB.prepare(`DELETE FROM skip_tpl WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND bad >= 2`).bind(s, series, sea, kind));
+  }
+  if (st.length) await env.DB.batch(st);
+  return json({ ok: true, saved: st.length });
+}
+
+async function shortHash(text) {
+  const d = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(text));
+  return [...new Uint8Array(d)].slice(0, 6).map(x => x.toString(16).padStart(2, "0")).join("");
 }
 
 // ───────────────────────── Ver juntos ─────────────────────────

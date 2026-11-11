@@ -203,6 +203,8 @@ private fun MainShell(
     live.beforeFullscreen = { runCatching { baseFocus.saveFocusedChild() } }
     // ── Reproductor de películas y series (pantalla completa) ──
     val vod = remember { VodPlayback(context.applicationContext, repo.library) }
+    // Intro y créditos: se comparten con quienes usan este mismo servidor
+    vod.skip.account = repo.api.account
     vod.beforeOpen = { runCatching { baseFocus.saveFocusedChild() }; live.stop() }
     // Al poner un canal, la película que quedó en la ventanita se cierra (si no, queda encima del canal)
     live.beforePlay = { if (vod.open) vod.close() }
