@@ -68,6 +68,8 @@ jobs:
             | head -45 | while IFS= read -r line; do
             echo "::error::${line}"
           done
+          # Y las últimas líneas del registro, por si el error no tiene la forma de arriba
+          grep -v "^\s*$" build.log | tail -25 | while IFS= read -r line; do echo "::notice::${line}"; done
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
