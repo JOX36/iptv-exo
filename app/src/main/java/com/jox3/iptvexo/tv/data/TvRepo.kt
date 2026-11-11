@@ -3,6 +3,7 @@ package com.jox3.iptvexo.tv.data
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.async
 import kotlinx.coroutines.sync.withPermit
 import java.text.Normalizer
 
@@ -189,9 +190,19 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         val seriesKeys: List<String> = series.map { normalize(it.name) }
     }
 
-    private var index: Index? = null
+    @Volatile private var index: Index? = null
 
-    private val indexLock = kotlinx.coroutines.sync.Mutex()
+    /**
+     * El catálogo completo se arma UNA vez, en segundo plano y aparte de quien lo pidió:
+     * si esa pantalla se cierra (p. ej. se pasa del Inicio al Buscador), la descarga sigue y
+     * el Buscador la aprovecha. Antes se cancelaba a medias y el Buscador empezaba de cero:
+     * con catálogos grandes o datos móviles se quedaba en "Preparando la búsqueda…".
+     */
+    private val indexScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    @Volatile private var building: kotlinx.coroutines.Deferred<Index>? = null
+
+    /** El catálogo completo solo si ya está listo (no lo descarga). */
+    fun peekIndex(): Index? = index
 
     /** Catálogo completo para buscar. Se arma una sola vez y de a una lista (menos memoria). */
     /**
@@ -201,11 +212,21 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
      */
     suspend fun freshImages(items: List<SavedItem>): Map<String, String> {
         if (items.isEmpty()) return emptyMap()
-        val idx = runCatching { searchIndex() }.getOrNull() ?: return emptyMap()
+        // No descarga el catálogo completo para esto (pesa mucho con datos móviles): usa el índice si
+        // ya está, y si no, solo las categorías de lo guardado (ya suelen estar en memoria)
+        val idx = peekIndex()
+        val movieList: List<Movie>; val seriesList: List<Series>
+        if (idx != null) { movieList = idx.movies; seriesList = idx.series }
+        else {
+            val mCats = items.filter { it.kind == "movie" && it.categoryId.isNotBlank() }.map { it.categoryId }.distinct().take(6)
+            val sCats = items.filter { it.kind == "series" && it.categoryId.isNotBlank() }.map { it.categoryId }.distinct().take(6)
+            movieList = mCats.flatMap { runCatching { movies(it) }.getOrDefault(emptyList()) }
+            seriesList = sCats.flatMap { runCatching { series(it) }.getOrDefault(emptyList()) }
+        }
         return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val ids = items.flatMap { listOf(it.id, it.seriesId) }.toSet()
-            val mv = idx.movies.filter { it.id in ids }.associateBy { it.id }
-            val sr = idx.series.filter { it.id in ids }.associateBy { it.id }
+            val mv = movieList.filter { it.id in ids }.associateBy { it.id }
+            val sr = seriesList.filter { it.id in ids }.associateBy { it.id }
             items.mapNotNull { s ->
                 val p = when (s.kind) {
                     "movie" -> mv[s.id]?.poster
@@ -218,15 +239,28 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         }
     }
 
-    suspend fun searchIndex(): Index = lock.withLock { index } ?: indexLock.withLock {
-        lock.withLock { index } ?: run {
-            val ch = runCatching { api.channels() }.getOrDefault(emptyList())
-            val mv = runCatching { api.movies() }.getOrDefault(emptyList())
-            val sr = runCatching { api.series() }.getOrDefault(emptyList())
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { Index(ch, mv, sr) }
-                .also { built -> lock.withLock { index = built } }
+    suspend fun searchIndex(): Index {
+        index?.let { return it }
+        val job = synchronized(this) {
+            building ?: indexScope.async {
+                // De a una lista (menos memoria). Si una falla, se sigue con las otras.
+                val ch = safeList { api.channels() }
+                val mv = safeList { api.movies() }
+                val sr = safeList { api.series() }
+                Index(ch, mv, sr).also { index = it }
+            }.also { building = it }
+        }
+        return try { job.await() } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException && job.isActive) throw e   // se cerró la pantalla: la descarga sigue
+            synchronized(this) { if (building === job) building = null }                 // falló: el próximo intento empieza de nuevo
+            throw e
         }
     }
+
+    /** Como runCatching, pero sin tragarse la cancelación (para no dejar listas vacías a medias). */
+    private suspend fun <T> safeList(block: suspend () -> List<T>): List<T> = try { block() } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (e: Throwable) { emptyList() }
 
     /**
      * Recomendaciones para una película:
