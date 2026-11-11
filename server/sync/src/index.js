@@ -181,7 +181,7 @@ async function skipPost(req, env) {
   }
   for (const t of list(b.tpl).slice(0, 4)) {
     const kind = String(t.kind || ""), fp = String(t.fp || "");
-    if (!KINDS.has(kind) || fp.length < 200 || fp.length > 20000 || !B64_RE.test(fp)) continue;
+    if (!KINDS.has(kind) || fp.length < 200 || fp.length > 40000 || !B64_RE.test(fp)) continue;
     const id = await shortHash(fp);
     st.push(env.DB.prepare(
       `INSERT OR IGNORE INTO skip_tpl (srv, series, season, kind, id, fp, bad, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)`

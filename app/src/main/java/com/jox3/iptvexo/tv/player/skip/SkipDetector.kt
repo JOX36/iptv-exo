@@ -73,6 +73,7 @@ class SkipDetector(context: Context) {
     @Volatile private var armed = false
     @Volatile private var durMs = 0L
     private var cur: Ep? = null   // solo se toca en el hilo [worker]
+    private val fetchedAt = HashMap<String, Long>()   // ídem
 
     private class Ep(
         val gen: Int, val srv: String, val series: String, val season: Int, val id: String,
@@ -112,13 +113,18 @@ class SkipDetector(context: Context) {
             ep.res = store.result(srv, epId)
             ep.templates = store.templates(srv, seriesId)
             publish(ep, if (ep.res.hasIntro || ep.res.hasCredits) "Tiempos de este capítulo ya conocidos" else "")
-            // Lo que saben los demás equipos de este servidor
-            val cloud = SkipCloud.fetch(srv, seriesId)
-            if (cloud != null && gen == g) {
+            // Lo que saben los demás equipos de este servidor (una vez cada 10 min por serie)
+            val key = "$srv|$seriesId"
+            val now = System.currentTimeMillis()
+            val cloud = if (now - (fetchedAt[key] ?: 0L) > 600_000L) SkipCloud.fetch(srv, seriesId)?.also { fetchedAt[key] = now } else null
+            if (gen != g) return@execute
+            if (cloud != null) {
                 cloud.first.forEach { (id, r) -> store.saveResult(srv, id, r, merge = true) }
                 if (cloud.second.isNotEmpty()) store.saveTemplates(srv, seriesId, cloud.second)
                 ep.res = store.result(srv, epId)
                 ep.templates = store.templates(srv, seriesId)
+            }
+            run {
                 publish(ep, when {
                     ep.res.hasIntro || ep.res.hasCredits -> "Tiempos de este capítulo ya conocidos"
                     ep.templates.isNotEmpty() -> "Esta serie ya se conoce: la intro se reconoce al sonar"
@@ -394,8 +400,13 @@ internal class SkipStore(ctx: Context) {
     fun isBad(srv: String, ep: String, kind: String) = prefs.getBoolean("b|$srv|$ep|$kind", false)
     fun markBad(srv: String, ep: String, kind: String) { prefs.edit().putBoolean("b|$srv|$ep|$kind", true).apply() }
 
+    private fun tplFile(srv: String, series: String) = File(printDir(srv, series), "plantillas.json")
+
+    /** Plantillas de la serie (en un archivo: pueden pesar decenas de KB). */
     fun templates(srv: String, series: String): List<Tpl> = runCatching {
-        val a = JSONArray(prefs.getString("t|$srv|$series", "[]"))
+        val f = tplFile(srv, series)
+        if (!f.exists()) return emptyList()
+        val a = JSONArray(f.readText())
         (0 until a.length()).map { a.getJSONObject(it) }.map { Tpl(it.getString("k"), it.optInt("s"), Prints.decode(it.getString("fp"))) }
             .filter { it.fp.size >= SkipMatch.K }
     }.getOrDefault(emptyList())
@@ -405,7 +416,7 @@ internal class SkipStore(ctx: Context) {
             .groupBy { it.kind + "|" + it.season }.values.flatMap { it.take(3) }
         val a = JSONArray()
         all.forEach { a.put(JSONObject().put("k", it.kind).put("s", it.season).put("fp", Prints.encode(it.fp))) }
-        prefs.edit().putString("t|$srv|$series", a.toString()).apply()
+        runCatching { tplFile(srv, series).apply { parentFile?.mkdirs() }.writeText(a.toString()) }
     }
 
     private fun printDir(srv: String, series: String) = File(dir, "$srv/${series.filter { it.isLetterOrDigit() }}")
