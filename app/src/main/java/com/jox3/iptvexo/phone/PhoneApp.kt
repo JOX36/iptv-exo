@@ -143,7 +143,7 @@ private fun PhoneShell(
     val context = LocalContext.current
     val live = remember { LivePlayback(context.applicationContext, repo) }
     val vod = remember { VodPlayback(context.applicationContext, repo.library) }
-    // Intro y créditos: se comparten con quienes usan este mismo servidor
+    // Intro y créditos: lo aprendido se comparte con todos los que usan la app
     vod.skip.account = repo.api.account
     val launcher = remember { PlayerLauncher().also { it.repo = repo; it.vod = vod } }
     PlayerLauncher.current = launcher

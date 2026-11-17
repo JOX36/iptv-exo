@@ -166,7 +166,7 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("Aprender intros y créditos: " + if (skipLearn) "Sí" else "No", {
                 skipLearn = !skipLearn; com.jox3.iptvexo.tv.player.skip.SkipDetector.setDetect(tctx, skipLearn)
             }, Modifier.fillMaxWidth())
-            Text("En series aparece «Saltar intro» y, en los créditos, «Siguiente episodio». Se aprende al ver 2 capítulos y se comparte con quienes usan el mismo servidor.",
+            Text("En series aparece «Saltar intro» y, en los créditos, «Siguiente episodio». Se aprende al ver 2 capítulos y se comparte con todos los que usan la app.",
                 style = Type.Small, color = Jx.Faint)
             ActionButton("Cambiar de cuenta", onLogout, Modifier.fillMaxWidth(), icon = R.drawable.tv_ic_logout)
             // Se pide confirmar: la primera pulsación solo cambia el texto

@@ -85,3 +85,18 @@ CREATE TABLE IF NOT EXISTS skip_tpl2 (
   PRIMARY KEY (srv, series, season, kind, id)
 );
 CREATE INDEX IF NOT EXISTS skip_tpl2_name ON skip_tpl2 (name, srv);
+
+-- Huellas de capítulos por NOMBRE de serie, de cualquier servidor: así lo que aprende un usuario
+-- sirve para todos los que ven la misma serie (aunque sea en otro servidor IPTV).
+CREATE TABLE IF NOT EXISTS skip_pname (
+  name    TEXT    NOT NULL,
+  season  INTEGER NOT NULL,
+  kind    TEXT    NOT NULL,
+  srv     TEXT    NOT NULL,
+  ep      TEXT    NOT NULL,
+  first   INTEGER NOT NULL DEFAULT 0,
+  dur     INTEGER,
+  fp      TEXT    NOT NULL,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (name, season, kind, srv, ep)
+);

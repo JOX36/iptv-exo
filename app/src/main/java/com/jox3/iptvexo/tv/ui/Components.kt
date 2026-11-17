@@ -82,7 +82,7 @@ fun FocusSurface(
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.onFocusChanged { focused = it.isFocused },
+        modifier = modifier.trackFocus().onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(
             containerColor = container,

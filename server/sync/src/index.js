@@ -10,8 +10,10 @@
 // GET  /v1/skip?s=<srv>&series=<id>                          → tiempos por capítulo + plantillas.
 // GET  /v1/skip/prints?s=&series=&season=&kind=intro|credits  → huellas para comparar.
 // POST /v1/skip { s, series, season, eps, tpl, prints, bad } → guardar lo aprendido.
-// /v2/skip: igual, con el método nuevo; además ?name=&also=srv1,srv2 trae las plantillas de esa
-//   serie (por nombre) en tus otros servidores, y el POST guarda el nombre.
+// /v2/skip: igual, con el método nuevo; además ?name= trae las plantillas de esa serie (por nombre)
+//   aprendidas en CUALQUIER servidor: lo que aprende un usuario sirve para todos.
+// GET  /v2/skip/prints?s=&series=&season=&kind=&name= → huellas de este servidor + las de la misma
+//   serie en otros servidores (marcadas foreign), para aprender aunque aquí nadie la haya visto.
 //
 // Ver juntos:
 // POST /v1/room              → crea una sala y devuelve su código de 6 números.
@@ -41,6 +43,7 @@ export default {
       if (url.pathname === "/v1/skip" && req.method === "GET") return await skipGet(url, env, 1);
       if (url.pathname === "/v2/skip" && req.method === "GET") return await skipGet(url, env, 2);
       if (url.pathname === "/v1/skip/prints" && req.method === "GET") return await skipPrints(url, env);
+      if (url.pathname === "/v2/skip/prints" && req.method === "GET") return await skipPrints(url, env, true);
       if (url.pathname === "/v1/skip" && req.method === "POST") return await skipPost(req, env, 1);
       if (url.pathname === "/v2/skip" && req.method === "POST") return await skipPost(req, env, 2);
       if (url.pathname === "/v1/room" && req.method === "POST") return await createRoom(env);
@@ -142,11 +145,11 @@ async function skipGet(url, env, v) {
     env.DB.prepare(`SELECT ep, i_s, i_e, c_s, dur FROM ${t.ep} WHERE srv = ?1 AND series = ?2 LIMIT 3000`).bind(s, series).all(),
     env.DB.prepare(`SELECT kind, season, id, fp FROM ${t.tpl} WHERE srv = ?1 AND series = ?2 AND bad < 2 ORDER BY ts DESC LIMIT 40`).bind(s, series).all(),
   ];
-  // Plantillas de la misma serie (mismo nombre) en tus otros servidores
-  if (v === 2 && NAME_RE.test(name) && also.length) {
-    const marks = also.map((_, i) => `?${i + 2}`).join(",");
-    q.push(env.DB.prepare(`SELECT kind, season, id, fp FROM skip_tpl2 WHERE name = ?1 AND srv IN (${marks}) AND bad < 2 ORDER BY ts DESC LIMIT 12`)
-      .bind(name, ...also).all());
+  // Plantillas de la misma serie (mismo nombre) aprendidas en cualquier otro servidor
+  void also;
+  if (v === 2 && NAME_RE.test(name)) {
+    q.push(env.DB.prepare(`SELECT kind, season, id, fp FROM skip_tpl2 WHERE name = ?1 AND srv != ?2 AND bad < 2 ORDER BY ts DESC LIMIT 12`)
+      .bind(name, s).all());
   }
   const [eps, tpl, byName] = await Promise.all(q);
   const tl = r => (r?.results || []).map(x => ({ kind: x.kind, season: x.season, id: x.id, fp: x.fp }));
@@ -157,14 +160,24 @@ async function skipGet(url, env, v) {
   });
 }
 
-async function skipPrints(url, env) {
+async function skipPrints(url, env, byName = false) {
   const s = url.searchParams.get("s") || "", series = url.searchParams.get("series") || "";
   const kind = url.searchParams.get("kind") || "";
   if (!SRV_RE.test(s) || !ID_RE.test(series) || !KINDS.has(kind)) return json({ error: "datos inválidos" }, 400);
-  const r = await env.DB.prepare(
+  const sea = season(url.searchParams.get("season"));
+  const name = url.searchParams.get("name") || "";
+  const own = await env.DB.prepare(
     `SELECT ep, first, dur, fp FROM skip_print WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 5`
-  ).bind(s, series, season(url.searchParams.get("season")), kind).all();
-  return json({ prints: (r.results || []).map(x => ({ ep: x.ep, first: x.first, d: x.dur ?? 0, fp: x.fp })) });
+  ).bind(s, series, sea, kind).all();
+  const prints = (own.results || []).map(x => ({ ep: x.ep, first: x.first, d: x.dur ?? 0, fp: x.fp }));
+  // La misma serie en otros servidores (de otros usuarios): sirven para comparar y aprender
+  if (byName && NAME_RE.test(name)) {
+    const other = await env.DB.prepare(
+      `SELECT ep, first, dur, fp FROM skip_pname WHERE name = ?1 AND season = ?2 AND kind = ?3 AND srv != ?4 ORDER BY ts DESC LIMIT 4`
+    ).bind(name, sea, kind, s).all();
+    for (const x of other.results || []) prints.push({ ep: x.ep, first: x.first, d: x.dur ?? 0, fp: x.fp, foreign: true });
+  }
+  return json({ prints });
 }
 
 async function skipPost(req, env, v) {
@@ -228,6 +241,17 @@ async function skipPost(req, env, v) {
       `DELETE FROM skip_print WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 AND ep NOT IN
          (SELECT ep FROM skip_print WHERE srv = ?1 AND series = ?2 AND season = ?3 AND kind = ?4 ORDER BY ts DESC LIMIT 5)`
     ).bind(s, series, sea, kind));
+    // También por nombre de serie (para todos los servidores): las 8 más nuevas por temporada y tipo
+    if (v === 2 && name) {
+      st.push(env.DB.prepare(
+        `INSERT INTO skip_pname (name, season, kind, srv, ep, first, dur, fp, ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+         ON CONFLICT (name, season, kind, srv, ep) DO UPDATE SET first = excluded.first, dur = excluded.dur, fp = excluded.fp, ts = excluded.ts`
+      ).bind(name, sea, kind, s, ep, first, ms(p.d), fp, now));
+      st.push(env.DB.prepare(
+        `DELETE FROM skip_pname WHERE name = ?1 AND season = ?2 AND kind = ?3 AND (srv || '|' || ep) NOT IN
+           (SELECT srv || '|' || ep FROM skip_pname WHERE name = ?1 AND season = ?2 AND kind = ?3 ORDER BY ts DESC LIMIT 8)`
+      ).bind(name, sea, kind));
+    }
   }
   for (const x of list(b.bad).slice(0, 5)) {
     const ep = String(x.ep || ""), kind = String(x.kind || "");

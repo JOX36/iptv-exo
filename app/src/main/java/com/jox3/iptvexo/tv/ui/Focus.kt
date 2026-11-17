@@ -84,5 +84,43 @@ fun Modifier.safeFocusTarget(t: SafeFocusTarget): Modifier {
     return this.focusRequester(t.req)
 }
 
+/**
+ * Recuerda el último botón o tarjeta que tuvo el foco (todos los de la app pasan por
+ * [FocusSurface]). Al abrir pantalla completa se guarda ([save]) y al volver se le devuelve
+ * el foco exactamente a ese elemento ([restore]); la lista se desplaza sola hasta él.
+ * Antes el foco caía "en cualquier parte" (a veces fuera de la pantalla) y había que mover
+ * las flechas para encontrarlo.
+ */
+object FocusTracker {
+    class Entry internal constructor() {
+        val req = FocusRequester()
+        internal var attached = false
+    }
+    @Volatile internal var last: Entry? = null
+    private var saved: Entry? = null
+
+    /** Guardar dónde está el foco (justo antes de abrir algo encima). */
+    fun save() { saved = last?.takeIf { it.attached } }
+
+    /** Devolver el foco a lo guardado. false si ya no existe (entonces se usa lo de siempre). */
+    fun restore(): Boolean {
+        val e = saved ?: return false
+        saved = null
+        if (!e.attached) return false
+        return runCatching { e.req.requestFocus(); true }.getOrDefault(false)
+    }
+}
+
+/** Lo usa [FocusSurface]: anota este elemento como "el último con foco". */
+@Composable
+fun Modifier.trackFocus(): Modifier {
+    val e = remember { FocusTracker.Entry() }
+    DisposableEffect(e) {
+        e.attached = true
+        onDispose { e.attached = false }
+    }
+    return this.focusRequester(e.req).onFocusChanged { if (it.isFocused) FocusTracker.last = e }
+}
+
 /** Fila sin memoria (sus elementos los ponen otras pantallas): entra al elemento más cercano. */
 fun Modifier.safeFocusRestorer(): Modifier = this.focusGroup()

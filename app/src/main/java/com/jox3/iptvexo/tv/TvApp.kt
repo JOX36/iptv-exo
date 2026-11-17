@@ -200,12 +200,12 @@ private fun MainShell(
 
     // ── Reproductor en vivo (uno solo: vista previa y pantalla completa) ──
     val live = remember { LivePlayback(context.applicationContext, repo) }
-    live.beforeFullscreen = { runCatching { baseFocus.saveFocusedChild() } }
+    live.beforeFullscreen = { com.jox3.iptvexo.tv.ui.FocusTracker.save(); runCatching { baseFocus.saveFocusedChild() } }
     // ── Reproductor de películas y series (pantalla completa) ──
     val vod = remember { VodPlayback(context.applicationContext, repo.library) }
-    // Intro y créditos: se comparten con quienes usan este mismo servidor
+    // Intro y créditos: lo aprendido se comparte con todos los que usan la app
     vod.skip.account = repo.api.account
-    vod.beforeOpen = { runCatching { baseFocus.saveFocusedChild() }; live.stop() }
+    vod.beforeOpen = { com.jox3.iptvexo.tv.ui.FocusTracker.save(); runCatching { baseFocus.saveFocusedChild() }; live.stop() }
     // Al poner un canal, la película que quedó en la ventanita se cierra (si no, queda encima del canal)
     live.beforePlay = { if (vod.open) vod.close() }
     host.player.vod = vod
@@ -312,7 +312,10 @@ private fun MainShell(
         if (live.fullscreen) { wasFullscreen = true; return@LaunchedEffect }
         if (wasFullscreen) {
             wasFullscreen = false
-            runCatching { if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus() }
+            delay(30)
+            // Primero al botón/tarjeta exacto de antes; si ya no existe, a la sección
+            if (!com.jox3.iptvexo.tv.ui.FocusTracker.restore())
+                runCatching { if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus() }
         }
     }
 
@@ -353,7 +356,7 @@ private fun MainShell(
         if (wasVod) {
             wasVod = false
             delay(30)
-            runCatching {
+            if (!com.jox3.iptvexo.tv.ui.FocusTracker.restore()) runCatching {
                 if (detail != null) detailReq.requestFocus()
                 else if (!baseFocus.restoreFocusedChild()) baseFocus.requestFocus()
             }

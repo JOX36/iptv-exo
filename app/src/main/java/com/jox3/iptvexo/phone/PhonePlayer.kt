@@ -686,7 +686,7 @@ private fun SkipSheet(vod: VodPlayback, onDismiss: () -> Unit) {
             SheetToggle("Aprender intros y créditos", detect) { detect = !detect; vod.skip.detectEnabled = detect }
             if (intro != null) PButton("La intro está mal", Modifier.fillMaxWidth(), primary = false) { vod.skip.reportWrong("intro"); onDismiss() }
             if (vod.creditsAt > 0) PButton("Los créditos están mal", Modifier.fillMaxWidth(), primary = false) { vod.skip.reportWrong("credits"); onDismiss() }
-            Text("Se aprende sola al ver 2 capítulos de la temporada; los tiempos se comparten con quienes usan este mismo servidor.",
+            Text("Se aprende sola al ver 2 capítulos de la temporada; lo aprendido se comparte con todos los que usan la app.",
                 style = PType.Tiny, color = Jx.Faint)
         }
     }
