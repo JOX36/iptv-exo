@@ -619,7 +619,7 @@ private fun SkipPanel(vod: VodPlayback, req: FocusRequester) {
         ChoiceRow("Aprender intros y créditos", detect, Modifier) { detect = !detect; vod.skip.detectEnabled = detect }
         if (intro != null) ChoiceRow("La intro está mal", false, Modifier) { vod.skip.reportWrong("intro") }
         if (vod.creditsAt > 0) ChoiceRow("Los créditos están mal", false, Modifier) { vod.skip.reportWrong("credits") }
-        Text("Se aprende sola al ver 2 capítulos de la temporada; los tiempos se comparten con quienes usan este mismo servidor.",
+        Text("Se aprende sola al ver 2 capítulos de la temporada; lo aprendido se comparte con todos los que usan la app.",
             style = Type.Small, color = Jx.Faint, modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp))
     }
 }

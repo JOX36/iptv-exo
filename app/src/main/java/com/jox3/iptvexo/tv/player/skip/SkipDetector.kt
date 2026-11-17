@@ -39,14 +39,16 @@ data class SkipState(
  *
  * 1. Mientras se ve un capítulo, se saca la huella del audio que va sonando ([SkipTap]).
  * 2. Si otro capítulo de la misma temporada ya se escuchó (en este equipo o en cualquier otro
- *    que use el mismo servidor IPTV), se comparan: el tramo que suena igual es la intro (al
+ *    que vea la misma serie, aunque sea en otro servidor IPTV), se comparan: el tramo que suena igual es la intro (al
  *    principio) o los créditos (al final). Ese tramo queda como "plantilla".
  * 3. Con una plantilla, en cada capítulo nuevo la intro se reconoce a los ~4 s de empezar y
  *    aparece "Saltar intro" hasta el segundo exacto donde termina. Igual con los créditos:
  *    aparece "Siguiente episodio".
- * 4. Los tiempos y las plantillas se guardan en el servidor de Cloudflare de la app, solo para
- *    quienes usan el mismo servidor IPTV (se identifica con una huella del dominio, nunca con el
- *    usuario ni la contraseña). Un capítulo que ya vio alguien tiene el botón desde el segundo 0.
+ * 4. Las plantillas y huellas se guardan en el servidor de Cloudflare de la app y sirven para
+ *    TODOS los que ven esa serie (se agrupan por el nombre de la serie). Los tiempos exactos de
+ *    cada capítulo van por servidor IPTV (cada uno numera distinto sus capítulos), que se
+ *    identifica con una huella del dominio, nunca con el usuario ni la contraseña. Un capítulo
+ *    que ya vio alguien en ese servidor tiene el botón desde el segundo 0.
  */
 class SkipDetector(context: Context) {
     private val app = context.applicationContext
@@ -77,7 +79,7 @@ class SkipDetector(context: Context) {
 
     private class Ep(
         val gen: Int, val srv: String, val series: String, val season: Int, val id: String,
-        /** Nombre de la serie "normalizado" (para usar lo aprendido en tus otros servidores). */
+        /** Nombre de la serie "normalizado" (para usar lo aprendido en cualquier servidor). */
         val name: String,
     ) {
         val phases = Array(4) { Prints() }
@@ -304,13 +306,13 @@ class SkipDetector(context: Context) {
         val myEnd = ((seg.aEnd + p / 4.0) * AudioPrint.HOP_MS).toLong()
         val oStart = AudioPrint.msOf(other.first + seg.bStart); val oEnd = AudioPrint.msOf(other.first + seg.bEnd)
         ep.res = ep.res.copy(introStart = myStart, introEnd = myEnd, dur = d)
-        val otherRes = store.result(ep.srv, other.ep).copy(introStart = oStart, introEnd = oEnd)
+        val otherRes = if (other.foreign) null else store.result(ep.srv, other.ep).copy(introStart = oStart, introEnd = oEnd)
         // La plantilla sale del capítulo con la intro más corta: si tiene una parte que cambia de largo,
         // el final que se calcula al reconocerla nunca se pasa (y al oír el final se corrige)
         val tpl = Tpl("intro", ep.season, shorter(mine[p], seg.aStart, seg.aEnd, other.fp, seg.bStart, seg.bEnd))
         store.saveTemplates(ep.srv, ep.series, ep.name, listOf(tpl))
         ep.templates = allTemplates(ep.srv, ep.series, ep.name)
-        saveAndShare(ep, listOf(ep.id to ep.res, other.ep to otherRes), listOf(tpl))
+        saveAndShare(ep, listOfNotNull(ep.id to ep.res, otherRes?.let { other.ep to it }), listOf(tpl))
         // Su huella también queda para comparar (más variedad = se aprende mejor)
         sharePrint(ep, "intro", 0, mine[0], d)
         publish(ep, "Intro aprendida: desde el próximo capítulo aparece «Saltar intro»")
@@ -335,10 +337,10 @@ class SkipDetector(context: Context) {
         val myStart = ((from + seg.aStart + p / 4.0) * AudioPrint.HOP_MS).toLong()
         val oStart = AudioPrint.msOf(other.first + seg.bStart)
         ep.res = ep.res.copy(creditsStart = myStart, dur = d)
-        val otherRes = store.result(ep.srv, other.ep).copy(creditsStart = oStart, dur = other.dur)
+        val otherRes = if (other.foreign) null else store.result(ep.srv, other.ep).copy(creditsStart = oStart, dur = other.dur)
         val tpl = Tpl("credits", ep.season, shorter(mine[p], seg.aStart, seg.aEnd, other.fp, seg.bStart, seg.bEnd))
         store.saveTemplates(ep.srv, ep.series, ep.name, listOf(tpl))
-        saveAndShare(ep, listOf(ep.id to ep.res, other.ep to otherRes), listOf(tpl))
+        saveAndShare(ep, listOfNotNull(ep.id to ep.res, otherRes?.let { other.ep to it }), listOf(tpl))
         sharePrint(ep, "credits", from, mine[0], d)
     }
 
@@ -348,8 +350,10 @@ class SkipDetector(context: Context) {
     /** Huellas de otros capítulos de la temporada (este equipo + el servidor de la app). */
     private fun candidates(ep: Ep, kind: String): List<PrintRec> {
         val local = store.prints(ep.srv, ep.series, ep.season, kind)
-        val cloud = SkipCloud.prints(ep.srv, ep.series, ep.season, kind).orEmpty()
-        return (local + cloud).filter { it.ep != ep.id && it.fp.size > SkipMatch.W }.distinctBy { it.ep }.take(5)
+        // De este servidor primero; luego la misma serie en otros servidores (de cualquier usuario)
+        val cloud = SkipCloud.prints(ep.srv, ep.series, ep.season, kind, ep.name).orEmpty()
+        return (local + cloud).filter { (it.foreign || it.ep != ep.id) && it.fp.size > SkipMatch.W }
+            .distinctBy { (if (it.foreign) "f|" else "") + it.ep }.take(6)
     }
 
     /** El mejor tramo común con alguno de los capítulos (se prueban los 4 desfases de la grilla). */
@@ -443,7 +447,11 @@ class Tpl(val kind: String, val season: Int, val fp: IntArray) {
 }
 
 /** Huella de la ventana de intro o de créditos de un capítulo (para compararla con otro). */
-class PrintRec(val ep: String, val kind: String, val season: Int, val first: Int, val fp: IntArray, val dur: Long)
+class PrintRec(
+    val ep: String, val kind: String, val season: Int, val first: Int, val fp: IntArray, val dur: Long,
+    /** De otro servidor (otro usuario): sirve para aprender, pero su capítulo no es de este servidor. */
+    val foreign: Boolean = false,
+)
 
 /** Lo guardado en este equipo (para no depender de internet y responder al instante). */
 internal class SkipStore(ctx: Context) {
@@ -573,13 +581,13 @@ internal object SkipCloud {
         }
     }.getOrNull()
 
-    fun prints(srv: String, series: String, season: Int, kind: String): List<PrintRec>? = runCatching {
-        val req = Request.Builder().url("${CloudSync.SERVER}/v1/skip/prints?s=$srv&series=${enc(series)}&season=$season&kind=$kind").build()
+    fun prints(srv: String, series: String, season: Int, kind: String, name: String): List<PrintRec>? = runCatching {
+        val req = Request.Builder().url("${CloudSync.SERVER}/v2/skip/prints?s=$srv&series=${enc(series)}&season=$season&kind=$kind&name=${enc(name)}").build()
         client().newCall(req).execute().use { r ->
             if (!r.isSuccessful) return null
             val a = JSONObject(r.body?.string().orEmpty()).optJSONArray("prints") ?: return emptyList()
             (0 until a.length()).map { a.getJSONObject(it) }.map {
-                PrintRec(it.getString("ep"), kind, season, it.optInt("first"), Prints.decode(it.getString("fp")), it.optLong("d"))
+                PrintRec(it.getString("ep"), kind, season, it.optInt("first"), Prints.decode(it.getString("fp")), it.optLong("d"), it.optBoolean("foreign"))
             }
         }
     }.getOrNull()
