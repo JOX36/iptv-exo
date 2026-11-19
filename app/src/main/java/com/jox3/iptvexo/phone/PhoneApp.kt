@@ -83,9 +83,16 @@ fun PhoneApp(act: PhoneActivity) {
     var account by remember { mutableStateOf(accounts.current()) }
     var adding by remember { mutableStateOf(false) }
     // Lista enviada por otra app (jox3://add): confirmar, comprobar y abrirla
-    com.jox3.iptvexo.tv.screens.AddListPrompt(tv = false, accounts) { a, isNew ->
+    com.jox3.iptvexo.tv.screens.AddListPrompt(tv = false, accounts) { a, isNew, chosen ->
         accounts.use(a)
-        if (isNew) com.jox3.iptvexo.tv.data.ServerAccess.claimNew(context, accounts, a)
+        if (chosen != null) {
+            // Se eligió perfil en la ventana: si ese perfil ya tiene servidores propios, este queda suyo
+            val others = accounts.all().filter { it.key != a.key }
+            if (isNew && com.jox3.iptvexo.tv.data.ServerAccess.hasOwn(context, others, chosen))
+                com.jox3.iptvexo.tv.data.ServerAccess.setOwner(context, a.key, chosen.id)
+            // Entrar directo en ese perfil (si tiene PIN, igual lo pide)
+            if (!chosen.hasPin) com.jox3.iptvexo.tv.data.Profiles.current = chosen
+        } else if (isNew) com.jox3.iptvexo.tv.data.ServerAccess.claimNew(context, accounts, a)
         account = a; adding = false
     }
     val acc = account
