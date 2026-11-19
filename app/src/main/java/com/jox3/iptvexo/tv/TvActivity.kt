@@ -46,7 +46,8 @@ class TvActivity : ComponentActivity(), TvHost {
         updater = Updater(this)
         updater.checkOnStartup()
 
-        GoogleTv.pendingLink = intent?.data
+        // jox3://add (lista enviada por otra app) se confirma aparte; lo demás, como siempre
+        if (!com.jox3.iptvexo.tv.screens.AddListLink.take(intent?.data)) GoogleTv.pendingLink = intent?.data
         setContent { JoxTheme { TvApp(this) } }
         showLastCrash()
     }
@@ -55,7 +56,7 @@ class TvActivity : ComponentActivity(), TvHost {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.data?.let { GoogleTv.pendingLink = it }
+        intent.data?.let { if (!com.jox3.iptvexo.tv.screens.AddListLink.take(it)) GoogleTv.pendingLink = it }
     }
 
     /** Si la app se cerró por un error, mostrar qué pasó (una sola vez). */

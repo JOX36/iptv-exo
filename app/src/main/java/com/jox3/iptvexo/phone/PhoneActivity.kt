@@ -143,6 +143,8 @@ class PhoneActivity : ComponentActivity() {
     /** Enlace de invitación a "Ver juntos" (jox3://together/123456): unirse a esa sala. */
     private fun takeTogetherLink(i: android.content.Intent?) {
         val d = i?.data ?: return
+        // Lista enviada por otra app (JOX3 Radar): se confirma antes de agregarla
+        if (com.jox3.iptvexo.tv.screens.AddListLink.take(d)) return
         // Notificación de un recordatorio: abrir ese canal
         if (d.scheme == "jox3" && d.host == "open") { com.jox3.iptvexo.tv.GoogleTv.pendingLink = d; return }
         if (d.scheme == "jox3" && d.host == "together") {

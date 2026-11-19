@@ -137,6 +137,13 @@ fun TvApp(host: TvHost) {
     val accounts = remember { AccountStore(context) }
     var account by remember { mutableStateOf(accounts.current()) }
 
+    // Lista enviada por otra app (jox3://add): confirmar, comprobar y abrirla
+    com.jox3.iptvexo.tv.screens.AddListPrompt(tv = true, accounts) { a, isNew ->
+        accounts.use(a)
+        if (isNew) com.jox3.iptvexo.tv.data.ServerAccess.claimNew(context, accounts, a)
+        account = a
+    }
+
     val acc = account
     if (acc == null) {
         LoginScreen(accounts) { a ->

@@ -64,6 +64,15 @@
                 <!-- Hace que la app aparezca en la pantalla de inicio de Android TV -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
+            <!-- Agregar una lista desde otra app (JOX3 Radar): jox3://add?url=<URL codificada>.
+                 Va aquí (y no en la de TV y la del celular a la vez) para que Android no pregunte
+                 "¿Abrir con…?" entre dos pantallas de la misma app: esta la pasa a la que corresponde. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="jox3" android:host="add" />
+            </intent-filter>
         </activity>
 
         <!-- Interfaz nativa para Android TV / TV Box (Jetpack Compose for TV).

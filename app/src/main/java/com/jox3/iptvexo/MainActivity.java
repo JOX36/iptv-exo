@@ -24,7 +24,10 @@ public class MainActivity extends AppCompatActivity {
         Class<?> target = isTvDevice()
             ? com.jox3.iptvexo.tv.TvActivity.class
             : com.jox3.iptvexo.phone.PhoneActivity.class;
-        startActivity(new Intent(this, target));
+        Intent open = new Intent(this, target);
+        // Enlaces jox3:// (p. ej. jox3://add desde JOX3 Radar): pasan a la interfaz que corresponde
+        if (getIntent() != null && getIntent().getData() != null) open.setData(getIntent().getData());
+        startActivity(open);
         finish();
     }
 
