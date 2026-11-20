@@ -1,0 +1,34 @@
+package com.jox3.iptvexo.tv.data
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+/** Nombres limpios: sin emojis, estrellas ni códigos que ponen los servidores. */
+class NamesTest {
+    @Test fun categorias() {
+        assertEquals("🇨🇴 COLOMBIA", Names.category("★-COLOMBIA-★"))
+        assertEquals("🇧🇷 BIG BROTHER BRASIL", Names.category("🇧🇷 BIG BROTHER BRASIL"))
+        assertEquals("⚽ TIGO SPORTS", Names.category("⭐-TIGO SPORTS-⭐"))
+        assertEquals("ALQUILER VIP", Names.category("★-ALQUILER VIP-★"))
+        assertEquals("🇵🇷 PUERTO RICO", Names.category("★-PUERTO RICO-★"))
+        assertEquals("📰 NOTICIAS", Names.category("TV | Noticias"))
+    }
+
+    @Test fun canales() {
+        assertEquals("CARACOL", Names.channel("*Caracol*"))
+        assertEquals("CARACOL", Names.channel("COL caracol"))
+        assertEquals("CARACOL HD", Names.channel("CO: Caracol HD"))
+        assertEquals("A&E HD", Names.channel("A&E HD 70-61"))
+        assertEquals("A&E SD", Names.channel("A&E SD 70"))
+        assertEquals("CANAL 13", Names.channel("Canal 13"))
+        assertEquals("USA NETWORK", Names.channel("USA Network"))
+        assertEquals("ESPN 2", Names.channel("⚽ ESPN 2 ⚽"))
+    }
+
+    @Test fun titulos() {
+        assertEquals("Dune (2021)", Names.clean("★ Dune (2021) ★", titles = true))
+        assertEquals("M*A*S*H", Names.clean("M*A*S*H", titles = true))
+        assertEquals("¡Qué buena onda!", Names.clean("¡Qué buena onda!", titles = true))
+        assertEquals("Dune (4K)", Names.clean("4K | Dune", titles = true))
+    }
+}

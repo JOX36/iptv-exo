@@ -3,7 +3,12 @@ package com.jox3.iptvexo.tv.data
 /**
  * Nombres limpios para mostrar: quita los prefijos de código que ponen los servidores
  * ("TV | Noticias" → "Noticias", "N | Telemundo Noticias" → "Telemundo Noticias",
- * "Rel | EWTN" → "EWTN", "CO: Deportes" → "Deportes"). Los emojis y banderas se quedan.
+ * "Rel | EWTN" → "EWTN", "CO: Deportes" → "Deportes").
+ *
+ * También quita lo que los servidores le agregan de adorno: emojis, estrellas y símbolos
+ * ("★-COLOMBIA-★" → "COLOMBIA", "*CARACOL*" → "CARACOL"), el país pegado al canal
+ * ("COL CARACOL" → "CARACOL") y códigos internos al final ("A&E HD 70-61" → "A&E HD").
+ * Las categorías reciben después el emoji de la app ("🇨🇴 COLOMBIA"), siempre el mismo estilo.
  *
  * Si el prefijo era de calidad o idioma (4K, FHD, LAT, SUB…) no se pierde: pasa al final
  * entre paréntesis ("4K | Dune" → "Dune (4K)"), porque esa información sí sirve.
@@ -28,7 +33,7 @@ object Names {
      *   (un título como "DC: La Liga…" no se toca).
      */
     fun clean(raw: String, titles: Boolean = false): String {
-        var s = raw.trim()
+        var s = strip(raw)
         val kept = ArrayList<String>(2)
         repeat(3) {
             val m = BAR.find(s) ?: (if (titles) null else CODE.find(s)) ?: return@repeat
@@ -52,7 +57,42 @@ object Names {
     private val ES = java.util.Locale("es")
 
     /** Nombre de canal para mostrar: limpio y en MAYÚSCULAS (se lee mejor a distancia). */
-    fun channel(raw: String): String = clean(raw).uppercase(ES)
+    fun channel(raw: String): String {
+        var s = clean(raw)
+        // País pegado delante sin separador: "COL CARACOL", "MEX Las Estrellas" (códigos de 3 letras)
+        LEAD_COUNTRY.find(s)?.let { m -> if (m.groupValues[2].length >= 2) s = m.groupValues[2] }
+        // Códigos internos al final: "70-61", y el número pegado a la calidad ("SD 70" → "SD")
+        s = s.replace(TAIL_CODE, "").replace(QUALITY_NUM, "$1").trim()
+        return (s.ifBlank { clean(raw) }).uppercase(ES)
+    }
+
+    /** Quita emojis, banderas, estrellas y símbolos de adorno, y los guiones/asteriscos de las puntas. */
+    fun strip(raw: String): String {
+        val sb = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            val cp = raw.codePointAt(i)
+            i += Character.charCount(cp)
+            val t = Character.getType(cp)
+            val junk = t == Character.OTHER_SYMBOL.toInt() ||          // ★ ⭐ ✪ ⚽ 📺 y casi todos los emojis
+                t == Character.PRIVATE_USE.toInt() || t == Character.SURROGATE.toInt() ||
+                cp in 0x1F1E6..0x1F1FF ||                              // letras de banderas
+                cp in 0xFE00..0xFE0F || cp == 0x200D || cp == 0x20E3 || // variantes de emoji, unión, tecla
+                cp in 0x1F3FB..0x1F3FF || cp in 0xE0020..0xE007F       // tonos de piel, etiquetas
+            if (junk) sb.append(' ') else sb.appendCodePoint(cp)
+        }
+        val out = sb.toString()
+            .replace(EDGE_START, "").replace(EDGE_END, "")
+            .replace(Regex("\\s{2,}"), " ").trim()
+        return out.ifBlank { raw.trim() }
+    }
+
+    /** Adornos en las puntas ("-★-", "**", "~", "•", "|", "=="). No quita "+" de "+18" ni "!" de un título. */
+    private val EDGE_START = Regex("^[\\s\\-–—_*~=•·.:|/\\\\#>]+")
+    private val EDGE_END = Regex("[\\s\\-–—_*~=•·:|/\\\\#<]+$")
+    private val LEAD_COUNTRY = Regex("^(COL|MEX|ARG|ESP|PER|CHI|VEN|ECU|URU|PAR|BOL|BRA|CRC|GUA|HON|DOM)\\s+(.+)$", RegexOption.IGNORE_CASE)
+    private val TAIL_CODE = Regex("\\s+\\d{1,4}\\s*-\\s*\\d{1,4}$")
+    private val QUALITY_NUM = Regex("(?i)\\b(FHD|UHD|HD|SD|4K)\\s+\\d{1,4}$")
 
     /**
      * Nombre de categoría para mostrar: limpio, en MAYÚSCULAS y con un emoji según el tema
