@@ -8,6 +8,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** Cuentas guardadas y la cuenta activa. */
+/** Servidores guardados en el equipo como máximo. */
+private const val MAX_ACCOUNTS = 60
+
 class AccountStore(context: Context) {
     private val app = context.applicationContext
     private val prefs: SharedPreferences = context.getSharedPreferences("tv_accounts", Context.MODE_PRIVATE)
@@ -32,7 +35,7 @@ class AccountStore(context: Context) {
     fun use(acc: Account) {
         val list = listOf(acc) + all().filter { it.key != acc.key }
         val arr = JSONArray()
-        list.take(20).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
+        list.take(MAX_ACCOUNTS).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
         prefs.edit().putString("list", arr.toString()).putString("current", acc.key).apply()
     }
 
@@ -42,7 +45,7 @@ class AccountStore(context: Context) {
         val fresh = accs.filter { a -> current.none { it.key == a.key } }.distinctBy { it.key }
         if (fresh.isEmpty()) return 0
         val arr = JSONArray()
-        (current + fresh).take(20).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
+        (current + fresh).take(MAX_ACCOUNTS).forEach { a -> arr.put(JSONObject().put("host", a.host).put("user", a.user).put("pass", a.pass)) }
         prefs.edit().putString("list", arr.toString()).apply()
         return fresh.size
     }
