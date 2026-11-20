@@ -719,10 +719,17 @@ private fun ServerChecklist(tv: Boolean, servers: List<Account>, checked: Set<St
 fun VaultUnlockGate(store: ProfileStore, tv: Boolean, profileId: String, onSwitch: (Account) -> Unit = {}, content: @Composable () -> Unit) {
     val ctx = LocalContext.current
     var ask by remember(profileId) { mutableStateOf<Profile?>(null) }
+    // Servidor recién agregado sin dueño: queda de este perfil en vez de esconderse (antes de mostrar nada)
+    remember(profileId) {
+        store.byId(profileId)?.let { p ->
+            com.jox3.iptvexo.tv.data.ServerAccess.claimFresh(ctx, com.jox3.iptvexo.tv.data.AccountStore(ctx), p, store.account.key)
+        }
+    }
     /** Si este servidor no es de los que ve el perfil, se pasa al primero de los suyos. */
     fun checkVisible() {
         val p = store.byId(profileId) ?: return
-        val vis = com.jox3.iptvexo.tv.data.ServerAccess.visible(ctx, com.jox3.iptvexo.tv.data.AccountStore(ctx).all(), p)
+        val accounts = com.jox3.iptvexo.tv.data.AccountStore(ctx)
+        val vis = com.jox3.iptvexo.tv.data.ServerAccess.visible(ctx, accounts.all(), p)
         if (vis.isNotEmpty() && vis.none { it.key == store.account.key }) onSwitch(vis.first())
     }
     LaunchedEffect(profileId) {

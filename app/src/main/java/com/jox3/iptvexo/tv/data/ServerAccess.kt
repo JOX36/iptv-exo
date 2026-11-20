@@ -51,10 +51,33 @@ object ServerAccess {
      * queda como suyo (y entra a su código JOX3 la próxima vez que se sincronice).
      */
     fun claimNew(ctx: Context, accounts: AccountStore, acc: Account) {
-        val p = Profiles.current ?: return
-        if (!hasOwn(ctx, accounts.all().filter { it.key != acc.key }, p)) return
-        setOwner(ctx, acc.key, p.id)
+        val p = Profiles.current
+        if (p != null && hasOwn(ctx, accounts.all().filter { it.key != acc.key }, p)) {
+            setOwner(ctx, acc.key, p.id); clearFresh(ctx); return
+        }
+        // Aún no se sabe quién lo agregó (sin perfil, o el perfil cambia después):
+        // se recuerda para dárselo al primer perfil que entre con él
+        prefs(ctx).edit().putString("fresh.key", acc.key).putLong("fresh.ts", System.currentTimeMillis()).apply()
     }
+
+    /**
+     * El perfil [p] entra con [accKey] activo. Si es el servidor que se acaba de agregar y no tiene
+     * dueño, pasa a ser de ese perfil (si tiene servidores propios), así no se esconde ni se cambia
+     * por otro. Devuelve true si quedó suyo.
+     */
+    fun claimFresh(ctx: Context, accounts: AccountStore, p: Profile, accKey: String): Boolean {
+        val pr = prefs(ctx)
+        val key = pr.getString("fresh.key", null) ?: return false
+        val recent = System.currentTimeMillis() - pr.getLong("fresh.ts", 0L) < FRESH_MS
+        clearFresh(ctx)
+        if (key != accKey || !recent || owner(ctx, accKey) != null) return false
+        if (!hasOwn(ctx, accounts.all().filter { it.key != accKey }, p)) return false
+        setOwner(ctx, accKey, p.id)
+        return true
+    }
+
+    private fun clearFresh(ctx: Context) { prefs(ctx).edit().remove("fresh.key").remove("fresh.ts").apply() }
+    private const val FRESH_MS = 2 * 60 * 60 * 1000L
 
     /**
      * Servidores que llegaron del código JOX3 de [p]: los que no estaban en el equipo quedan como
