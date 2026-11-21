@@ -119,7 +119,7 @@ fun Modifier.trackFocus(): Modifier {
         e.attached = true
         onDispose { e.attached = false }
     }
-    return this.focusRequester(e.req).onFocusChanged { if (it.isFocused) FocusTracker.last = e }
+    return this.focusRequester(e.req).onFocusChanged { if (it.isFocused) { FocusTracker.last = e; NavSound.onFocusMoved() } }
 }
 
 /** Fila sin memoria (sus elementos los ponen otras pantallas): entra al elemento más cercano. */
