@@ -25,7 +25,12 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
     suspend fun categories(s: Section): List<Category> =
         lock.withLock { categories[s] } ?: api.categories(s).also { list ->
             lock.withLock { categories[s] = list }
-            if (s == Section.LIVE) startExternalEpg(list)
+            if (s == Section.LIVE) {
+                startExternalEpg(list)
+                // Categorías de adultos: sus canales salen de "Canales recientes"
+                Adult.learn(library.accountKey, list)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { library.purgeAdultRecents() }
+            }
         }
 
     /**

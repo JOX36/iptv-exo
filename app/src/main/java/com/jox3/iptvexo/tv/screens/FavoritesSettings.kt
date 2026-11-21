@@ -157,6 +157,11 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             }, Modifier.fillMaxWidth())
             Text("Zona: " + com.jox3.iptvexo.tv.data.AppTime.label(tctx) + ". OK para cambiar entre automática y la del equipo.",
                 style = Type.Small, color = Jx.Faint)
+            // Clic suave al mover el cursor (como TiviMate)
+            var navSound by remember { mutableStateOf(com.jox3.iptvexo.tv.ui.NavSound.enabled(tctx)) }
+            ActionButton("Sonido al navegar: " + if (navSound) "Sí" else "No", {
+                navSound = !navSound; com.jox3.iptvexo.tv.ui.NavSound.setEnabled(tctx, navSound)
+            }, Modifier.fillMaxWidth())
             // Series: saltar la intro solo / aprender intros y créditos
             var skipAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.autoSkip(tctx)) }
             var skipLearn by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.detect(tctx)) }

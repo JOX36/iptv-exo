@@ -30,6 +30,7 @@ class TvActivity : ComponentActivity(), TvHost {
         super.onCreate(savedInstanceState)
         com.jox3.iptvexo.tv.data.Downloads.resumePending(this)
         hideSystemBars()
+        com.jox3.iptvexo.tv.ui.NavSound.init(this)   // clic al mover el cursor
 
         // Imágenes (logos, pósters, fondos): mismo cliente HTTP que la app y caché
         // en disco, así las carátulas no se vuelven a descargar en cada visita.
@@ -85,6 +86,11 @@ class TvActivity : ComponentActivity(), TvHost {
      * cierra. Aquí se ignora esa pulsación (la siguiente funciona normal) en vez de cerrar.
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = try {
+        if (event.action == android.view.KeyEvent.ACTION_DOWN) when (event.keyCode) {
+            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT ->
+                com.jox3.iptvexo.tv.ui.NavSound.arm()
+        }
         super.dispatchKeyEvent(event)
     } catch (e: IllegalStateException) {
         if (e.message?.contains("FocusRequester is not initialized") == true) {

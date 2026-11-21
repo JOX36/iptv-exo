@@ -84,7 +84,7 @@ class AccountStore(context: Context) {
  * "continuar viendo". Los cambios se reflejan al instante en la interfaz
  * (listas observables de Compose).
  */
-class LibraryStore(context: Context, accountKey: String, val profileId: String = Profiles.MAIN) {
+class LibraryStore(context: Context, val accountKey: String, val profileId: String = Profiles.MAIN) {
     private val prefs = context.getSharedPreferences("tv_library", Context.MODE_PRIVATE)
     /** Archivo de posiciones de este perfil (lo usa también el reproductor). */
     val progressFile = ProfileStore.progressFile(accountKey, profileId)
@@ -138,6 +138,7 @@ class LibraryStore(context: Context, accountKey: String, val profileId: String =
     }
 
     fun addRecentChannel(item: SavedItem) {
+        if (Adult.isAdult(accountKey, item)) return   // los de adultos no se recuerdan
         val now = System.currentTimeMillis()
         val it2 = item.copy(ts = now)
         recentChannels.removeAll { it.id == item.id }
@@ -145,6 +146,11 @@ class LibraryStore(context: Context, accountKey: String, val profileId: String =
         while (recentChannels.size > 20) recentChannels.removeAt(recentChannels.size - 1)
         save("recent", recentChannels)
         markChange("recent", item.kind, item.id, toJson(it2), now)
+    }
+
+    /** Quita de "Canales recientes" los de adultos que ya estaban guardados. */
+    fun purgeAdultRecents() {
+        if (recentChannels.removeAll { Adult.isAdult(accountKey, it) }) save("recent", recentChannels)
     }
 
     /** Recuerda título e imagen de lo que se va a ver, para "continuar viendo". */
@@ -329,6 +335,7 @@ class LibraryStore(context: Context, accountKey: String, val profileId: String =
                 }
                 "recent" -> if (!deleted) {
                     val item = fromJson(data!!)
+                    if (Adult.isAdult(accountKey, item)) return@forEach
                     val old = recentChannels.firstOrNull { it.id == id }
                     if (old == null || old.ts < item.ts) {
                         recentChannels.removeAll { it.id == id }; recentChannels.add(item); rec = true
