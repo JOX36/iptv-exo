@@ -136,13 +136,21 @@ class XtreamApi(val account: Account) {
             val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Channel(
                 id = id,
-                name = Names.channel(o["name"]?.trim()?.ifBlank { null } ?: "?"),
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",   // se limpia abajo, por categoría
                 logo = o["stream_icon"].orEmpty(),
                 categoryId = o["category_id"].orEmpty(),
                 num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
                 epgId = o["epg_channel_id"].orEmpty().takeUnless { it == "null" }.orEmpty(),
                 archiveDays = if (o["tv_archive"] == "1") (o["tv_archive_duration"]?.toDoubleOrNull()?.toInt() ?: 1).coerceAtLeast(1) else 0,
             )
+        }.let { list ->
+            // Nombres limpios; el prefijo que repiten todos los canales de una categoría
+            // ("PREMIUM | SPACE HD", "PREMIUM | TNT HD"…) se quita
+            val names = HashMap<String, String>(list.size * 2)
+            list.groupBy { it.categoryId }.values.forEach { g ->
+                Names.channelList(g.map { it.name }).forEachIndexed { i, n -> names[g[i].id] = n }
+            }
+            list.map { it.copy(name = names[it.id] ?: Names.channel(it.name)) }
         }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)
     }
 

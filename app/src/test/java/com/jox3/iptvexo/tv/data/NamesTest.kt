@@ -31,4 +31,13 @@ class NamesTest {
         assertEquals("¡Qué buena onda!", Names.clean("¡Qué buena onda!", titles = true))
         assertEquals("Dune (4K)", Names.clean("4K | Dune", titles = true))
     }
+
+    @Test fun prefijoCompartido() {
+        assertEquals(listOf("SPACE HD", "CINECANAL FHD", "TNT HD", "HBO"),
+            Names.channelList(listOf("PREMIUM | SPACE HD", "PREMIUM | CINECANAL FHD", "PREMIUM | TNT HD", "HBO")))
+        assertEquals(listOf("ESPN | 1", "ESPN | 2", "ESPN | 3"),
+            Names.channelList(listOf("ESPN | 1", "ESPN | 2", "ESPN | 3")))
+        assertEquals(listOf("FOX SPORTS", "PLUS | CANAL"), Names.channelList(listOf("Fox Sports", "Plus | Canal")))
+        assertEquals("SPACE HD", Names.channel("PREMIUM | SPACE HD"))
+    }
 }
