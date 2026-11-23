@@ -20,7 +20,7 @@ object Names {
     private val CODE = Regex("^\\s*([A-Z0-9+]{1,4})\\s*(?::|»|›|\\s-\\s)\\s*(.+)$")
     /** Prefijos genéricos que no son parte del nombre (tipo, país, sección). */
     private val GENERIC = setOf(
-        "TV", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
+        "TV", "PREMIUM", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
         "USA", "LAT", "ARG", "COL", "MEX", "ESP", "PER", "CHI", "VEN", "ECU", "URU", "PAR", "BOL", "BRA", "CAN", "EUR",
     )
     private val KEEP = setOf(
@@ -66,6 +66,22 @@ object Names {
         return (s.ifBlank { clean(raw) }).uppercase(ES)
     }
 
+    /**
+     * Limpia los nombres de los canales de UNA categoría. Si la mayoría repite el mismo prefijo
+     * con barra ("PREMIUM | SPACE HD", "PREMIUM | CINEMAX HD"), ese prefijo sobra y se quita.
+     * No se quita si lo que queda empieza por número ("ESPN | 2" se queda igual).
+     */
+    fun channelList(raws: List<String>): List<String> {
+        val parts = raws.map { r -> SHARED.find(strip(r))?.let { m -> m.groupValues[1].trim().uppercase(ES) to m.groupValues[2].trim() } }
+        val top = parts.filterNotNull().groupingBy { it.first }.eachCount().maxByOrNull { it.value }
+        val prefix = top?.takeIf { it.value >= 3 && it.value * 10 >= raws.size * 6 }?.key
+        return raws.mapIndexed { i, r ->
+            val p = parts[i]
+            if (prefix != null && p != null && p.first == prefix && p.second.length >= 3 && !p.second[0].isDigit())
+                channel(p.second) else channel(r)
+        }
+    }
+
     /** Quita emojis, banderas, estrellas y símbolos de adorno, y los guiones/asteriscos de las puntas. */
     fun strip(raw: String): String {
         val sb = StringBuilder(raw.length)
@@ -88,6 +104,7 @@ object Names {
     }
 
     /** Adornos en las puntas ("-★-", "**", "~", "•", "|", "=="). No quita "+" de "+18" ni "!" de un título. */
+    private val SHARED = Regex("^\\s*([^|│┃¦]{1,20}?)\\s*[|│┃¦]\\s*(.+)$")
     private val EDGE_START = Regex("^[\\s\\-–—_*~=•·.:|/\\\\#>]+")
     private val EDGE_END = Regex("[\\s\\-–—_*~=•·:|/\\\\#<]+$")
     private val LEAD_COUNTRY = Regex("^(COL|MEX|ARG|ESP|PER|CHI|VEN|ECU|URU|PAR|BOL|BRA|CRC|GUA|HON|DOM)\\s+(.+)$", RegexOption.IGNORE_CASE)
