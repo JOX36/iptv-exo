@@ -14,6 +14,8 @@ import java.net.URLEncoder
 class XtreamApi(val account: Account) {
 
     private val host = account.host.trimEnd('/')
+    /** Nombres originales de las categorías de En vivo (para limpiar el nombre de sus canales). */
+    private val liveCatNames = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
@@ -127,7 +129,7 @@ class XtreamApi(val account: Account) {
         return@withContext (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
             o.optString("category_name", "?").trim().let { raw -> Category(o.optString("category_id"), Names.category(raw), raw) }
-        }
+        }.also { list -> if (section == Section.LIVE) list.forEach { liveCatNames[it.id] = it.raw } }
     }
 
     suspend fun channels(categoryId: String? = null): List<Channel> {
@@ -147,8 +149,8 @@ class XtreamApi(val account: Account) {
             // Nombres limpios; el prefijo que repiten todos los canales de una categoría
             // ("PREMIUM | SPACE HD", "PREMIUM | TNT HD"…) se quita
             val names = HashMap<String, String>(list.size * 2)
-            list.groupBy { it.categoryId }.values.forEach { g ->
-                Names.channelList(g.map { it.name }).forEachIndexed { i, n -> names[g[i].id] = n }
+            list.groupBy { it.categoryId }.forEach { (cat, g) ->
+                Names.channelList(g.map { it.name }, liveCatNames[cat].orEmpty()).forEachIndexed { i, n -> names[g[i].id] = n }
             }
             list.map { it.copy(name = names[it.id] ?: Names.channel(it.name)) }
         }.distinctBy { it.id }   // algunos servidores repiten el mismo título (y una lista con claves repetidas cierra la app)

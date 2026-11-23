@@ -40,4 +40,10 @@ class NamesTest {
         assertEquals(listOf("FOX SPORTS", "PLUS | CANAL"), Names.channelList(listOf("Fox Sports", "Plus | Canal")))
         assertEquals("SPACE HD", Names.channel("PREMIUM | SPACE HD"))
     }
+
+    @Test fun prefijoDeLaCategoria() {
+        assertEquals(listOf("CNN EN ESPAÑOL", "CNN INGLES", "RT EN ESPANOL", "CNN INTERNACIONAL", "DW EN ESP", "IMAGEN"),
+            Names.channelList(listOf("CNN en Español", "NOTI | CNN INGLES", "NOTI | RT EN ESPANOL", "NOTI | CNN INTERNACIONAL", "DW EN ESP", "IMAGEN"), "TV NOTICIAS"))
+        assertEquals(listOf("ESPN | 2", "WIN SPORTS"), Names.channelList(listOf("ESPN | 2", "DEPORTES | WIN SPORTS"), "ESPN DEPORTES"))
+    }
 }

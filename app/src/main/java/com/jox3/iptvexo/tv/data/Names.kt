@@ -20,7 +20,7 @@ object Names {
     private val CODE = Regex("^\\s*([A-Z0-9+]{1,4})\\s*(?::|»|›|\\s-\\s)\\s*(.+)$")
     /** Prefijos genéricos que no son parte del nombre (tipo, país, sección). */
     private val GENERIC = setOf(
-        "TV", "PREMIUM", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
+        "TV", "PREMIUM", "NOTI", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
         "USA", "LAT", "ARG", "COL", "MEX", "ESP", "PER", "CHI", "VEN", "ECU", "URU", "PAR", "BOL", "BRA", "CAN", "EUR",
     )
     private val KEEP = setOf(
@@ -71,15 +71,33 @@ object Names {
      * con barra ("PREMIUM | SPACE HD", "PREMIUM | CINEMAX HD"), ese prefijo sobra y se quita.
      * No se quita si lo que queda empieza por número ("ESPN | 2" se queda igual).
      */
-    fun channelList(raws: List<String>): List<String> {
+    fun channelList(raws: List<String>, category: String = ""): List<String> {
         val parts = raws.map { r -> SHARED.find(strip(r))?.let { m -> m.groupValues[1].trim().uppercase(ES) to m.groupValues[2].trim() } }
         val top = parts.filterNotNull().groupingBy { it.first }.eachCount().maxByOrNull { it.value }
         val prefix = top?.takeIf { it.value >= 3 && it.value * 10 >= raws.size * 6 }?.key
+        val catWords = words(category)
         return raws.mapIndexed { i, r ->
             val p = parts[i]
-            if (prefix != null && p != null && p.first == prefix && p.second.length >= 3 && !p.second[0].isDigit())
-                channel(p.second) else channel(r)
+            val drop = p != null && p.second.length >= 3 && !p.second[0].isDigit() &&
+                (p.first == prefix || fromCategory(p.first, catWords))
+            if (drop) channel(p!!.second) else channel(r)
         }
+    }
+
+    /** Palabras (sin tildes, en mayúsculas) de un nombre. */
+    private fun words(s: String): List<String> =
+        java.text.Normalizer.normalize(strip(s).uppercase(ES), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "").split(Regex("[^A-Z0-9]+")).filter { it.length >= 3 }
+
+    /**
+     * El prefijo sale del nombre de la categoría: "NOTI" en "TV NOTICIAS", "PREMIUM" en "CINE PREMIUM",
+     * "DEP" en "DEPORTES". Así se quita aunque solo lo tengan algunos canales.
+     */
+    private fun fromCategory(prefix: String, catWords: List<String>): Boolean {
+        val pw = words(prefix)
+        if (pw.size != 1 || catWords.isEmpty()) return false
+        val w = pw[0]
+        return catWords.any { c -> c.startsWith(w) || (c.length >= 4 && w.startsWith(c)) }
     }
 
     /** Quita emojis, banderas, estrellas y símbolos de adorno, y los guiones/asteriscos de las puntas. */
