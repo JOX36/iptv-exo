@@ -26,6 +26,9 @@ import kotlinx.coroutines.withContext
  * Es un objeto del proceso: lo comparten la interfaz de TV y la del celular.
  */
 object ServerHub {
+    /** Desde aquí la respuesta cuenta como lenta (naranja). */
+    const val SLOW_MS = 1500L
+
     // ── Qué están dando en un canal de cualquier servidor (para el buscador) ──
     private val nowCache = HashMap<String, Pair<Long, String>>()
     private val nowPermits = kotlinx.coroutines.sync.Semaphore(3)
@@ -81,7 +84,7 @@ object ServerHub {
         /** Verde: bien · Naranja: lento o por vencer · Rojo: no responde o vencido. */
         val level: Int get() = when {
             !active -> 2
-            (daysLeft ?: 99) <= 5 || pingMs > 1500 -> 1
+            (daysLeft ?: 99) <= 5 || pingMs > SLOW_MS -> 1
             else -> 0
         }
     }
@@ -148,12 +151,22 @@ object ServerHub {
             if (!force && prev != null && now - prev.checkedAt < 5 * 60_000) return@forEach
             synchronized(checking) { if (!checking.add(acc.key)) return@forEach }
             scope.launch {
-                val t0 = System.currentTimeMillis()
-                val st = try {
-                    val info = XtreamApi(acc).serverInfo()
-                    Status(true, System.currentTimeMillis() - t0, info)
-                } catch (e: Exception) {
-                    Status(false, System.currentTimeMillis() - t0, null, e.message ?: "No responde")
+                suspend fun check(): Status {
+                    val t0 = System.currentTimeMillis()
+                    return try {
+                        val info = XtreamApi(acc).serverInfo()
+                        Status(true, System.currentTimeMillis() - t0, info)
+                    } catch (e: Exception) {
+                        Status(false, System.currentTimeMillis() - t0, null, e.message ?: "No responde")
+                    }
+                }
+                var st = check()
+                // Lento la primera vez: casi siempre es el equipo (recién encendido, wifi conectando,
+                // la app descargando la guía), no el servidor. Se mide otra vez y vale la mejor.
+                if (st.ok && st.pingMs > SLOW_MS) {
+                    kotlinx.coroutines.delay(4000)
+                    val again = check()
+                    if (again.ok && again.pingMs < st.pingMs) st = again
                 }
                 withContext(Dispatchers.Main) { status[acc.key] = st }
                 synchronized(checking) { checking.remove(acc.key) }
