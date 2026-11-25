@@ -79,6 +79,9 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     /** Algo que hay que abrir (lo pide el buscador; lo atiende la sección que corresponde). */
     var openRequest by mutableStateOf<OpenRequest?>(null)
 
+    /** Vuelve a la pestaña del buscador (al cerrar una película o serie que se abrió desde ahí). */
+    var backToSearch: (() -> Unit)? = null
+
     /** Muestra la información y los controles durante unos segundos. */
     fun poke() { overlayAt = System.currentTimeMillis() }
 
