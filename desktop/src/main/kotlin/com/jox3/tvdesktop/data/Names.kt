@@ -3,7 +3,12 @@ package com.jox3.tvdesktop.data
 /**
  * Nombres limpios para mostrar: quita los prefijos de código que ponen los servidores
  * ("TV | Noticias" → "Noticias", "N | Telemundo Noticias" → "Telemundo Noticias",
- * "Rel | EWTN" → "EWTN", "CO: Deportes" → "Deportes"). Los emojis y banderas se quedan.
+ * "Rel | EWTN" → "EWTN", "CO: Deportes" → "Deportes").
+ *
+ * También quita lo que los servidores le agregan de adorno: emojis, estrellas y símbolos
+ * ("★-COLOMBIA-★" → "COLOMBIA", "*CARACOL*" → "CARACOL"), el país pegado al canal
+ * ("COL CARACOL" → "CARACOL") y códigos internos al final ("A&E HD 70-61" → "A&E HD").
+ * Las categorías reciben después el emoji de la app ("🇨🇴 COLOMBIA"), siempre el mismo estilo.
  *
  * Si el prefijo era de calidad o idioma (4K, FHD, LAT, SUB…) no se pierde: pasa al final
  * entre paréntesis ("4K | Dune" → "Dune (4K)"), porque esa información sí sirve.
@@ -17,7 +22,7 @@ object Names {
     private val CODE = Regex("^\\s*([A-Z0-9+]{1,4})\\s*(?::|»|›|\\s-\\s)\\s*(.+)$")
     /** Prefijos genéricos que no son parte del nombre (tipo, país, sección). */
     private val GENERIC = setOf(
-        "TV", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
+        "TV", "PREMIUM", "NOTI", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
         "USA", "LAT", "ARG", "COL", "MEX", "ESP", "PER", "CHI", "VEN", "ECU", "URU", "PAR", "BOL", "BRA", "CAN", "EUR",
     )
     private val KEEP = setOf(
@@ -30,7 +35,7 @@ object Names {
      *   (un título como "DC: La Liga…" no se toca).
      */
     fun clean(raw: String, titles: Boolean = false): String {
-        var s = raw.trim()
+        var s = strip(raw)
         val kept = ArrayList<String>(2)
         repeat(3) {
             val m = BAR.find(s) ?: (if (titles) null else CODE.find(s)) ?: return@repeat
@@ -54,7 +59,77 @@ object Names {
     private val ES = java.util.Locale.forLanguageTag("es")
 
     /** Nombre de canal para mostrar: limpio y en MAYÚSCULAS (se lee mejor a distancia). */
-    fun channel(raw: String): String = clean(raw).uppercase(ES)
+    fun channel(raw: String): String {
+        var s = clean(raw)
+        // País pegado delante sin separador: "COL CARACOL", "MEX Las Estrellas" (códigos de 3 letras)
+        LEAD_COUNTRY.find(s)?.let { m -> if (m.groupValues[2].length >= 2) s = m.groupValues[2] }
+        // Códigos internos al final: "70-61", y el número pegado a la calidad ("SD 70" → "SD")
+        s = s.replace(TAIL_CODE, "").replace(QUALITY_NUM, "$1").trim()
+        return (s.ifBlank { clean(raw) }).uppercase(ES)
+    }
+
+    /**
+     * Limpia los nombres de los canales de UNA categoría. Si la mayoría repite el mismo prefijo
+     * con barra ("PREMIUM | SPACE HD", "PREMIUM | CINEMAX HD"), ese prefijo sobra y se quita.
+     * No se quita si lo que queda empieza por número ("ESPN | 2" se queda igual).
+     */
+    fun channelList(raws: List<String>, category: String = ""): List<String> {
+        val parts = raws.map { r -> SHARED.find(strip(r))?.let { m -> m.groupValues[1].trim().uppercase(ES) to m.groupValues[2].trim() } }
+        val top = parts.filterNotNull().groupingBy { it.first }.eachCount().maxByOrNull { it.value }
+        val prefix = top?.takeIf { it.value >= 3 && it.value * 10 >= raws.size * 6 }?.key
+        val catWords = words(category)
+        return raws.mapIndexed { i, r ->
+            val p = parts[i]
+            val drop = p != null && p.second.length >= 3 && !p.second[0].isDigit() &&
+                (p.first == prefix || fromCategory(p.first, catWords))
+            if (drop) channel(p!!.second) else channel(r)
+        }
+    }
+
+    /** Palabras (sin tildes, en mayúsculas) de un nombre. */
+    private fun words(s: String): List<String> =
+        java.text.Normalizer.normalize(strip(s).uppercase(ES), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "").split(Regex("[^A-Z0-9]+")).filter { it.length >= 3 }
+
+    /**
+     * El prefijo sale del nombre de la categoría: "NOTI" en "TV NOTICIAS", "PREMIUM" en "CINE PREMIUM",
+     * "DEP" en "DEPORTES". Así se quita aunque solo lo tengan algunos canales.
+     */
+    private fun fromCategory(prefix: String, catWords: List<String>): Boolean {
+        val pw = words(prefix)
+        if (pw.size != 1 || catWords.isEmpty()) return false
+        val w = pw[0]
+        return catWords.any { c -> c.startsWith(w) || (c.length >= 4 && w.startsWith(c)) }
+    }
+
+    /** Quita emojis, banderas, estrellas y símbolos de adorno, y los guiones/asteriscos de las puntas. */
+    fun strip(raw: String): String {
+        val sb = StringBuilder(raw.length)
+        var i = 0
+        while (i < raw.length) {
+            val cp = raw.codePointAt(i)
+            i += Character.charCount(cp)
+            val t = Character.getType(cp)
+            val junk = t == Character.OTHER_SYMBOL.toInt() ||          // ★ ⭐ ✪ ⚽ 📺 y casi todos los emojis
+                t == Character.PRIVATE_USE.toInt() || t == Character.SURROGATE.toInt() ||
+                cp in 0x1F1E6..0x1F1FF ||                              // letras de banderas
+                cp in 0xFE00..0xFE0F || cp == 0x200D || cp == 0x20E3 || // variantes de emoji, unión, tecla
+                cp in 0x1F3FB..0x1F3FF || cp in 0xE0020..0xE007F       // tonos de piel, etiquetas
+            if (junk) sb.append(' ') else sb.appendCodePoint(cp)
+        }
+        val out = sb.toString()
+            .replace(EDGE_START, "").replace(EDGE_END, "")
+            .replace(Regex("\\s{2,}"), " ").trim()
+        return out.ifBlank { raw.trim() }
+    }
+
+    /** Adornos en las puntas ("-★-", "**", "~", "•", "|", "=="). No quita "+" de "+18" ni "!" de un título. */
+    private val SHARED = Regex("^\\s*([^|│┃¦]{1,20}?)\\s*[|│┃¦]\\s*(.+)$")
+    private val EDGE_START = Regex("^[\\s\\-–—_*~=•·.:|/\\\\#>]+")
+    private val EDGE_END = Regex("[\\s\\-–—_*~=•·:|/\\\\#<]+$")
+    private val LEAD_COUNTRY = Regex("^(COL|MEX|ARG|ESP|PER|CHI|VEN|ECU|URU|PAR|BOL|BRA|CRC|GUA|HON|DOM)\\s+(.+)$", RegexOption.IGNORE_CASE)
+    private val TAIL_CODE = Regex("\\s+\\d{1,4}\\s*-\\s*\\d{1,4}$")
+    private val QUALITY_NUM = Regex("(?i)\\b(FHD|UHD|HD|SD|4K)\\s+\\d{1,4}$")
 
     /**
      * Nombre de categoría para mostrar: limpio, en MAYÚSCULAS y con un emoji según el tema

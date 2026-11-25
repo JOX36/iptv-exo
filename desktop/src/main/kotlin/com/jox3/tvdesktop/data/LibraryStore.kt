@@ -33,6 +33,7 @@ class LibraryStore(
     val profileId: String = PROFILE_MAIN,
     dir: File = File(AppDirs.data, "library"),
 ) {
+    val accountKey: String = account.key
     private val file = File(dir, fileName(account.key, profileId))
     private val saver = Executors.newSingleThreadExecutor { r -> Thread(r, "library-save").apply { isDaemon = true } }
 
@@ -168,6 +169,7 @@ class LibraryStore(
     }
 
     fun addRecentChannel(item: SavedItem) {
+        if (Adult.isAdult(accountKey, item)) return   // los de adultos no se recuerdan
         if (recentChannels.firstOrNull()?.id == item.id) return
         val now = System.currentTimeMillis()
         val it2 = item.copy(ts = now)
@@ -176,6 +178,11 @@ class LibraryStore(
         while (recentChannels.size > MAX_RECENT) recentChannels.removeAt(recentChannels.size - 1)
         markChange("recent", item.kind, item.id, toJson(it2), now)
         save()
+    }
+
+    /** Quita de "Canales recientes" los de adultos que ya estaban guardados. */
+    fun purgeAdultRecents() {
+        if (recentChannels.removeAll { Adult.isAdult(accountKey, it) }) save()
     }
 
     // ═══ Nube ═══
@@ -241,6 +248,7 @@ class LibraryStore(
                 }
                 "recent" -> if (!deleted) {
                     val item = remote!!
+                    if (Adult.isAdult(accountKey, item)) return@forEach
                     val old = recentChannels.firstOrNull { it.id == id }
                     if (old == null || old.ts < item.ts) {
                         recentChannels.removeAll { it.id == id }; recentChannels.add(item); rec = true

@@ -31,7 +31,12 @@ class TvRepo(val api: XtreamApi, val library: LibraryStore) {
     suspend fun categories(s: Section): List<Category> =
         lock.withLock { categories[s] } ?: api.categories(s).also { list ->
             lock.withLock { categories[s] = list }
-            if (s == Section.LIVE) startExternalEpg(list)
+            if (s == Section.LIVE) {
+                startExternalEpg(list)
+                // Categorías de adultos: sus canales salen de "Canales recientes" (igual que Android)
+                Adult.learn(library.accountKey, list)
+                SwingUtilities.invokeLater { library.purgeAdultRecents() }
+            }
         }
 
     /** Carátula actual en el catálogo (películas por id; series por id de serie). Igual que Android. */
