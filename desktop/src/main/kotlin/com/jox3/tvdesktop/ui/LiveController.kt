@@ -81,43 +81,6 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     /** Algo que hay que abrir (lo pide el buscador; lo atiende la sección que corresponde). */
     var openRequest by mutableStateOf<OpenRequest?>(null)
 
-    // ── Saltar intro / créditos (series), con lo que aprende la app Android ──
-    /** Se eligió "Ver créditos" en este capítulo: no volver a ofrecer el siguiente. */
-    var creditsDismissed by mutableStateOf(false); private set
-    /** "Intro saltada" unos segundos tras saltarla sola. */
-    var skipNotice by mutableStateOf(""); private set
-    private var autoSkippedFor = ""
-
-    private val skipNow get() = com.jox3.tvdesktop.player.Skips.state.takeIf { vod != null && it.epId == vod?.item?.id }
-    /** El tramo de la intro de este capítulo, si se conoce. */
-    val intro: LongRange? get() = skipNow?.intro
-    /** Se ve "Saltar intro": estamos dentro de la intro (hasta 1,5 s antes de que termine). */
-    val introVisible: Boolean get() = intro?.let { player.timeMs >= it.first - 300 && player.timeMs < it.last - 1500 } == true
-    /** Dónde empiezan los créditos (-1 = no se sabe). */
-    val creditsAt: Long get() = skipNow?.creditsAt ?: -1
-    /** Se ofrece pasar al siguiente episodio: empezaron los créditos y hay otro en cola (nunca antes del 60 %). */
-    val creditsVisible: Boolean get() {
-        val len = player.lengthMs; val t = player.timeMs; val c = creditsAt
-        return vod?.next != null && !creditsDismissed && player.state != com.jox3.tvdesktop.player.PlayState.Ended &&
-            c > 0 && len > 0 && c > len * 0.6 && t >= c && t < len - 1500
-    }
-
-    fun skipIntro() { intro?.let { player.seekTo(it.last) } }
-    fun watchCredits() { creditsDismissed = true }
-
-    /** Cada medio segundo mientras se ve: duración para estimar créditos y saltar la intro sola si se eligió. */
-    fun skipTick() {
-        val v = vod ?: return
-        com.jox3.tvdesktop.player.Skips.tick(player.lengthMs)
-        if (com.jox3.tvdesktop.player.Skips.autoSkip && introVisible && autoSkippedFor != v.item.id &&
-            player.state == com.jox3.tvdesktop.player.PlayState.Playing) {
-            autoSkippedFor = v.item.id
-            skipIntro()
-            skipNotice = "Intro saltada"
-            scope.launch { kotlinx.coroutines.delay(3500); if (skipNotice == "Intro saltada") skipNotice = "" }
-        }
-    }
-
     /** Muestra la información y los controles durante unos segundos. */
     fun poke() { overlayAt = System.currentTimeMillis() }
 
@@ -319,6 +282,43 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         com.jox3.tvdesktop.player.Skips.end()
         mode = ViewMode.EMBEDDED
         panel = Panel.NONE
+    }
+
+    // ── Saltar intro / créditos (series), con lo que aprende la app Android ──
+    /** Se eligió "Ver créditos" en este capítulo: no volver a ofrecer el siguiente. */
+    var creditsDismissed by mutableStateOf(false); private set
+    /** "Intro saltada" unos segundos tras saltarla sola. */
+    var skipNotice by mutableStateOf(""); private set
+    private var autoSkippedFor = ""
+
+    private val skipNow get() = com.jox3.tvdesktop.player.Skips.state.takeIf { vod != null && it.epId == vod?.item?.id }
+    /** El tramo de la intro de este capítulo, si se conoce. */
+    val intro: LongRange? get() = skipNow?.intro
+    /** Se ve "Saltar intro": estamos dentro de la intro (hasta 1,5 s antes de que termine). */
+    val introVisible: Boolean get() = intro?.let { player.timeMs >= it.first - 300 && player.timeMs < it.last - 1500 } == true
+    /** Dónde empiezan los créditos (-1 = no se sabe). */
+    val creditsAt: Long get() = skipNow?.creditsAt ?: -1
+    /** Se ofrece pasar al siguiente episodio: empezaron los créditos y hay otro en cola (nunca antes del 60 %). */
+    val creditsVisible: Boolean get() {
+        val len = player.lengthMs; val t = player.timeMs; val c = creditsAt
+        return vod?.next != null && !creditsDismissed && player.state != com.jox3.tvdesktop.player.PlayState.Ended &&
+            c > 0 && len > 0 && c > len * 0.6 && t >= c && t < len - 1500
+    }
+
+    fun skipIntro() { intro?.let { player.seekTo(it.last) } }
+    fun watchCredits() { creditsDismissed = true }
+
+    /** Cada medio segundo mientras se ve: duración para estimar créditos y saltar la intro sola si se eligió. */
+    fun skipTick() {
+        val v = vod ?: return
+        com.jox3.tvdesktop.player.Skips.tick(player.lengthMs)
+        if (com.jox3.tvdesktop.player.Skips.autoSkip && introVisible && autoSkippedFor != v.item.id &&
+            player.state == com.jox3.tvdesktop.player.PlayState.Playing) {
+            autoSkippedFor = v.item.id
+            skipIntro()
+            skipNotice = "Intro saltada"
+            scope.launch { kotlinx.coroutines.delay(3500); if (skipNotice == "Intro saltada") skipNotice = "" }
+        }
     }
 
     fun cycleAspect() {
