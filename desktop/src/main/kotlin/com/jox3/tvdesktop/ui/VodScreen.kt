@@ -686,6 +686,7 @@ fun episodeSession(repo: TvRepo, series: Series, poster: String, all: List<Episo
         url = repo.api.episodeUrl(ep.id, ep.ext),
         nextLabel = next?.let { n -> "T${n.season} E${n.num}" + if (n.title.isNotBlank()) " · ${n.title}" else "" },
         next = next?.let { n -> { onPlay(episodeSession(repo, series, poster, all, n, onPlay), repo.library.positionOf(n.id)?.takeUnless { it.finished }?.position ?: 0) } },
+        season = ep.season,
     )
 }
 

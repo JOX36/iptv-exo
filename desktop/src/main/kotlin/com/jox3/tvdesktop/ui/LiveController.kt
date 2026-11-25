@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 enum class ViewMode { EMBEDDED, FULL, MINI, PIP }
 
 /** Panel de opciones abierto sobre el video. */
-enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO, TOGETHER, PROGRAMS, GUIDE_PICK, RECORD }
+enum class Panel { NONE, CHANNELS, AUDIO, SUBTITLES, PICTURE, SPEED, SLEEP, INFO, TOGETHER, PROGRAMS, GUIDE_PICK, RECORD, SKIP }
 
 /**
  * Película o episodio en reproducción. [next] = siguiente episodio (para "Siguiente" y
@@ -34,6 +34,8 @@ data class VodSession(
     val next: (() -> Unit)? = null,
     /** Repeticiones y grabaciones: no entran a "Seguir viendo" ni a "Porque viste…". */
     val noHistory: Boolean = false,
+    /** Temporada del episodio (para "Saltar intro"; 0 = no se sabe). */
+    val season: Int = 0,
 )
 
 /** Pedido de abrir algo desde el buscador: un canal, la ficha de una película o de una serie. */
@@ -79,6 +81,43 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
     /** Algo que hay que abrir (lo pide el buscador; lo atiende la sección que corresponde). */
     var openRequest by mutableStateOf<OpenRequest?>(null)
 
+    // ── Saltar intro / créditos (series), con lo que aprende la app Android ──
+    /** Se eligió "Ver créditos" en este capítulo: no volver a ofrecer el siguiente. */
+    var creditsDismissed by mutableStateOf(false); private set
+    /** "Intro saltada" unos segundos tras saltarla sola. */
+    var skipNotice by mutableStateOf(""); private set
+    private var autoSkippedFor = ""
+
+    private val skipNow get() = com.jox3.tvdesktop.player.Skips.state.takeIf { vod != null && it.epId == vod?.item?.id }
+    /** El tramo de la intro de este capítulo, si se conoce. */
+    val intro: LongRange? get() = skipNow?.intro
+    /** Se ve "Saltar intro": estamos dentro de la intro (hasta 1,5 s antes de que termine). */
+    val introVisible: Boolean get() = intro?.let { player.timeMs >= it.first - 300 && player.timeMs < it.last - 1500 } == true
+    /** Dónde empiezan los créditos (-1 = no se sabe). */
+    val creditsAt: Long get() = skipNow?.creditsAt ?: -1
+    /** Se ofrece pasar al siguiente episodio: empezaron los créditos y hay otro en cola (nunca antes del 60 %). */
+    val creditsVisible: Boolean get() {
+        val len = player.lengthMs; val t = player.timeMs; val c = creditsAt
+        return vod?.next != null && !creditsDismissed && player.state != com.jox3.tvdesktop.player.PlayState.Ended &&
+            c > 0 && len > 0 && c > len * 0.6 && t >= c && t < len - 1500
+    }
+
+    fun skipIntro() { intro?.let { player.seekTo(it.last) } }
+    fun watchCredits() { creditsDismissed = true }
+
+    /** Cada medio segundo mientras se ve: duración para estimar créditos y saltar la intro sola si se eligió. */
+    fun skipTick() {
+        val v = vod ?: return
+        com.jox3.tvdesktop.player.Skips.tick(player.lengthMs)
+        if (com.jox3.tvdesktop.player.Skips.autoSkip && introVisible && autoSkippedFor != v.item.id &&
+            player.state == com.jox3.tvdesktop.player.PlayState.Playing) {
+            autoSkippedFor = v.item.id
+            skipIntro()
+            skipNotice = "Intro saltada"
+            scope.launch { kotlinx.coroutines.delay(3500); if (skipNotice == "Intro saltada") skipNotice = "" }
+        }
+    }
+
     /** Muestra la información y los controles durante unos segundos. */
     fun poke() { overlayAt = System.currentTimeMillis() }
 
@@ -87,6 +126,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         saveVodProgress()
         if (mode == ViewMode.PIP) mode = ViewMode.EMBEDDED // el canal se ve en la vista previa
         vod = null
+        com.jox3.tvdesktop.player.Skips.end()
         this.list = list
         this.listName = listName
         current = ch
@@ -102,6 +142,11 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         current = null
         vod = session
         panel = Panel.NONE
+        // Saltar intro / siguiente episodio: solo episodios en línea (no descargas ni grabaciones)
+        creditsDismissed = false; skipNotice = ""
+        val ep = session.item.kind == "episode" && !session.noHistory && session.url.startsWith("http")
+        com.jox3.tvdesktop.player.Skips.begin(repo.api.account.host.takeIf { ep }, session.item.id, session.item.seriesId,
+            session.season, session.title)
         player.play(session.url, session.title, live = false, startMs = startMs)
         poke()
     }
@@ -271,6 +316,7 @@ class LiveController(val repo: TvRepo, val player: VideoPlayer) {
         player.stop()
         current = null
         vod = null
+        com.jox3.tvdesktop.player.Skips.end()
         mode = ViewMode.EMBEDDED
         panel = Panel.NONE
     }
