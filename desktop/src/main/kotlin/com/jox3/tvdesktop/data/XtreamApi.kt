@@ -23,6 +23,8 @@ import com.jox3.tvdesktop.core.Log
 class XtreamApi(val account: Account) {
 
     private val host = account.host.trimEnd('/')
+    /** Nombres originales de las categorías de En vivo (para limpiar el nombre de sus canales). */
+    private val liveCatNames = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 
@@ -173,7 +175,7 @@ class XtreamApi(val account: Account) {
                 val id = o.optString("category_id").ifBlank { return@mapNotNull null }
                 o.optString("category_name", "?").trim().let { raw -> Category(id, Names.category(raw), raw) }
             }.distinctBy { it.id }
-        }
+        }.also { list -> if (section == Section.LIVE) list.forEach { liveCatNames[it.id] = it.raw } }
     }
 
     suspend fun channels(categoryId: String? = null): List<Channel> {
@@ -182,13 +184,21 @@ class XtreamApi(val account: Account) {
             val id = o["stream_id"].orEmpty().ifBlank { return@streamList null }
             Channel(
                 id = id,
-                name = Names.channel(o["name"]?.trim()?.ifBlank { null } ?: "?"),
+                name = o["name"]?.trim()?.ifBlank { null } ?: "?",   // se limpia abajo, por categoría
                 logo = o["stream_icon"].orEmpty(),
                 categoryId = o["category_id"].orEmpty(),
                 num = o["num"]?.toDoubleOrNull()?.toInt() ?: (i + 1),
                 epgId = o["epg_channel_id"].orEmpty().takeUnless { it == "null" }.orEmpty(),
                 archiveDays = if (o["tv_archive"] == "1") (o["tv_archive_duration"]?.toDoubleOrNull()?.toInt() ?: 1).coerceAtLeast(1) else 0,
             )
+        }.let { list ->
+            // Nombres limpios (igual que Android); el prefijo que repiten los canales de una
+            // categoría ("PREMIUM | SPACE HD", "PREMIUM | TNT HD"…) o que sale de su nombre se quita
+            val names = HashMap<String, String>(list.size * 2)
+            list.groupBy { it.categoryId }.forEach { (cat, g) ->
+                Names.channelList(g.map { it.name }, liveCatNames[cat].orEmpty()).forEachIndexed { i, n -> names[g[i].id] = n }
+            }
+            list.map { it.copy(name = names[it.id] ?: Names.channel(it.name)) }
         }.distinctBy { it.id } // algunos servidores repiten el mismo canal
     }
 
