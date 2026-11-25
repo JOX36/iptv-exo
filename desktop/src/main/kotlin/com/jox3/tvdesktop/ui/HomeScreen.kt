@@ -96,6 +96,7 @@ fun HomeScreen(
     val live = remember(repo) { LiveController(repo, player) }
     val control = LocalWindowControl.current
     var tab by remember { mutableStateOf(Tab.LIVE) }
+    live.backToSearch = { tab = Tab.SEARCH }
     var showAccount by remember { mutableStateOf(false) }
     var showJoin by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -435,7 +436,9 @@ fun HomeScreen(
                 Brand(iconSize = 30.dp, textSize = 20)
                 Spacer(Modifier.width(30.dp))
                 Tab.entries.forEach { t ->
-                    TabButton(t.label, selected = tab == t, icon = when (t) { Tab.SEARCH -> Ico.SEARCH; Tab.SETTINGS -> Ico.SETTINGS; else -> null }) { tab = t }
+                    TabButton(t.label, selected = tab == t, icon = when (t) { Tab.SEARCH -> Ico.SEARCH; Tab.SETTINGS -> Ico.SETTINGS; else -> null }) {
+                        com.jox3.tvdesktop.data.SearchMemory.fromSearch = false; tab = t
+                    }
                     Spacer(Modifier.width(6.dp))
                 }
                 Spacer(Modifier.weight(1f))
@@ -455,7 +458,11 @@ fun HomeScreen(
                     Tab.LIVE -> LiveScreen(live, ::toggleFull, ::toggleMini)
                     Tab.MOVIES -> VodScreen(live, Section.VOD, onPlay = ::startVod)
                     Tab.SERIES -> VodScreen(live, Section.SERIES, onPlay = ::startVod)
-                    Tab.SEARCH -> SearchScreen(live) { c -> open(c.account, c) }
+                    Tab.SEARCH -> SearchScreen(live) { c ->
+                        // Película o serie: al cerrarla se vuelve a estos resultados (también desde otro servidor)
+                        com.jox3.tvdesktop.data.SearchMemory.fromSearch = c.kind != "live"
+                        open(c.account, c)
+                    }
                     Tab.SETTINGS -> SettingsScreen(live, version)
                 }
             }

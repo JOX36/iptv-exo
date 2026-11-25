@@ -72,8 +72,10 @@ fun SearchScreen(live: LiveController, onOpen: (ServerHub.Copy) -> Unit) {
     val lib = repo.library
     val epgV by repo.epgVersion
     val servers = LocalServers.current ?: return
-    var query by remember { mutableStateOf("") }
-    var only by remember { mutableStateOf<String?>(null) }
+    // Se recuerda la búsqueda: al volver de un canal, una película o de otro servidor sigue ahí
+    var query by remember { mutableStateOf(com.jox3.tvdesktop.data.SearchMemory.query) }
+    var only by remember { mutableStateOf(com.jox3.tvdesktop.data.SearchMemory.only) }
+    LaunchedEffect(query, only) { com.jox3.tvdesktop.data.SearchMemory.query = query; com.jox3.tvdesktop.data.SearchMemory.only = only }
     var searchAll by remember { mutableStateOf(ServerHub.searchAllEnabled()) }
     var choose by remember { mutableStateOf<ServerHub.Hit?>(null) }
     val focus = remember { FocusRequester() }

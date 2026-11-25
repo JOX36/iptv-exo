@@ -90,6 +90,13 @@ private enum class Sort(val label: String) { SERVER("Orden del servidor"), RECEN
  * Películas o Series: categorías (con "Continuar viendo" y Favoritos) | cuadrícula de carátulas.
  * Clic en una carátula = su ficha, con Ver / Continuar, temporadas y episodios.
  */
+/** Si la ficha se abrió desde el buscador, al cerrarla se vuelve a sus resultados (igual que Android). */
+private fun backToSearch(live: LiveController) {
+    if (!com.jox3.tvdesktop.data.SearchMemory.fromSearch) return
+    com.jox3.tvdesktop.data.SearchMemory.fromSearch = false
+    live.backToSearch?.invoke()
+}
+
 @Composable
 fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long) -> Unit) {
     val repo = live.repo
@@ -157,7 +164,7 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
                 // Continuar viendo, favoritos y "Porque viste…" usan la imagen guardada al verlos: si quedó vacía
                 // o vieja, se toma la carátula actual del catálogo (igual que Android)
                 if (cat.id == CONTINUE_ID || cat.id == FAV_ID || cat.id == BECAUSE_ID) {
-                    val fresh = repo.freshImages(isMovies, list.map { it.id })
+                    val fresh = repo.freshImages(isMovies, list.map { it.id to it.categoryId })
                     list.map { t -> fresh[t.id]?.takeIf { it != t.poster }?.let { img ->
                         t.copy(poster = img, movie = t.movie?.copy(poster = img), series = t.series?.copy(poster = img))
                     } ?: t }
@@ -221,8 +228,8 @@ fun VodScreen(live: LiveController, section: Section, onPlay: (VodSession, Long)
 
         Box(Modifier.weight(1f).fillMaxHeight()) {
             when (val d = detail) {
-                is Detail.OfMovie -> MovieDetail(live, d.movie, onBack = { detail = null }, onPlay = onPlay)
-                is Detail.OfSeries -> SeriesDetail(live, d.series, d.season, onBack = { detail = null }, onPlay = onPlay)
+                is Detail.OfMovie -> MovieDetail(live, d.movie, onBack = { detail = null; backToSearch(live) }, onPlay = onPlay)
+                is Detail.OfSeries -> SeriesDetail(live, d.series, d.season, onBack = { detail = null; backToSearch(live) }, onPlay = onPlay)
                 null -> Column(Modifier.fillMaxSize().padding(top = 16.dp, start = 20.dp, end = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text((allCats.firstOrNull { it.id == selected?.id } ?: selected)?.name.orEmpty().removePrefix("★  "), color = Jx.Text, fontFamily = Exo2, fontWeight = FontWeight.SemiBold,
