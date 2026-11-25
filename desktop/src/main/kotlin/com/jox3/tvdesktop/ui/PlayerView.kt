@@ -211,6 +211,7 @@ fun PlayerView(
                 BottomBar(live, now, onToggleFull, onToggleMini, Modifier.align(Alignment.BottomCenter))
             }
         }
+        if (live.vod != null && !pip) SkipLayer(live, overlay, Modifier.align(Alignment.BottomEnd))
         if (live.panel != Panel.NONE && live.mode == ViewMode.FULL) {
             Box(Modifier.align(Alignment.CenterEnd).padding(end = 24.dp, top = 24.dp, bottom = 150.dp).fillMaxHeight()) {
                 SidePanel(live)
@@ -368,6 +369,7 @@ private fun BottomBar(live: LiveController, now: Long, onToggleFull: () -> Unit,
                 RoundButton(Ico.SUBTITLES, "Subtítulos (S)", selected = live.panel == Panel.SUBTITLES) { live.toggle(Panel.SUBTITLES) }
                 RoundButton(Ico.PICTURE, "Formato de imagen (Z)", selected = live.panel == Panel.PICTURE) { live.toggle(Panel.PICTURE) }
                 if (vod != null) RoundButton(Ico.CLOCK, "Velocidad (V)", selected = live.panel == Panel.SPEED) { live.toggle(Panel.SPEED) }
+                if (vod?.item?.kind == "episode") RoundButton(Ico.NEXT, "Intro y créditos", selected = live.panel == Panel.SKIP) { live.toggle(Panel.SKIP) }
                 if (vod != null && vod.item.kind != "trailer") RoundButton(Ico.USER, if (com.jox3.tvdesktop.player.WatchTogether.phase == com.jox3.tvdesktop.player.WatchTogether.Phase.On)
                     "En la sala · ${com.jox3.tvdesktop.player.WatchTogether.pretty(com.jox3.tvdesktop.player.WatchTogether.code)}" else "Ver juntos (J)", selected = live.panel == Panel.TOGETHER) { live.toggle(Panel.TOGETHER) }
                 RoundButton(Ico.SLEEP, "Apagado automático", selected = live.panel == Panel.SLEEP) { live.toggle(Panel.SLEEP) }
@@ -511,6 +513,7 @@ private fun SidePanel(live: LiveController) {
             Panel.PROGRAMS -> "Guía"
             Panel.GUIDE_PICK -> "Elegir guía"
             Panel.RECORD -> "⏺ Grabar"
+            Panel.SKIP -> "Intro y créditos"
             Panel.NONE -> ""
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -576,6 +579,7 @@ private fun SidePanel(live: LiveController) {
             Panel.PROGRAMS -> live.current?.let { ProgramsPanel(live, it) }
             Panel.RECORD -> live.current?.let { RecordPanel(live, it) }
             Panel.GUIDE_PICK -> live.current?.let { GuidePickPanel(live.repo, it) }
+            Panel.SKIP -> SkipPanel(live)
             Panel.NONE -> {}
         }
     }
@@ -808,5 +812,61 @@ private fun RecordPanel(live: LiveController, ch: Channel) {
             }
         }
         Note("Tus grabaciones: Ajustes → Grabaciones")
+    }
+}
+
+/**
+ * "Saltar intro" y "Siguiente episodio" (abajo a la derecha, como en Netflix y en la app de TV).
+ * En los créditos cuenta 10 s y pasa solo al siguiente; "Ver créditos" se queda.
+ */
+@Composable
+private fun SkipLayer(live: LiveController, overlay: Boolean, modifier: Modifier) {
+    LaunchedEffect(live.vod?.url) { while (true) { live.skipTick(); delay(500) } }
+    val showCredits = live.creditsVisible
+    val showSkip = !showCredits && live.introVisible
+    var left by remember { mutableIntStateOf(10) }
+    LaunchedEffect(showCredits, live.vod?.url) {
+        if (!showCredits) return@LaunchedEffect
+        left = 10
+        while (left > 0) { delay(1000); left-- }
+        if (live.creditsVisible) live.vod?.next?.invoke()
+    }
+    val bottom = if (overlay) 120.dp else 40.dp
+    if (showCredits || showSkip) Column(
+        modifier.padding(end = 40.dp, bottom = bottom).pointerInput(Unit) { detectTapGestures { } },
+        horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (showCredits) {
+            Text("SIGUIENTE EPISODIO EN $left s", color = Jx.Accent, fontFamily = Exo2, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            live.vod?.nextLabel?.let { Text(it, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 360.dp)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                GhostButton("Ver créditos") { live.watchCredits() }
+                PillButton("Siguiente episodio") { live.vod?.next?.invoke() }
+            }
+        } else PillButton("Saltar intro") { live.skipIntro() }
+    } else if (live.skipNotice.isNotEmpty()) Text(live.skipNotice, color = Jx.Text, fontFamily = Exo2, fontSize = 14.sp,
+        modifier = modifier.padding(end = 40.dp, bottom = bottom)
+            .background(Color(0xCC070A0F), RoundedCornerShape(20.dp)).padding(horizontal = 16.dp, vertical = 8.dp))
+}
+
+/** Panel "Intro y créditos": qué se sabe de este capítulo, saltar solo y reportar si está mal. */
+@Composable
+private fun SkipPanel(live: LiveController) {
+    val st = com.jox3.tvdesktop.player.Skips.state
+    var auto by remember { mutableStateOf(com.jox3.tvdesktop.player.Skips.autoSkip) }
+    Column(Modifier.fillMaxWidth()) {
+        val intro = live.intro
+        Note(buildString {
+            append(if (intro != null) "Intro: ${clock(intro.first)} a ${clock(intro.last)}" else "Intro: aún no se conoce")
+            append("\n")
+            append(if (live.creditsAt > 0) "Créditos desde ${clock(live.creditsAt)}" else "Créditos: aún no se conocen")
+            if (st.note.isNotBlank()) append("\n").append(st.note)
+        })
+        Choice("Saltar la intro solo", auto) { auto = !auto; com.jox3.tvdesktop.player.Skips.autoSkip = auto }
+        if (intro != null) Choice("La intro está mal", false) { com.jox3.tvdesktop.player.Skips.reportWrong("intro") }
+        if (live.creditsAt > 0) Choice("Los créditos están mal", false) { com.jox3.tvdesktop.player.Skips.reportWrong("credits") }
+        Note("La intro y los créditos los reconoce la app JOX3 TV del TV Box o del celular al ver 2 capítulos; " +
+            "lo aprendido se comparte con todos y aquí se usa igual.")
     }
 }
