@@ -10,6 +10,7 @@ import org.json.JSONObject
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -87,5 +88,20 @@ class VaultTest {
         assertEquals(p.id, ServerAccess.owner(a2.key))
         Profiles.current = null
         assertNotNull(store.all().firstOrNull { it.key == a2.key })
+    }
+
+    @Test fun servidorNuevoSinPerfilQuedaDelQueEntra() {
+        File(TestDirs.root, "owners.json").delete()
+        val store = AccountStore(File(TestDirs.fresh("acc-fresh"), "accounts.json"))
+        val p = Profile("pana", "Ana", "🌸", Profiles.COLORS[2])
+        val a1 = Account("http://a1.tv", "a", "1"); val a2 = Account("http://a2.tv", "a", "2")
+        store.use(a1); ServerAccess.setOwner(a1.key, p.id)
+        Profiles.current = null
+        store.use(a2); ServerAccess.claimNew(store, a2)          // agregado sin perfil abierto
+        assertNull(ServerAccess.owner(a2.key))
+        assertTrue(ServerAccess.claimFresh(store, p, a2.key))     // Ana entra con él: queda suyo
+        assertEquals(p.id, ServerAccess.owner(a2.key))
+        assertEquals(listOf(a1, a2).map { it.key }.toSet(), ServerAccess.visible(store.all(), p).map { it.key }.toSet())
+        assertFalse(ServerAccess.claimFresh(store, p, a2.key))    // solo una vez
     }
 }

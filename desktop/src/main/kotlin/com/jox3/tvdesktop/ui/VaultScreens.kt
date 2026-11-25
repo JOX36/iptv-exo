@@ -208,6 +208,8 @@ fun VaultUnlockGate(
     content: @Composable () -> Unit,
 ) {
     var ask by remember(profileId) { mutableStateOf<Profile?>(null) }
+    // Servidor recién agregado sin dueño: queda de este perfil en vez de esconderse (antes de mostrar nada)
+    remember(profileId) { store.byId(profileId)?.let { p -> ServerAccess.claimFresh(accounts, p, store.account.key) } }
     fun checkVisible() {
         val p = store.byId(profileId) ?: return
         val vis = ServerAccess.visible(accounts.all(), p)

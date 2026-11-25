@@ -12,7 +12,7 @@ import java.io.File
 
 /**
  * Cuentas guardadas y la cuenta activa, en accounts.json (carpeta de datos del programa).
- * Mismo comportamiento que AccountStore de Android: la más reciente primero, máximo 20.
+ * Mismo comportamiento que AccountStore de Android: la más reciente primero, máximo 60.
  * Las contraseñas se guardan cifradas con Windows ([Secrets]). Si una no se puede
  * descifrar, la cuenta se conserva y solo se pide escribir la contraseña otra vez.
  */
@@ -88,5 +88,6 @@ class AccountStore(private val file: File = File(AppDirs.data, "accounts.json"))
         }
     }
 
-    companion object { const val MAX = 20 }
+    /** Servidores guardados en el equipo como máximo (igual que Android). */
+    companion object { const val MAX = 60 }
 }

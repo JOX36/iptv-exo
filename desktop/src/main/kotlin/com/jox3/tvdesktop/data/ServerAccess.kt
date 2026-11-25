@@ -79,11 +79,38 @@ object ServerAccess {
      * Se agregó un servidor nuevo estando en un perfil que tiene servidores propios:
      * queda como suyo (y entra a su código JOX3 la próxima vez que se sincronice).
      */
+    @Synchronized
     fun claimNew(accounts: AccountStore, acc: Account) {
-        val p = Profiles.current ?: return
-        if (!hasOwn(accounts.all().filter { it.key != acc.key }, p)) return
-        setOwner(acc.key, p.id)
+        val p = Profiles.current
+        if (p != null && hasOwn(accounts.all().filter { it.key != acc.key }, p)) {
+            setOwner(acc.key, p.id); clearFresh(); return
+        }
+        // Aún no se sabe quién lo agregó (sin perfil, o el perfil cambia después):
+        // se recuerda para dárselo al primer perfil que entre con él
+        val o = read(); o.put("fresh", JSONObject().put("key", acc.key).put("ts", System.currentTimeMillis())); write(o)
     }
+
+    /**
+     * El perfil [p] entra con [accKey] activo. Si es el servidor que se acaba de agregar y no tiene
+     * dueño, pasa a ser de ese perfil (si tiene servidores propios), así no se esconde ni se cambia
+     * por otro. Devuelve true si quedó suyo. (Igual que Android.)
+     */
+    @Synchronized
+    fun claimFresh(accounts: AccountStore, p: Profile, accKey: String): Boolean {
+        val f = read().optJSONObject("fresh") ?: return false
+        val key = f.optString("key").ifEmpty { return false }
+        val recent = System.currentTimeMillis() - f.optLong("ts") < FRESH_MS
+        clearFresh()
+        if (key != accKey || !recent || owner(accKey) != null) return false
+        if (!hasOwn(accounts.all().filter { it.key != accKey }, p)) return false
+        setOwner(accKey, p.id)
+        return true
+    }
+
+    @Synchronized private fun clearFresh() {
+        val o = read(); if (o.remove("fresh") != null) write(o)
+    }
+    private const val FRESH_MS = 2 * 60 * 60 * 1000L
 
     /**
      * Servidores que llegaron del código JOX3 de [p]: los que no estaban en el equipo quedan como
