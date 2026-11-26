@@ -349,3 +349,30 @@ export async function aiWhat(req, env) {
     return json({ ok: false, error: "ia no disponible" }, 503);
   }
 }
+
+// ── ¿Son el mismo canal? (para el respaldo con nombres muy distintos) ──
+
+const SAME_PROMPT = `Te doy el nombre de un canal de TV ("n") y una lista de nombres de otros servidores ("c", índice desde 0).
+Di cuáles son EXACTAMENTE el mismo canal (misma señal; distinta calidad HD/FHD/SD o prefijos de país sí cuentan
+como el mismo). NO son el mismo: otra versión regional distinta (CNN International ≠ CNN en Español),
+otro número (ESPN 2 ≠ ESPN 3), "+" o "Plus" distinto (Win Sports ≠ Win Sports+). En la duda, no.
+Responde SOLO con JSON: {"same":[índices]}`;
+
+export async function aiSame(req, env) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
+  const name = str(body.n, 80);
+  const c = list(body.c, 20, 80);
+  if (!name || !c.length) return json({ ok: true, same: [] });
+  const key = "m|" + norm(name) + "|" + c.map(norm).join("~");
+  const hit = await cacheGet(env, key, 30 * 24 * 3600 * 1000);
+  if (hit) return json({ ok: true, cached: true, same: hit.same });
+  try {
+    const o = await ask(env, SAME_PROMPT, JSON.stringify({ n: name, c }), 120);
+    const same = (Array.isArray(o.same) ? o.same : []).filter((i) => Number.isInteger(i) && i >= 0 && i < c.length);
+    await cachePut(env, key, { same });
+    return json({ ok: true, via: lastVia, same });
+  } catch (e) {
+    return json({ ok: false, error: "ia no disponible" }, 503);
+  }
+}

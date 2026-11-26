@@ -87,6 +87,11 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
         if (ai) { delay(600); value = S.smart(ctx, query, account, idx, accounts, only, includeOthers = multi) ?: com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain) }
     }
     val results = outcome?.results
+    // Puntajes de los demás equipos para los canales con varias señales ("Mejor opción" más acertada)
+    LaunchedEffect(results) {
+        val sig = results?.channels.orEmpty().filter { it.copies.size > 1 }.flatMap { h -> h.copies.map { it.account to it.id } }
+        if (sig.isNotEmpty()) runCatching { com.jox3.iptvexo.tv.player.Stability.prefetch(sig) }
+    }
     fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()
     /** OK en un resultado: si solo está en este servidor se abre; si no, se elige de dónde. */
     fun open(h: ServerHub.Hit, direct: () -> Unit) {
@@ -264,7 +269,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                                     value = if (t.isEmpty()) "" else if (multi && from != null && from.key != account.key)
                                         "${ServerHub.letter(accounts, from)} · $t" else t
                                 }
-                                val best = remember(h.key, ServerHub.status.size) { bestOf(h) }
+                                val best = remember(h.key, ServerHub.status.size, com.jox3.iptvexo.tv.player.Stability.version.intValue) { bestOf(h) }
                                 ChannelTile(h.name, h.image, badges = letters(h),
                                     now = best?.let { b -> bestLabel(b) + (if (now.isNotBlank()) " · $now" else "") } ?: now,
                                     width = if (big) 156.dp else 112.dp,

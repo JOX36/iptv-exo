@@ -560,6 +560,11 @@ fun PhoneSearch(
         if (ai) { delay(700); value = S.smart(ctx, query, me, idx, all, only, includeOthers = multi) ?: com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain) }
     }
     val results = outcome?.results
+    // Puntajes de los demás equipos para los canales con varias señales ("Mejor opción" más acertada)
+    LaunchedEffect(results) {
+        val sig = results?.channels.orEmpty().filter { it.copies.size > 1 }.flatMap { h -> h.copies.map { it.account to it.id } }
+        if (sig.isNotEmpty()) runCatching { com.jox3.iptvexo.tv.player.Stability.prefetch(sig) }
+    }
     LaunchedEffect(results) { val r = results ?: return@LaunchedEffect; if (!r.isEmpty) { delay(4000); lib.addSearch(query) } }
     fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()
     val here = results?.channels.orEmpty().mapNotNull { h -> h.copies.firstOrNull { it.account.key == me.key } }
@@ -712,7 +717,7 @@ fun PhoneSearch(
                                         "${ServerHub.letter(accounts, from)} · $t" else t
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    val best = remember(h.key, ServerHub.status.size) { bestOf(h) }
+                                    val best = remember(h.key, ServerHub.status.size, com.jox3.iptvexo.tv.player.Stability.version.intValue) { bestOf(h) }
                                     ChannelBubble(h.name, h.image, Modifier.width(96.dp),
                                         now = best?.let { b -> bestLabel(b) + (if (now.isNotBlank()) " · $now" else "") } ?: now,
                                         // Mantener presionado: elegir a mano la señal
