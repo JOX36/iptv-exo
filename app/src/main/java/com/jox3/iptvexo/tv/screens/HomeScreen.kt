@@ -127,11 +127,25 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
 
         // ── Lo mejor de hoy (Gemini elige de la guía) ──
         val today = com.jox3.iptvexo.tv.data.Today.picks.value
-        if (today.isNotEmpty()) item(key = "today") {
-            val chans = today.mapIndexed { i, p -> p.channel.copy(num = i + 1) }
-            ShelfRow("✨ Lo mejor de hoy") {
-                itemsIndexed(today, key = { i, p -> "t$i" + p.channel.id + p.start }) { i, p ->
-                    TodayCard(p) { live.playFullscreen(chans, i, "Lo mejor de hoy") }
+        val nowList = today.filter { it.liveNow }
+        val later = today.filter { !it.liveNow }
+        fun play(list: List<com.jox3.iptvexo.tv.data.Today.Pick>, i: Int) {
+            val chans = list.mapIndexed { k, p -> (if (k == i) p.prepare() else p.channel).copy(num = k + 1) }
+            live.playFullscreen(chans, i, "Lo mejor de hoy")
+        }
+        if (nowList.isNotEmpty()) item(key = "today_now") {
+            ShelfRow("✨ Lo mejor de hoy · En vivo ahora") {
+                itemsIndexed(nowList, key = { i, p -> "tn$i" + p.channel.id + p.start }) { i, p -> TodayCard(p, onClick = { play(nowList, i) }) }
+            }
+        }
+        if (later.isNotEmpty()) item(key = "today_later") {
+            val tctx = androidx.compose.ui.platform.LocalContext.current
+            ShelfRow("✨ Más tarde hoy  ·  mantén OK para que te avise") {
+                itemsIndexed(later, key = { i, p -> "tl$i" + p.channel.id + p.start }) { i, p ->
+                    TodayCard(p, onClick = { play(later, i) }, onLongClick = {
+                        com.jox3.iptvexo.tv.data.Today.addAlert(tctx, p.title)
+                        android.widget.Toast.makeText(tctx, "🔔 Te aviso cuando empiece «${p.title}»", android.widget.Toast.LENGTH_LONG).show()
+                    })
                 }
             }
         }
@@ -313,8 +327,8 @@ private fun Hero(movie: Movie, info: MovieInfo?, playReq: FocusRequester, index:
 
 /** Tarjeta de "Lo mejor de hoy": logo del canal, cuándo (EN VIVO / hora), título y por qué verlo. */
 @Composable
-private fun TodayCard(p: com.jox3.iptvexo.tv.data.Today.Pick, onClick: () -> Unit) {
-    FocusSurface(onClick = onClick, modifier = Modifier.width(300.dp).height(132.dp), focusedScale = 1.06f, container = Jx.Surface) {
+private fun TodayCard(p: com.jox3.iptvexo.tv.data.Today.Pick, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+    FocusSurface(onClick = onClick, onLongClick = onLongClick, modifier = Modifier.width(300.dp).height(150.dp), focusedScale = 1.06f, container = Jx.Surface) {
         Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RemoteImage(p.channel.logo, p.guide, Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x33081626)).padding(6.dp),
                 scale = ContentScale.Fit)
@@ -324,6 +338,8 @@ private fun TodayCard(p: com.jox3.iptvexo.tv.data.Today.Pick, onClick: () -> Uni
                     color = if (w == "EN VIVO") Jx.Live else Jx.Accent)
                 Text(p.title, style = Type.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (p.why.isNotBlank()) Text(p.why, style = Type.Small, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // En qué servidor está la mejor señal (si no es el actual)
+                if (p.serverLabel.isNotBlank()) Text(p.serverLabel, style = Type.Small, color = Jx.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

@@ -302,6 +302,9 @@ Copa Libertadores/Sudamericana, Champions, grandes ligas europeas, NBA/NFL/MLB e
 finales, estrenos de películas, conciertos, eventos especiales. Prefiere lo EN VIVO y lo que empieza pronto.
 Evita repetidos (el mismo partido en varios canales: elige uno), noticieros normales, televentas,
 programas de relleno y repeticiones. Para cada uno, una razón corta y llamativa en español.
+Si te dan los GUSTOS del perfil (canales que más ve), dale prioridad a lo que encaja con ellos
+(sin dejar fuera lo realmente imperdible del día) y menciónalo en la razón cuando aplique.
+Si es un perfil de NIÑOS, elige solo contenido apto para niños (animación, familia, deportes sin violencia).
 Responde SOLO con JSON: {"picks":[{"i":índice,"why":"frase corta"}]}`;
 
 export async function aiToday(req, env) {
@@ -316,7 +319,10 @@ export async function aiToday(req, env) {
   if (hit) return json({ ok: true, cached: true, ...hit });
   try {
     const now = str(body.now, 60);
-    const o = await ask(env, TODAY_PROMPT, (now ? `Ahora es ${now}.\n` : "") + items.map((s, i) => i + "|" + s).join("\n"), 900);
+    const taste = str(body.taste, 400);
+    const head = (now ? `Ahora es ${now}.\n` : "") + (taste ? `Gustos del perfil: ${taste}\n` : "") +
+      (body.kids === true ? "Es un perfil de NIÑOS.\n" : "");
+    const o = await ask(env, TODAY_PROMPT, head + items.map((s, i) => i + "|" + s).join("\n"), 900);
     const picks = (Array.isArray(o.picks) ? o.picks : [])
       .filter((p) => Number.isInteger(p?.i) && p.i >= 0 && p.i < items.length)
       .slice(0, 12).map((p) => ({ i: p.i, why: str(p.why, 90), t: items[p.i] }));

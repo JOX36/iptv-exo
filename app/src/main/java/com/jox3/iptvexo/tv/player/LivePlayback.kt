@@ -173,10 +173,11 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         switching = false
         // Siempre la mejor opción: si la última vez funcionó una señal de respaldo, se arranca en ella
         backup = Failover.preset?.takeIf { it.first == ch.id }?.second
+            ?: Failover.external[ch.id]   // canal de otro servidor puesto desde aquí
             ?: if (Failover.enabled(context)) Failover.remembered(context, repo.api.account, ch) else null
         Failover.preset = null
         backup?.let { tried += it.key }
-        repo.library.addRecentChannel(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
+        if (!ch.id.startsWith("ext:")) repo.library.addRecentChannel(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
         load()
     }
 

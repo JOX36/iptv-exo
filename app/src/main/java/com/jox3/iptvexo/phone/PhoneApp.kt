@@ -332,7 +332,7 @@ private fun PhoneShell(
                         style = PType.Tiny, color = Jx.Accent, maxLines = 1)
                     Text(alert.title, style = PType.Label, color = Jx.Text, maxLines = 2)
                 }
-                PButton("Ver", Modifier) { com.jox3.iptvexo.tv.data.Today.banner.value = null; playChannel(listOf(alert.channel), 0) }
+                PButton("Ver", Modifier) { com.jox3.iptvexo.tv.data.Today.banner.value = null; playChannel(listOf(alert.prepare()), 0) }
                 RoundIcon(R.drawable.ic_close, "Después", tint = Jx.Muted, iconSize = 16.dp) { com.jox3.iptvexo.tv.data.Today.banner.value = null }
             }
         }

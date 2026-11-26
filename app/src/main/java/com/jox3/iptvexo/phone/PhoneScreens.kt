@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -85,6 +86,7 @@ import java.util.Locale
 
 private class HomeData(val hero: Movie?, val heroInfo: MovieInfo?, val movies: List<Movie>, val series: List<Series>)
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Unit, onOpenSeries: (String, String, String) -> Unit,
               onPlayChannel: (List<Channel>, Int) -> Unit) {
@@ -124,23 +126,36 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
                 CenterText(if (d == null) "Cargando…" else "")
             }
         }
-        // Lo mejor de hoy (Gemini elige de la guía)
+        // Lo mejor de hoy (Gemini elige de la guía de todos tus servidores)
         val today = com.jox3.iptvexo.tv.data.Today.picks.value
-        if (today.isNotEmpty()) item {
-            val chans = today.mapIndexed { i, p -> p.channel.copy(num = i + 1) }
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle("✨ Lo mejor de hoy")
-                LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    itemsIndexed(today, key = { i, p -> "t$i" + p.channel.id + p.start }) { i, p ->
-                        Row(Modifier.width(260.dp).clip(RoundedCornerShape(14.dp)).background(Jx.Surface)
-                            .clickable { onPlayChannel(chans, i) }.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            RemoteImage(p.channel.logo, p.guide, Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Jx.SurfaceHi).padding(5.dp),
-                                scale = androidx.compose.ui.layout.ContentScale.Fit)
-                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                val w = p.whenText()
-                                Text(w + " · " + p.guide, style = PType.Tiny, color = if (w == "EN VIVO") Jx.Live else Jx.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(p.title, style = PType.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                if (p.why.isNotBlank()) Text(p.why, style = PType.Tiny, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        listOf("✨ Lo mejor de hoy · En vivo ahora" to today.filter { it.liveNow },
+            "✨ Más tarde hoy · mantén presionado para que te avise" to today.filter { !it.liveNow }).forEach { (title, list) ->
+            if (list.isNotEmpty()) item {
+                val tctx = LocalContext.current
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SectionTitle(title)
+                    LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        itemsIndexed(list, key = { i, p -> "t$i" + p.channel.id + p.start }) { i, p ->
+                            Row(Modifier.width(270.dp).clip(RoundedCornerShape(14.dp)).background(Jx.Surface)
+                                .combinedClickable(
+                                    onClick = {
+                                        val chans = list.mapIndexed { k, x -> (if (k == i) x.prepare() else x.channel).copy(num = k + 1) }
+                                        onPlayChannel(chans, i)
+                                    },
+                                    onLongClick = if (p.liveNow) null else ({
+                                        com.jox3.iptvexo.tv.data.Today.addAlert(tctx, p.title)
+                                        android.widget.Toast.makeText(tctx, "🔔 Te aviso cuando empiece «${p.title}»", android.widget.Toast.LENGTH_LONG).show()
+                                    }),
+                                ).padding(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                RemoteImage(p.channel.logo, p.guide, Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Jx.SurfaceHi).padding(5.dp),
+                                    scale = androidx.compose.ui.layout.ContentScale.Fit)
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    val w = p.whenText()
+                                    Text(w + " · " + p.guide, style = PType.Tiny, color = if (w == "EN VIVO") Jx.Live else Jx.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(p.title, style = PType.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (p.why.isNotBlank()) Text(p.why, style = PType.Tiny, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (p.serverLabel.isNotBlank()) Text(p.serverLabel, style = PType.Tiny, color = Jx.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
                             }
                         }
                     }

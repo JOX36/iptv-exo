@@ -27,7 +27,16 @@ object Today {
     data class Pick(
         val title: String, val guide: String, val start: Long, val stop: Long,
         val why: String, val channel: Channel,
+        /** Señal elegida si no es la del canal en este servidor (otra calidad u otro servidor). */
+        val alt: com.jox3.iptvexo.tv.player.Failover.Alt? = null,
+        /** "▶ B · FHD" cuando la mejor señal está en otro servidor ("" si es el actual). */
+        val serverLabel: String = "",
     ) {
+        /** Deja lista la señal y devuelve el canal a poner. */
+        fun prepare(): Channel {
+            alt?.let { com.jox3.iptvexo.tv.player.Failover.preset = channel.id to it }
+            return channel
+        }
         val liveNow get() = System.currentTimeMillis() / 1000 in start until stop
         fun whenText(): String {
             val now = System.currentTimeMillis() / 1000
@@ -95,25 +104,36 @@ object Today {
     suspend fun load(ctx: Context, repo: TvRepo) {
         if (!enabled(ctx)) { status.value = "Apagada."; return }
         if (!ExternalEpg.isReady()) { status.value = "Esperando la guía de programación de internet…"; return }
-        val acc = repo.api.account.key
-        if (loadedFor == acc && System.currentTimeMillis() - loadedAt < 3600_000 && picks.value.isNotEmpty()) return
+        val me = repo.api.account
+        val profileKey = me.key + "|" + (Profiles.current?.id ?: "")
+        if (loadedFor == profileKey && System.currentTimeMillis() - loadedAt < 3600_000 && picks.value.isNotEmpty()) return
         val now = System.currentTimeMillis() / 1000
-        // Solo canales que el servidor tiene (si no, la IA elige programas que no se pueden ver)
-        status.value = "Revisando qué canales de tu servidor tienen guía…"
-        val mine = serverChannels(repo)
-        if (mine.isEmpty()) { status.value = "Ningún canal de este servidor coincide con la guía de internet."; return }
-        // Programas de hoy que valen la pena mirar (ya empezados hace poco o por empezar)
+        // 1) Qué canales de la guía hay en CADA uno de tus servidores
+        status.value = "Revisando qué canales de tus servidores tienen guía…"
+        val accounts = listOf(me) + AccountStore(ctx).shown().filter { it.key != me.key }
+        val copies = HashMap<String, MutableList<Pair<Account, Channel>>>()   // guía → señales
+        serverChannels(repo).forEach { (k, c) -> copies.getOrPut(k) { ArrayList() } += me to c }
+        for (acc in accounts.drop(1)) {
+            val list = runCatching { com.jox3.iptvexo.tv.player.Failover.liveChannels(acc, repo) }.getOrDefault(emptyList())
+            withContext(Dispatchers.Default) {
+                for (c in list) {
+                    val g = ExternalEpg.quickMatch(c.name, c.epgId.ifBlank { null }) ?: continue
+                    if (g.progs.isNotEmpty()) copies.getOrPut(g.key) { ArrayList() } += acc to c
+                }
+            }
+        }
+        if (copies.isEmpty()) { status.value = "Ningún canal de tus servidores coincide con la guía de internet."; return }
+        // 2) Programas de hoy que valen la pena (ya empezados hace poco o por empezar)
         class C(val chan: ExternalEpg.Chan, val p: ExternalEpg.Prog, val line: String)
         val fmt = SimpleDateFormat("h:mm a", Locale("es"))
         val cands = withContext(Dispatchers.Default) {
             val out = ArrayList<C>()
-            for (c in ExternalEpg.channels()) if (c.key in mine) for (p in c.progs) {
+            for (c in ExternalEpg.channels()) if (c.key in copies) for (p in c.progs) {
                 if (p.stop <= now + 15 * 60 || p.start > now + 14 * 3600 || p.start < now - 2 * 3600) continue
                 if (p.stop - p.start < 40 * 60) continue
                 val marks = listOfNotNull("EN VIVO".takeIf { p.live }, "ESTRENO".takeIf { p.isNew }).joinToString(" ")
                 out += C(c, p, "${fmt.format(Date(p.start * 1000))}|${ExternalEpg.displayName(c)}|${p.title.take(80)}|${p.category.take(30)}|$marks")
             }
-            // Lo más prometedor primero: en vivo, estrenos, deportes y películas
             fun weight(x: C): Int {
                 val cat = (x.p.category + " " + x.p.title).lowercase()
                 var w = 0
@@ -125,15 +145,22 @@ object Today {
             }
             out.sortedWith(compareByDescending<C> { weight(it) }.thenBy { it.p.start }).distinctBy { it.p.title.lowercase() + it.p.start }.take(500)
         }
-        if (cands.isEmpty()) { status.value = "Los ${mine.size} canales de tu servidor con guía no tienen programas largos para hoy."; return }
-        status.value = "Preguntando a la IA (${cands.size} programas de la guía)…"
-        // Se comparte entre quienes tienen el mismo servidor (mismos canales), por franja de 3 horas
+        if (cands.isEmpty()) { status.value = "Los canales de tus servidores con guía no tienen programas largos para hoy."; return }
+        // 3) Gustos del perfil: lo que ve (canales recientes y favoritos)
+        val lib = repo.library
+        val taste = (lib.recentChannels.take(12).map { it.name } + lib.favorites.filter { it.kind == "live" }.take(10).map { it.name })
+            .map { Names.channel(it) }.distinct().joinToString(", ").take(400)
+        val kids = Profiles.current?.name?.lowercase()?.let { Regex("niñ|nin[oa]s|kid|infant|peque|chico").containsMatchIn(it) } == true
+        status.value = "Preguntando a la IA (${cands.size} programas de ${accounts.size} servidores)…"
+        // Se comparte entre quienes tienen los mismos servidores y los mismos gustos, por franja de 3 horas
         val bucket = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date()) + "-" + (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) / 3) +
-            "-" + com.jox3.iptvexo.tv.player.skip.SkipDetector.srvKey(repo.api.account.host).take(12)
+            "-" + accounts.joinToString("") { com.jox3.iptvexo.tv.player.skip.SkipDetector.srvKey(it.host).take(6) }.take(36) +
+            "-" + (taste + kids).hashCode().toUInt().toString(36)
         val res = withContext(Dispatchers.IO) {
             runCatching {
                 val body = JSONObject().put("k", bucket + "|" + repo.epgCountries())
                     .put("now", SimpleDateFormat("EEEE d 'de' MMMM, h:mm a", Locale("es")).format(Date()))
+                    .put("taste", taste).put("kids", kids)
                     .put("items", JSONArray(cands.map { it.line })).toString()
                 val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/ai/today")
                     .post(body.toRequestBody("application/json".toMediaType())).build()
@@ -143,21 +170,45 @@ object Today {
                 }
             }.onFailure { status.value = "Sin conexión con el servidor de JOX3: ${it.message?.take(60)}" }.getOrNull()
         } ?: return
-        status.value = "La IA eligió ${res.length()} programas; buscándolos en tu servidor…"
+        // 4) Cada programa una vez, con la señal más estable de todos tus servidores
         val byLine = cands.associateBy { it.line }
-        val out = ArrayList<Pick>()
+        val chosen = ArrayList<Pair<C, String>>()
         for (i in 0 until res.length()) {
             val o = res.optJSONObject(i) ?: continue
-            // La respuesta puede venir de otro equipo (compartida): se busca por el texto del programa
             val c = byLine[o.optString("t")] ?: cands.getOrNull(o.optInt("i", -1))?.takeIf { it.line == o.optString("t") } ?: continue
-            val ch = mine[c.chan.key] ?: continue
-            out += Pick(c.p.title, ExternalEpg.displayName(c.chan), c.p.start, c.p.stop, o.optString("why"), ch)
-            if (out.size >= 10) break
+            chosen += c to o.optString("why")
         }
-        picks.value = out
-        loadedFor = acc; loadedAt = System.currentTimeMillis()
-        status.value = if (out.isEmpty()) "La IA eligió ${res.length()} programas, pero ninguno está en los canales de este servidor."
-            else "Lista: ${out.size} programas (de ${res.length()} que eligió la IA)."
+        runCatching {
+            com.jox3.iptvexo.tv.player.Stability.prefetch(chosen.flatMap { (c, _) -> copies[c.chan.key].orEmpty().map { it.first to it.second.id } })
+        }
+        val all = AccountStore(ctx).all()
+        val out = ArrayList<Pick>()
+        for ((c, why) in chosen) {
+            val sigs = copies[c.chan.key].orEmpty()
+            if (sigs.isEmpty()) continue
+            val best = sigs.maxWithOrNull(compareBy<Pair<Account, Channel>> {
+                com.jox3.iptvexo.tv.player.Stability.score(ctx, it.first, it.second.id, it.second.name)
+            }.thenBy { if (it.first.key == me.key) 1 else 0 }) ?: continue
+            val mine = sigs.firstOrNull { it.first.key == me.key }?.second
+            val alt = com.jox3.iptvexo.tv.player.Failover.Alt(best.first, best.second.id, best.second.name, ServerHub.tagOf(best.second.name))
+            val pick = when {
+                best.first.key == me.key -> Pick(c.p.title, ExternalEpg.displayName(c.chan), c.p.start, c.p.stop, why, best.second)
+                // También está aquí: se abre aquí, con la señal del otro servidor
+                mine != null -> Pick(c.p.title, ExternalEpg.displayName(c.chan), c.p.start, c.p.stop, why, mine, alt,
+                    "▶ " + ServerHub.letter(all, best.first) + (if (alt.tag.isNotBlank()) " · " + alt.tag else ""))
+                // Solo en otro servidor: se pone desde aquí sin cambiar de servidor
+                else -> Pick(c.p.title, ExternalEpg.displayName(c.chan), c.p.start, c.p.stop, why,
+                    com.jox3.iptvexo.tv.player.Failover.externalChannel(alt, best.second.logo, best.second.categoryId), alt,
+                    "▶ " + ServerHub.letter(all, best.first) + " · " + ServerHub.name(all, best.first))
+            }
+            out += pick
+            if (out.size >= 12) break
+        }
+        // Lo que ya está pasando primero
+        picks.value = out.sortedWith(compareByDescending<Pick> { it.liveNow }.thenBy { it.start })
+        loadedFor = profileKey; loadedAt = System.currentTimeMillis()
+        status.value = if (out.isEmpty()) "La IA eligió ${res.length()} programas, pero no se encontraron en tus servidores."
+            else "Lista: ${out.size} programas de ${accounts.size} servidores."
     }
 
     // ── Avísame cuando juegue… ──

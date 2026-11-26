@@ -69,6 +69,21 @@ object Failover {
 
     private val lists = HashMap<String, Pair<Long, List<Channel>>>()
 
+    /** Canales en vivo de un servidor (caché de 15 min). */
+    suspend fun liveChannels(acc: Account, repo: TvRepo): List<Channel> = channelsOf(acc, repo)
+
+    /**
+     * Canales de OTRO servidor que se ponen desde este (sin cambiar de servidor): id inventado
+     * "ext:…" → su señal real. Así el reproductor sabe de dónde sacarlo aunque se vuelva a él.
+     */
+    val external = java.util.concurrent.ConcurrentHashMap<String, Alt>()
+
+    fun externalChannel(alt: Alt, logo: String, categoryId: String = ""): Channel {
+        val id = "ext:" + (alt.account.key.hashCode().toUInt().toString(36)) + "_" + alt.id
+        external[id] = alt
+        return Channel(id, alt.name, logo, categoryId, 1)
+    }
+
     private suspend fun channelsOf(acc: Account, repo: TvRepo): List<Channel> {
         if (acc.key == repo.api.account.key) repo.peekIndex()?.channels?.let { return it }
         synchronized(lists) { lists[acc.key] }?.let { (t, l) -> if (System.currentTimeMillis() - t < LIST_TTL) return l }
