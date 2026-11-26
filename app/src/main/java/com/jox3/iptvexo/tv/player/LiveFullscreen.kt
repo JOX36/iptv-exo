@@ -862,18 +862,21 @@ private fun WhatPanel(live: LivePlayback, repo: TvRepo, ch: Channel, focus: Focu
     val res by produceState<Result<FrameWatch.What>?>(null, ch.id, ask) {
         value = null
         val now = repo.cachedEpg(ch)?.let { repo.nowPlaying(it) }
-        value = FrameWatch.describe(ctx, ch.name, now?.label.orEmpty(), now?.description.orEmpty(), now?.episode.orEmpty())
+        value = FrameWatch.identify(ctx, ch.name, now?.label.orEmpty(), now?.description.orEmpty(), now?.episode.orEmpty())
     }
     Column(Modifier.fillMaxSize().background(Color(0xE6101722), RoundedCornerShape(14.dp)).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val r = res
         when {
-            r == null -> Text("✨ Mirando la imagen…", style = Type.Label, color = Jx.Accent)
+            r == null -> Text("✨ Mirando y escuchando…", style = Type.Label, color = Jx.Accent)
             r.isFailure -> Text(r.exceptionOrNull()?.message ?: "No se pudo.", style = Type.Small, color = Jx.Muted)
             else -> r.getOrNull()?.let { w ->
                 Text("✨ " + w.title.ifBlank { "Esto es lo que veo" }, style = Type.Label, color = Jx.Accent)
                 // Serie: el capítulo exacto (si se pudo saber)
                 if (w.episodeLine.isNotBlank()) Text("📺 " + w.episodeLine, style = Type.Label, color = Jx.Text)
+                if (w.why.isNotBlank()) Text("✔ " + w.why, style = Type.Small, color = Jx.Muted)
+                if (w.alternatives.isNotEmpty()) Text("No estoy seguro del capítulo. Podría ser: " + w.alternatives.joinToString(" · "),
+                    style = Type.Small, color = Jx.TextSoft)
                 Text(w.text, style = Type.Small, color = Jx.Text)
                 w.facts.forEach { f -> Text("• $f", style = Type.Small, color = Jx.TextSoft) }
             }

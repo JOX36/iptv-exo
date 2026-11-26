@@ -179,22 +179,35 @@ object Tmdb {
      * Nombre real de un capítulo según TMDB: "Nombre en español (Original)". "" si no lo encuentra.
      * Para "¿Qué estoy viendo?": la IA dice serie, temporada y capítulo, y TMDB da el nombre exacto.
      */
-    suspend fun episodeName(ctx: Context, series: String, season: Int, episode: Int): String = withContext(Dispatchers.IO) {
+    suspend fun episodeName(ctx: Context, series: String, season: Int, episode: Int): String =
+        episodeInfo(ctx, series, season, episode)?.first.orEmpty()
+
+    private val showIds = HashMap<String, Int>()
+
+    /**
+     * Nombre ("En español (Original)") y resumen de un capítulo según TMDB. null si no lo encuentra.
+     * El resumen sirve para que la IA compare con lo que se dijo en pantalla.
+     */
+    suspend fun episodeInfo(ctx: Context, series: String, season: Int, episode: Int): Pair<String, String>? = withContext(Dispatchers.IO) {
         val k = key(ctx)
-        if (k.length < 20 || series.isBlank() || season <= 0 || episode <= 0) return@withContext ""
+        if (k.length < 20 || series.isBlank() || season <= 0 || episode <= 0) return@withContext null
         runCatching {
-            val show = search(k, "tv", series) ?: return@runCatching ""
-            val id = show.optInt("id")
-            val es = get(k, "tv/$id/season/$season/episode/$episode", "language=es-MX").optString("name")
-            val en = runCatching { get(k, "tv/$id/season/$season/episode/$episode", "language=en-US").optString("name") }.getOrDefault("")
+            val id = synchronized(showIds) { showIds[series.lowercase()] }
+                ?: (search(k, "tv", series)?.optInt("id") ?: return@runCatching null).also { synchronized(showIds) { showIds[series.lowercase()] = it } }
+            val esO = get(k, "tv/$id/season/$season/episode/$episode", "language=es-MX")
+            val enO = runCatching { get(k, "tv/$id/season/$season/episode/$episode", "language=en-US") }.getOrNull()
+            val es = esO.optString("name")
+            val en = enO?.optString("name").orEmpty()
             // TMDB pone "Episodio 3" cuando no hay nombre traducido
             val esOk = es.takeIf { it.isNotBlank() && !Regex("^(episodio|episode|capítulo)\\s*\\d+$", RegexOption.IGNORE_CASE).matches(it) }
-            when {
+            val name = when {
                 esOk != null && en.isNotBlank() && !en.equals(esOk, ignoreCase = true) -> "$esOk ($en)"
                 esOk != null -> esOk
                 else -> en
             }
-        }.getOrDefault("")
+            val overview = esO.optString("overview").ifBlank { enO?.optString("overview").orEmpty() }
+            if (name.isBlank() && overview.isBlank()) null else name to overview
+        }.getOrNull()
     }
 
     private fun search(k: String, type: String, name: String): JSONObject? {

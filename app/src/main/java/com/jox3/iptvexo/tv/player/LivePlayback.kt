@@ -168,6 +168,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         current = ch
         retries = 0
         altStep = 0
+        LiveAudio.clear()   // el audio guardado es de este canal
         tried.clear()
         switching = false
         // Siempre la mejor opción: si la última vez funcionó una señal de respaldo, se arranca en ella
@@ -256,7 +257,8 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     private fun buildPlayer(): ExoPlayer = ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(OkHttpDataSource.Factory(NetClient.player())))
         .setRenderersFactory(
-            DefaultRenderersFactory(context)
+            // Con "oído" (LiveAudio): guarda los últimos segundos para "¿Qué estoy viendo?"
+            LiveRenderersFactory(context)
                 // FFmpeg (AC-3, DTS…) salvo que un arranque anterior se haya caído por su culpa
                 .setExtensionRendererMode(
                     if (PlayerSafety.ffmpegAllowed(context)) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON

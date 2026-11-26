@@ -395,3 +395,90 @@ export async function aiSame(req, env) {
     return json({ ok: false, error: "ia no disponible" }, 503);
   }
 }
+
+// ── ¿Qué estoy viendo? con audio: capítulo de series sin guía (canales 24/7) ──
+// Paso 1 (/v1/ai/what2): fotos + 20 s de audio → qué es, lo que se dice y hasta 5 capítulos candidatos.
+// Paso 2 (/v1/ai/pick): la app trae de TMDB el resumen real de esos candidatos y la IA elige cuál
+// coincide con lo que se dijo (o ninguno). Lo identificado se comparte unos minutos por canal.
+
+const WHAT2_PROMPT = WHAT_PROMPT.replace(/SERIES:[\s\S]*$/, "") + `
+Además te doy unos segundos del AUDIO del canal (diálogos) y varias fotos seguidas. Los diálogos son la
+mejor pista para saber el capítulo exacto de una serie: úsalos.
+- "transcript": lo esencial de lo que se dice (en el idioma original, máx. 300 caracteres).
+- "candidates": si es una serie, hasta 5 capítulos posibles {"season":n,"episode":n}, el más probable primero,
+  según los diálogos, las escenas y personajes que aparecen. Si la guía trae temporada y episodio, ese primero.
+Responde SOLO con JSON: {"title":"título corto","text":"2 a 4 frases","facts":["dato corto"],
+"series":"nombre de la serie (como se conoce en Latinoamérica) o vacío","transcript":"",
+"candidates":[{"season":0,"episode":0}],"fromGuide":false}`;
+
+const PICK_PROMPT = `Debes decir qué capítulo de una serie se está viendo.
+Te doy lo que se dijo en pantalla (transcript), la escena descrita y varios capítulos candidatos con su
+resumen REAL. Elige el capítulo cuyo resumen coincide con los diálogos y la escena. Si ninguno coincide
+claramente, "i": -1. No elijas por adivinar.
+Responde SOLO con JSON: {"i": índice o -1, "confidence": "alta"|"media"|"baja", "why": "frase corta"}`;
+
+const b64ok = (s, max) => typeof s === "string" && s.length > 200 && s.length < max && /^[A-Za-z0-9+/=]+$/.test(s);
+const watchKey = (n, prog) => "w|" + norm(n) + "|" + norm(prog);
+
+export async function aiWhat2(req, env) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
+  const imgs = (Array.isArray(body.imgs) ? body.imgs : []).filter((i) => b64ok(i, 400_000)).slice(0, 3);
+  const audio = b64ok(body.audio, 1_400_000) ? body.audio : "";
+  if (!imgs.length) return json({ error: "imagen inválida" }, 400);
+  // Alguien ya lo identificó en este canal hace poco: se responde al instante
+  const shared = await cacheGet(env, watchKey(body.n, body.prog), 6 * 60 * 1000);
+  if (shared) return json({ ok: true, cached: true, ...shared });
+  const ctx = [`Canal: ${str(body.n, 80) || "desconocido"}`];
+  if (body.prog) ctx.push(`Guía ahora: ${str(body.prog, 120)}`);
+  if (body.desc) ctx.push(`Descripción en la guía: ${str(body.desc, 400)}`);
+  if (body.ep) ctx.push(`Episodio según la guía: ${str(body.ep, 60)}`);
+  if (!audio) ctx.push("(No hay audio disponible: solo las fotos.)");
+  const content = [{ type: "text", text: ctx.join("\n") }];
+  imgs.forEach((i) => content.push({ type: "image_url", image_url: { url: "data:image/jpeg;base64," + i } }));
+  if (audio) content.push({ type: "input_audio", input_audio: { data: audio, format: "wav" } });
+  try {
+    const o = await ask(env, WHAT2_PROMPT, content, 700);
+    const num = (v) => Math.max(0, Math.min(999, Math.floor(Number(v) || 0)));
+    const cands = (Array.isArray(o.candidates) ? o.candidates : [])
+      .map((c) => ({ season: num(c?.season), episode: num(c?.episode) }))
+      .filter((c) => c.season > 0 && c.episode > 0).slice(0, 5);
+    return json({
+      ok: true, via: lastVia, title: str(o.title, 100), text: str(o.text, 700), facts: list(o.facts, 5, 100),
+      series: str(o.series, 80), transcript: str(o.transcript, 300), candidates: cands, fromGuide: o.fromGuide === true,
+      heard: !!audio,
+    });
+  } catch (e) {
+    return json({ ok: false, error: "ia no disponible" }, 503);
+  }
+}
+
+export async function aiPick(req, env) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
+  const cands = (Array.isArray(body.cands) ? body.cands : []).slice(0, 5).map((c) => ({
+    s: Math.floor(Number(c?.s) || 0), e: Math.floor(Number(c?.e) || 0), name: str(c?.name, 120), overview: str(c?.overview, 600),
+  })).filter((c) => c.s > 0 && c.e > 0);
+  if (!cands.length) return json({ ok: true, i: -1 });
+  const payload = {
+    serie: str(body.series, 80), transcript: str(body.transcript, 400), escena: str(body.scene, 500),
+    candidatos: cands.map((c, i) => ({ i, temporada: c.s, capitulo: c.e, nombre: c.name, resumen: c.overview })),
+  };
+  try {
+    const o = await ask(env, PICK_PROMPT, JSON.stringify(payload), 150);
+    const i = Number.isInteger(o.i) && o.i >= 0 && o.i < cands.length ? o.i : -1;
+    const confidence = ["alta", "media", "baja"].includes(o.confidence) ? o.confidence : "baja";
+    // Identificado con seguridad: se comparte unos minutos para quien pregunte en el mismo canal
+    if (i >= 0 && confidence !== "baja" && body.n && body.result && typeof body.result === "object") {
+      const r = body.result;
+      await cachePut(env, watchKey(body.n, body.prog), {
+        title: str(r.title, 100), text: str(r.text, 700), facts: list(r.facts, 5, 100), series: str(body.series, 80),
+        transcript: "", candidates: [{ season: cands[i].s, episode: cands[i].e }], fromGuide: false, heard: true,
+        picked: { season: cands[i].s, episode: cands[i].e, name: cands[i].name, confidence },
+      });
+    }
+    return json({ ok: true, via: lastVia, i, confidence, why: str(o.why, 140) });
+  } catch (e) {
+    return json({ ok: false, error: "ia no disponible" }, 503);
+  }
+}
