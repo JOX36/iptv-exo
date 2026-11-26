@@ -376,7 +376,14 @@ object ExternalEpg {
         return found
     }
 
-    private fun findMatch(name: String, tvgId: String?, countryHint: String?): Chan? {
+    /**
+     * Emparejamiento rápido, solo exacto (código de guía o nombre): para revisar miles de canales
+     * de un servidor de una vez (p. ej. qué canales del servidor tienen guía).
+     */
+    fun quickMatch(name: String, tvgId: String?): Chan? =
+        if (chans.isEmpty()) null else runCatching { findMatch(name, tvgId, null, exactOnly = true) }.getOrNull()
+
+    private fun findMatch(name: String, tvgId: String?, countryHint: String?, exactOnly: Boolean = false): Chan? {
         val idx = index
         // País del canal: el que trae el nombre ("EC | …") o el de su categoría.
         val country = tokensPrefix(name) ?: countryHint?.uppercase(Locale.ROOT)?.takeIf { it.length in 2..3 }
@@ -395,6 +402,7 @@ object ExternalEpg {
         }
         val keys = keysOf(name)
         keys.forEach { k -> best(idx[k], k)?.let { return it } }
+        if (exactOnly) return null
         // "Citytv Bogotá" → "City TV": la guía tiene el nombre corto y el servidor le agrega la ciudad.
         val letters = Regex("[a-z]{4,}")
         var pre: String? = null

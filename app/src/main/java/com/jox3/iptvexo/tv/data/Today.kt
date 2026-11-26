@@ -41,8 +41,29 @@ object Today {
 
     // ── Buscar en el servidor el canal de una guía ──
 
+    // Qué canales de la guía tiene el servidor (guía → canal del servidor), por servidor, 1 hora
+    @Volatile private var serverMap: Triple<String, Long, Map<String, Channel>>? = null
+
+    /** Canales de la guía que el servidor actual tiene, con su canal en el servidor. */
+    suspend fun serverChannels(repo: TvRepo): Map<String, Channel> {
+        val acc = repo.api.account.key
+        serverMap?.let { (a, t, m) -> if (a == acc && System.currentTimeMillis() - t < 3600_000 && m.isNotEmpty()) return m }
+        val idx = repo.peekIndex() ?: runCatching { repo.searchIndex() }.getOrNull() ?: return emptyMap()
+        val m = withContext(Dispatchers.Default) {
+            val out = HashMap<String, Channel>()
+            for (c in idx.channels) {
+                val g = ExternalEpg.quickMatch(c.name, c.epgId.ifBlank { null }) ?: continue
+                if (g.progs.isNotEmpty()) out.putIfAbsent(g.key, c)
+            }
+            out
+        }
+        serverMap = Triple(acc, System.currentTimeMillis(), m)
+        return m
+    }
+
     /** El canal del servidor actual que corresponde a [chan] de la guía (null si no lo tiene). */
     suspend fun channelFor(ctx: Context, repo: TvRepo, chan: ExternalEpg.Chan): Channel? {
+        serverChannels(repo)[chan.key]?.let { return it }
         val idx = repo.peekIndex() ?: runCatching { repo.searchIndex() }.getOrNull() ?: return null
         val me = repo.api.account
         val hits = ServerHub.search(ExternalEpg.displayName(chan), me, idx, listOf(me), null, includeOthers = false).channels
@@ -77,12 +98,16 @@ object Today {
         val acc = repo.api.account.key
         if (loadedFor == acc && System.currentTimeMillis() - loadedAt < 3600_000 && picks.value.isNotEmpty()) return
         val now = System.currentTimeMillis() / 1000
+        // Solo canales que el servidor tiene (si no, la IA elige programas que no se pueden ver)
+        status.value = "Revisando qué canales de tu servidor tienen guía…"
+        val mine = serverChannels(repo)
+        if (mine.isEmpty()) { status.value = "Ningún canal de este servidor coincide con la guía de internet."; return }
         // Programas de hoy que valen la pena mirar (ya empezados hace poco o por empezar)
         class C(val chan: ExternalEpg.Chan, val p: ExternalEpg.Prog, val line: String)
         val fmt = SimpleDateFormat("h:mm a", Locale("es"))
         val cands = withContext(Dispatchers.Default) {
             val out = ArrayList<C>()
-            for (c in ExternalEpg.channels()) for (p in c.progs) {
+            for (c in ExternalEpg.channels()) if (c.key in mine) for (p in c.progs) {
                 if (p.stop <= now + 15 * 60 || p.start > now + 14 * 3600 || p.start < now - 2 * 3600) continue
                 if (p.stop - p.start < 40 * 60) continue
                 val marks = listOfNotNull("EN VIVO".takeIf { p.live }, "ESTRENO".takeIf { p.isNew }).joinToString(" ")
@@ -100,9 +125,11 @@ object Today {
             }
             out.sortedWith(compareByDescending<C> { weight(it) }.thenBy { it.p.start }).distinctBy { it.p.title.lowercase() + it.p.start }.take(500)
         }
-        if (cands.isEmpty()) { status.value = "La guía de internet no tiene programas para hoy en tus países."; return }
+        if (cands.isEmpty()) { status.value = "Los ${mine.size} canales de tu servidor con guía no tienen programas largos para hoy."; return }
         status.value = "Preguntando a la IA (${cands.size} programas de la guía)…"
-        val bucket = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date()) + "-" + (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) / 3)
+        // Se comparte entre quienes tienen el mismo servidor (mismos canales), por franja de 3 horas
+        val bucket = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date()) + "-" + (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) / 3) +
+            "-" + com.jox3.iptvexo.tv.player.skip.SkipDetector.srvKey(repo.api.account.host).take(12)
         val res = withContext(Dispatchers.IO) {
             runCatching {
                 val body = JSONObject().put("k", bucket + "|" + repo.epgCountries())
@@ -123,7 +150,7 @@ object Today {
             val o = res.optJSONObject(i) ?: continue
             // La respuesta puede venir de otro equipo (compartida): se busca por el texto del programa
             val c = byLine[o.optString("t")] ?: cands.getOrNull(o.optInt("i", -1))?.takeIf { it.line == o.optString("t") } ?: continue
-            val ch = channelFor(ctx, repo, c.chan) ?: continue
+            val ch = mine[c.chan.key] ?: continue
             out += Pick(c.p.title, ExternalEpg.displayName(c.chan), c.p.start, c.p.stop, o.optString("why"), ch)
             if (out.size >= 10) break
         }
