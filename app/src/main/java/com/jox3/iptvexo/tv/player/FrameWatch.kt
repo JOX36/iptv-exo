@@ -32,7 +32,7 @@ object FrameWatch {
     private const val PREFS = "jox3_player"
     private const val DAILY_MAX = 60
     /** Consultas de "¿Qué estoy viendo?" por equipo al día (solo cuentan las que responden). */
-    private const val WHAT_MAX = 100
+    private const val WHAT_MAX = 40
 
     /** Día según la hora del equipo: el cupo se renueva a la medianoche local. */
     private fun localDay(): Int {
