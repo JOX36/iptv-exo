@@ -92,6 +92,10 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
     val becauseList = lib.because.value?.second.orEmpty()
     val fresh = com.jox3.iptvexo.tv.ui.rememberFreshImages(repo, remember(resume, becauseList) { resume.map { it.item } + becauseList })
     val heroReq = remember { FocusRequester() }
+    // Lo mejor de hoy: cuando la guía de internet esté lista
+    val ctxToday = androidx.compose.ui.platform.LocalContext.current
+    val epgV by repo.epgVersion
+    LaunchedEffect(epgV, repo) { runCatching { com.jox3.iptvexo.tv.data.Today.load(ctxToday, repo) } }
 
     val result = state
     if (result == null) { StatusBox("Cargando…"); return }
@@ -119,6 +123,17 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
                 onPlay = { m, info -> host.player.playMovie(m.id, m.name, m.poster, info?.ext?.ifBlank { null } ?: m.ext, m.categoryId) },
                 onInfo = { m -> nav.open(Route.MovieDetail(m)) })
         } else item(key = "pad") { Box(Modifier.height(Safe.V)) }
+
+        // ── Lo mejor de hoy (Gemini elige de la guía) ──
+        val today = com.jox3.iptvexo.tv.data.Today.picks.value
+        if (today.isNotEmpty()) item(key = "today") {
+            val chans = today.mapIndexed { i, p -> p.channel.copy(num = i + 1) }
+            ShelfRow("✨ Lo mejor de hoy") {
+                itemsIndexed(today, key = { i, p -> "t$i" + p.channel.id + p.start }) { i, p ->
+                    TodayCard(p) { live.playFullscreen(chans, i, "Lo mejor de hoy") }
+                }
+            }
+        }
 
         // ── Continuar viendo ──
         if (resume.isNotEmpty()) item(key = "resume") {
@@ -289,6 +304,25 @@ private fun Hero(movie: Movie, info: MovieInfo?, playReq: FocusRequester, index:
                             .background(if (k == index) Jx.Accent else Color(0x55FFFFFF), RoundedCornerShape(2.dp)))
                     }
                 }
+            }
+        }
+    }
+}
+
+
+/** Tarjeta de "Lo mejor de hoy": logo del canal, cuándo (EN VIVO / hora), título y por qué verlo. */
+@Composable
+private fun TodayCard(p: com.jox3.iptvexo.tv.data.Today.Pick, onClick: () -> Unit) {
+    FocusSurface(onClick = onClick, modifier = Modifier.width(300.dp).height(132.dp), focusedScale = 1.06f, container = Jx.Surface) {
+        Row(Modifier.fillMaxSize().padding(12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RemoteImage(p.channel.logo, p.guide, Modifier.size(64.dp).clip(RoundedCornerShape(10.dp)).background(Color(0x33081626)).padding(6.dp),
+                scale = ContentScale.Fit)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                val w = p.whenText()
+                Text(w + " · " + p.guide, style = Type.Small, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = if (w == "EN VIVO") Jx.Live else Jx.Accent)
+                Text(p.title, style = Type.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (p.why.isNotBlank()) Text(p.why, style = Type.Small, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }

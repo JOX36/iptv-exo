@@ -238,8 +238,16 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                     // Lo que entendió la IA
                     val o = outcome
                     if (o != null && (o.say.isNotBlank() || o.thinking)) item(key = "ai") {
-                        Text(if (o.thinking) "✨ Buscando con IA…" else "✨ " + o.say, style = Type.Label,
-                            color = Jx.Accent, modifier = Modifier.padding(start = 28.dp, end = 32.dp))
+                        Column(Modifier.padding(start = 28.dp, end = 32.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(if (o.thinking) "✨ Buscando con IA…" else "✨ " + o.say, style = Type.Label, color = Jx.Accent)
+                            // Partido o evento: avisar cuando empiece
+                            val term = o.alertTerms.firstOrNull()
+                            if (term != null) {
+                                val on = term.lowercase() in com.jox3.iptvexo.tv.data.Today.alerts
+                                com.jox3.iptvexo.tv.ui.ActionButton(if (on) "🔔 Te aviso cuando juegue “$term”" else "🔔 Avísame cuando juegue “$term”",
+                                    { if (on) com.jox3.iptvexo.tv.data.Today.removeAlert(ctx, term.lowercase()) else com.jox3.iptvexo.tv.data.Today.addAlert(ctx, term) })
+                            }
+                        }
                     }
                     // Canales del servidor actual (para cambiar con ▲▼ dentro de los resultados)
                     val here = r.channels.mapNotNull { h -> h.copies.firstOrNull { it.account.key == account.key } }

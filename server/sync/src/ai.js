@@ -284,3 +284,38 @@ export async function aiFrame(req, env) {
     return json({ ok: false, error: "ia no disponible" }, 503);
   }
 }
+
+// ── Lo mejor de hoy: lo más atractivo de la guía ──
+
+const TODAY_PROMPT = `Eres el programador de una app de TV para familias de Latinoamérica (sobre todo Colombia).
+Te doy programas de la guía de hoy, uno por línea: "índice|hora|canal|título|categoría|marcas".
+Elige hasta 12 que valga la pena destacar para ver hoy: partidos importantes (liga colombiana, Selección,
+Copa Libertadores/Sudamericana, Champions, grandes ligas europeas, NBA/NFL/MLB en definiciones), boxeo/UFC/F1,
+finales, estrenos de películas, conciertos, eventos especiales. Prefiere lo EN VIVO y lo que empieza pronto.
+Evita repetidos (el mismo partido en varios canales: elige uno), noticieros normales, televentas,
+programas de relleno y repeticiones. Para cada uno, una razón corta y llamativa en español.
+Responde SOLO con JSON: {"picks":[{"i":índice,"why":"frase corta"}]}`;
+
+export async function aiToday(req, env) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
+  const k = str(body.k, 120);
+  const items = (Array.isArray(body.items) ? body.items : []).slice(0, 600).map((x) => str(x, 160));
+  if (!k || !items.length) return json({ error: "faltan datos" }, 400);
+  // Se comparte por día, franja de 3 horas y países de la guía: un solo pedido a la IA para todos
+  const key = "t|" + k;
+  const hit = await cacheGet(env, key, 3 * 3600 * 1000);
+  if (hit) return json({ ok: true, cached: true, ...hit });
+  try {
+    const now = str(body.now, 60);
+    const o = await ask(env, TODAY_PROMPT, (now ? `Ahora es ${now}.\n` : "") + items.map((s, i) => i + "|" + s).join("\n"), 900);
+    const picks = (Array.isArray(o.picks) ? o.picks : [])
+      .filter((p) => Number.isInteger(p?.i) && p.i >= 0 && p.i < items.length)
+      .slice(0, 12).map((p) => ({ i: p.i, why: str(p.why, 90), t: items[p.i] }));
+    const out = { picks };
+    await cachePut(env, key, out);
+    return json({ ok: true, via: lastVia, ...out });
+  } catch (e) {
+    return json({ ok: false, error: "ia no disponible" }, 503);
+  }
+}

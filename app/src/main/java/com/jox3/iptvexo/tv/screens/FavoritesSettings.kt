@@ -162,6 +162,15 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("Cambiar sola de señal si el canal falla: " + if (failover) "Sí" else "No", {
                 failover = !failover; com.jox3.iptvexo.tv.player.Failover.setEnabled(tctx, failover)
             }, Modifier.fillMaxWidth())
+            // Lo mejor de hoy (fila del Inicio) y avisos de partidos/programas
+            var todayOn by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Today.enabled(tctx)) }
+            ActionButton("“Lo mejor de hoy” en el Inicio: " + if (todayOn) "Sí" else "No", {
+                todayOn = !todayOn; com.jox3.iptvexo.tv.data.Today.setEnabled(tctx, todayOn); if (!todayOn) com.jox3.iptvexo.tv.data.Today.picks.value = emptyList()
+            }, Modifier.fillMaxWidth())
+            LaunchedEffect(Unit) { com.jox3.iptvexo.tv.data.Today.loadAlerts(tctx) }
+            com.jox3.iptvexo.tv.data.Today.alerts.toList().forEach { t ->
+                ActionButton("🔔 Aviso: “$t” · quitar", { com.jox3.iptvexo.tv.data.Today.removeAlert(tctx, t) }, Modifier.fillMaxWidth())
+            }
             // Vigilante: imagen negra o letrero de error → otra señal
             var watch by remember { mutableStateOf(com.jox3.iptvexo.tv.player.FrameWatch.enabled(tctx)) }
             ActionButton("Vigilar la imagen (letreros de error, pantalla negra): " + if (watch) "Sí" else "No", {

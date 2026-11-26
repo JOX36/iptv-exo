@@ -79,6 +79,8 @@ object ExternalEpg {
         private set
 
     fun isReady() = chans.isNotEmpty()
+    /** Todos los canales de la guía cargada (con sus programas). */
+    fun channels(): Collection<Chan> = chans.values
     fun channelCount() = chans.size
 
     fun savedCodes(ctx: Context): List<String> =

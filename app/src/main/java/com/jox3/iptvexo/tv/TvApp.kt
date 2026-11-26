@@ -527,6 +527,17 @@ private fun MainShell(
                 }
             }
         }
+
+        // "Avísame cuando juegue…": aviso cuando empieza lo que se pidió vigilar
+        com.jox3.iptvexo.tv.data.Today.repo = repo
+        LaunchedEffect(Unit) { com.jox3.iptvexo.tv.data.Today.watch(context) }
+        com.jox3.iptvexo.tv.data.Today.banner.value?.let { a ->
+            Box(Modifier.fillMaxSize().zIndex(6f)) {
+                com.jox3.iptvexo.tv.screens.AlertBanner(a,
+                    onWatch = { com.jox3.iptvexo.tv.data.Today.banner.value = null; live.playFullscreen(listOf(a.channel), 0, "Aviso") },
+                    onDismiss = { com.jox3.iptvexo.tv.data.Today.banner.value = null })
+            }
+        }
     }
     }
 }
