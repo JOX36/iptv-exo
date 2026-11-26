@@ -101,6 +101,11 @@ jobs:
           curl -sS -X POST "$U/v1/ai/same" -H 'content-type: application/json' -d "{\"n\":\"CNN ES HD $(date +%s)\",\"c\":[\"CNN EN ESPAÑOL FHD\",\"CNN INTERNATIONAL\",\"CNN Español 720p\",\"HLN\"]}" | tee /tmp/same.json; echo
           if grep -q '"ok":true' /tmp/same.json; then echo "::notice::Mismo canal: $(head -c 200 /tmp/same.json)"
           else echo "::warning::IA mismo canal no respondió: $(head -c 200 /tmp/same.json)"; fi
+          # ¿Qué estoy viendo? con audio: Gemini debe aceptar fotos + audio
+          printf '{"n":"Canal de prueba %s","prog":"","imgs":["%s"],"audio":"%s"}' "$(date +%s)" "$(base64 -w0 test/bars.jpg)" "$(base64 -w0 test/tone.wav)" > /tmp/what3.json
+          curl -sS -X POST "$U/v1/ai/what2" -H 'content-type: application/json' --data @/tmp/what3.json | tee /tmp/ai7.json; echo
+          if grep -q '"ok":true' /tmp/ai7.json && grep -q '"heard":true' /tmp/ai7.json; then echo "::notice::Con audio: $(head -c 250 /tmp/ai7.json)"
+          else echo "::warning::Con audio no respondió: $(head -c 300 /tmp/ai7.json)"; fi
           # Elegir capítulo entre resúmenes reales
           curl -sS -X POST "$U/v1/ai/pick" -H 'content-type: application/json' -d '{"series":"Los Simpson","transcript":"Bart: ¡Ayúdeme, señor! Me hacen trabajar día y noche. Skinner me persigue porque me escapé de la escuela.","scene":"Bart corre bajo la lluvia por la calle y le pide ayuda a un hombre","cands":[{"s":8,"e":8,"name":"Huracán Neddy","overview":"Un huracán destruye la casa de Ned Flanders y él pierde la paciencia con el pueblo."},{"s":5,"e":20,"name":"El niño que sabía demasiado","overview":"Bart se escapa de la escuela y, mientras huye del director Skinner, presencia un incidente que involucra al sobrino del alcalde Quimby."}]}' | tee /tmp/pick.json; echo
           if grep -q '"i":1' /tmp/pick.json; then echo "::notice::Elegir capítulo: $(head -c 200 /tmp/pick.json)"
