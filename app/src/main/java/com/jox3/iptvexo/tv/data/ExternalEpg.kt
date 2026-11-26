@@ -1,6 +1,9 @@
 package com.jox3.iptvexo.tv.data
 
 import android.content.Context
+import kotlinx.coroutines.launch
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import org.xmlpull.v1.XmlPullParser
@@ -361,7 +364,12 @@ object ExternalEpg {
         if (manual != null) return if (manual == "none") null else map[manual]
         val ck = name + "\u0000" + (tvgId ?: "") + "\u0000" + (countryHint ?: "")
         matchCache[ck]?.let { return if (it.isEmpty()) null else map[it] }
-        val found = findMatch(name, tvgId, countryHint)
+        var found = findMatch(name, tvgId, countryHint)
+        // Sin pareja por nombre: lo que eligió la IA (o se le pregunta, en segundo plano)
+        if (found == null) {
+            val ai = aiPick(ctx, name)
+            if (ai == null) aiAsk(ctx, name) else if (ai.isNotEmpty()) found = map[ai]
+        }
         matchCache[ck] = found?.key ?: ""
         return found
     }
@@ -435,6 +443,84 @@ object ExternalEpg {
         }.filter { it.second > 0.0 }.sortedByDescending { it.second }.map { it.first }
             .distinctBy { (it.names.firstOrNull() ?: it.id).lowercase(Locale.ROOT) + it.progs.firstOrNull()?.title }
             .take(limit).toList()
+    }
+
+    // ── IA: canales que no se pudieron emparejar por nombre ──
+    // La IA del servidor de JOX3 elige entre las guías más parecidas (o dice que ninguna).
+    // Lo que decide queda guardado en el equipo y en el servidor (sirve para todos).
+
+    /** Se llama cuando la IA emparejó canales nuevos (la pantalla vuelve a pedir la guía). */
+    @Volatile var onAiPicked: (() -> Unit)? = null
+    private const val AI_MAX_PER_SESSION = 400
+    private val aiScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    private val aiPending = LinkedHashMap<String, String>()       // clave → nombre del canal
+    private val aiTried = java.util.Collections.synchronizedSet(HashSet<String>())
+    @Volatile private var aiRunning = false
+
+    private fun aiKey(name: String) = "ai:" + (keysOf(name).firstOrNull() ?: name.lowercase(Locale.ROOT))
+
+    /** Guía elegida por la IA: clave del canal, "" si dijo que ninguna, null si aún no se preguntó. */
+    private fun aiPick(ctx: Context, name: String): String? =
+        prefs(ctx).getString(aiKey(name), null)?.let { if (it == "none") "" else it }
+
+    private fun aiAsk(ctx: Context, name: String) {
+        val k = aiKey(name)
+        if (aiTried.size >= AI_MAX_PER_SESSION || !aiTried.add(k)) return
+        synchronized(aiPending) { aiPending[k] = name }
+        if (aiRunning) return
+        aiRunning = true
+        val app = ctx.applicationContext
+        aiScope.launch {
+            try {
+                kotlinx.coroutines.delay(2500)   // juntar los canales de la pantalla en una sola pregunta
+                while (true) {
+                    val batch = synchronized(aiPending) {
+                        aiPending.entries.take(20).map { it.key to it.value }.also { b -> b.forEach { aiPending.remove(it.first) } }
+                    }
+                    if (batch.isEmpty()) break
+                    if (aiBatch(app, batch)) {
+                        matchCache.clear()
+                        onAiPicked?.invoke()
+                    }
+                }
+            } finally { aiRunning = false }
+        }
+    }
+
+    /** Pregunta por un grupo de canales. true si alguno quedó con guía. */
+    private fun aiBatch(ctx: Context, batch: List<Pair<String, String>>): Boolean {
+        val cands = batch.map { (_, name) -> candidates(name, 10) }
+        val items = JSONArray()
+        val asked = ArrayList<Int>()
+        val ed = prefs(ctx).edit()
+        batch.forEachIndexed { i, (k, _) ->
+            if (cands[i].isEmpty()) ed.putString(k, "none")    // nada parecido: no hay que preguntar
+            else {
+                asked += i
+                items.put(JSONObject().put("n", batch[i].second)
+                    .put("c", JSONArray(cands[i].map { displayName(it) + " [" + countryOf(it.code).take(2) + "]" })))
+            }
+        }
+        ed.apply()
+        if (asked.isEmpty()) return false
+        val res = runCatching {
+            val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/ai/epg")
+                .post(JSONObject().put("items", items).toString().toRequestBody("application/json".toMediaType()))
+                .build()
+            com.jox3.iptvexo.NetClient.api().newCall(req).execute().use { r ->
+                if (!r.isSuccessful) null else JSONObject(r.body?.string().orEmpty()).optJSONArray("r")
+            }
+        }.getOrNull() ?: return false
+        var any = false
+        val ed2 = prefs(ctx).edit()
+        asked.forEachIndexed { j, i ->
+            if (j >= res.length() || res.isNull(j)) return@forEachIndexed
+            val v = res.optInt(j, -1)
+            if (v in cands[i].indices) { ed2.putString(batch[i].first, cands[i][v].key); any = true }
+            else ed2.putString(batch[i].first, "none")
+        }
+        ed2.apply()
+        return any
     }
 
     /**

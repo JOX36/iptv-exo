@@ -78,6 +78,8 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         synchronized(catCountry) { liveCats.forEach { catCountry[it.id] = EpgCountries.ofCategory(it.raw) } }
         epgCodes = EpgCountries.filesFor(liveCats)
         ExternalEpg.lowMemory = ServerHub.lowMemory(context)
+        // Canales que la IA empareja después: se vuelve a pedir su guía
+        ExternalEpg.onAiPicked = onExternalReady
         requestExternal()
         // Guía completa del servidor (si la tiene): solo los canales que existen en él
         ServerEpg.ensure(context, api, ids = {
