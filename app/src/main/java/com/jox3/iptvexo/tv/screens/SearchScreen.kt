@@ -244,7 +244,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                             val term = o.alertTerms.firstOrNull()
                             if (term != null) {
                                 val on = term.lowercase() in com.jox3.iptvexo.tv.data.Today.alerts
-                                ActionButton(if (on) "🔔 Te aviso cuando juegue “$term”" else "🔔 Avísame cuando juegue “$term”",
+                                com.jox3.iptvexo.tv.ui.ActionButton(if (on) "🔔 Te aviso cuando juegue “$term”" else "🔔 Avísame cuando juegue “$term”",
                                     { if (on) com.jox3.iptvexo.tv.data.Today.removeAlert(ctx, term.lowercase()) else com.jox3.iptvexo.tv.data.Today.addAlert(ctx, term) })
                             }
                         }
