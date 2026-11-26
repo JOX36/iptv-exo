@@ -90,14 +90,19 @@ object Failover {
             val st = ServerHub.status[a.key]
             when { a.key == me.key -> 0; st == null || st.ok -> 1; else -> 2 }
         }.forEach { acc ->
-            val found = channelsOf(acc, repo).filter { c -> identity(c.name) == id }
+            out += channelsOf(acc, repo).filter { c -> identity(c.name) == id }
                 .map { c -> Alt(acc, c.id, c.name, ServerHub.tagOf(c.name)) }
                 .filter { it.key !in skip && !(acc.key == me.key && it.id == ch.id) }
-                .sortedBy { rank(it.tag) }
-            out += found
         }
-        out
+        // La más estable primero (puntaje medido en este equipo); el mismo servidor tiene una
+        // pequeña ventaja porque no gasta otra conexión. A igual puntaje, por calidad.
+        out.sortedWith(compareByDescending<Alt> {
+            Stability.score(ctx, it.account, it.id, it.name) + (if (it.account.key == me.key) 5 else 0)
+        }.thenBy { rank(it.tag) })
     }
+
+    /** Señal elegida desde el buscador ("Mejor opción") para el próximo canal que se abra: id del canal → señal. */
+    @Volatile var preset: Pair<String, Alt>? = null
 
     // ── La señal que funcionó, por canal ──
 

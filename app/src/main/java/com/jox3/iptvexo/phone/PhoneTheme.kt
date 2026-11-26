@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -179,8 +180,9 @@ fun WideTile(title: String, subtitle: String, image: String, progress: Float?, m
 
 /** Canal en círculo (Tus canales). */
 @Composable
-fun ChannelBubble(name: String, logo: String, modifier: Modifier = Modifier, now: String = "", onClick: () -> Unit) {
-    Column(modifier.width(76.dp).clickable(onClick = onClick), horizontalAlignment = Alignment.CenterHorizontally,
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun ChannelBubble(name: String, logo: String, modifier: Modifier = Modifier, now: String = "", onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
+    Column(modifier.width(76.dp).combinedClickable(onClick = onClick, onLongClick = onLongClick), horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Box(Modifier.size(64.dp).clip(CircleShape).background(Jx.SurfaceHi), contentAlignment = Alignment.Center) {
             RemoteImage(logo, name, Modifier.size(64.dp).padding(10.dp), scale = androidx.compose.ui.layout.ContentScale.Fit)

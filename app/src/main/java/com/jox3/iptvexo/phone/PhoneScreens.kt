@@ -552,6 +552,26 @@ fun PhoneSearch(
     }
     /** Si solo está en este servidor se abre; si no, se elige de cuál. */
     fun open(h: ServerHub.Hit) { if (h.copies.all { it.account.key == me.key }) openCopy(h.copies.first()) else choose = h }
+    // ── Mejor opción (canales en vivo con varias señales) ──
+    fun bestOf(h: ServerHub.Hit): ServerHub.Copy? =
+        if (h.kind == "live" && h.copies.size > 1 && com.jox3.iptvexo.tv.player.Failover.enabled(ctx))
+            com.jox3.iptvexo.tv.player.Stability.best(ctx, h.copies) else null
+    fun bestLabel(b: ServerHub.Copy): String =
+        "▶ " + (if (b.account.key == me.key || !multi) b.tag.ifBlank { "Mejor señal" }
+            else ServerHub.letter(accounts, b.account) + (if (b.tag.isNotBlank()) " · " + b.tag else ""))
+    /** Toque en un canal con varias señales: se reproduce directo la mejor. */
+    fun playBest(h: ServerHub.Hit, best: ServerHub.Copy) {
+        val mine = h.copies.firstOrNull { it.account.key == me.key }
+        when {
+            best.account.key == me.key -> openCopy(best)
+            mine != null -> {
+                com.jox3.iptvexo.tv.player.Failover.preset =
+                    mine.id to com.jox3.iptvexo.tv.player.Failover.Alt(best.account, best.id, best.name, best.tag)
+                openCopy(mine)
+            }
+            else -> openCopy(best)
+        }
+    }
 
     choose?.let { h ->
         PlayerSheet({ choose = null }) {
@@ -559,7 +579,9 @@ fun PhoneSearch(
             Text("¿De qué servidor lo quieres ver?", style = PType.Small, color = Jx.Muted, modifier = Modifier.padding(horizontal = 22.dp))
             LaunchedEffect(Unit) { ServerHub.refresh(h.servers) }
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                h.copies.distinctBy { it.account.key }.forEachIndexed { i, c ->
+                (if (h.kind == "live") h.copies.distinctBy { it.account.key + "|" + it.id }
+                    .sortedByDescending { com.jox3.iptvexo.tv.player.Stability.score(ctx, it.account, it.id, it.name) }.take(6)
+                 else h.copies.distinctBy { it.account.key }).forEachIndexed { i, c ->
                     val st = ServerHub.status[c.account.key]
                     val cur = c.account.key == me.key
                     Row(
@@ -571,7 +593,8 @@ fun PhoneSearch(
                         Column(Modifier.weight(1f)) {
                             Text("${ServerHub.letter(accounts, c.account)} · ${ServerHub.name(accounts, c.account)}" +
                                 (if (c.tag.isNotBlank()) " · ${c.tag}" else ""), style = PType.Label, color = fg, maxLines = 1)
-                            Text((if (cur) "Servidor actual · " else "Cambia a este servidor · ") + com.jox3.iptvexo.tv.screens.statusText(st),
+                            Text((if (c.kind == "live" && i == 0 && h.copies.size > 1) "▶ Mejor opción · " else "") +
+                                (if (cur) "Servidor actual · " else "Cambia a este servidor · ") + com.jox3.iptvexo.tv.screens.statusText(st),
                                 style = PType.Tiny, color = if (i == 0) Jx.Line else Jx.Muted, maxLines = 1)
                             if (c.kind == "live") {
                                 val now by produceState<String?>(null, c) { value = ServerHub.nowOn(ctx, c) }
@@ -649,7 +672,13 @@ fun PhoneSearch(
                                         "${ServerHub.letter(accounts, from)} · $t" else t
                                 }
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    ChannelBubble(h.name, h.image, Modifier.width(96.dp), now = now) { open(h) }
+                                    val best = remember(h.key, ServerHub.status.size) { bestOf(h) }
+                                    ChannelBubble(h.name, h.image, Modifier.width(96.dp),
+                                        now = best?.let { b -> bestLabel(b) + (if (now.isNotBlank()) " · $now" else "") } ?: now,
+                                        // Mantener presionado: elegir a mano la señal
+                                        onLongClick = if (h.copies.size > 1) ({ choose = h }) else null) {
+                                        if (best != null) playBest(h, best) else open(h)
+                                    }
                                     BadgeRow(letters(h))
                                 }
                             }
