@@ -148,6 +148,16 @@ object FrameWatch {
                     val f = o.optJSONArray("facts")
                     What(o.optString("title"), o.optString("text"), (0 until (f?.length() ?: 0)).map { f!!.optString(it) }.filter { it.isNotBlank() },
                         o.optString("series"), o.optInt("season"), o.optInt("episode"), o.optString("episodeTitle"), o.optBoolean("sure"))
+                }.let { w ->
+                    // El nombre del capítulo se toma de TMDB (exacto), no de la memoria de la IA
+                    val real = if (w.series.isNotBlank() && w.season > 0 && w.episode > 0)
+                        com.jox3.iptvexo.tv.data.Tmdb.episodeName(ctx, w.series, w.season, w.episode) else ""
+                    when {
+                        real.isNotBlank() -> w.copy(episodeTitle = real)
+                        // Sin confirmar y deducido por la IA: mejor no inventar el nombre
+                        !w.sure -> w.copy(episodeTitle = "")
+                        else -> w
+                    }
                 }
             }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
         }

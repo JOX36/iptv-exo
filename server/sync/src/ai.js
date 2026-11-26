@@ -78,13 +78,6 @@ let lastGeminiError = "";
 
 /** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
 export async function aiStatus(env, url) {
-  // Prueba del nombre de capítulo: /v1/ai/status?s=Serie&t=4&e=3 (sin guardar en caché)
-  if (url && url.searchParams.get("s")) {
-    const s = str(url.searchParams.get("s"), 80), t = Number(url.searchParams.get("t")) || 0, e = Number(url.searchParams.get("e")) || 0;
-    await env.DB.prepare("DELETE FROM ai_cache WHERE k = ?").bind(`ep|${norm(s)}|${t}|${e}`).run();
-    const title = await episodeTitle(env, s, t, e);
-    return json({ title, debug: lastEpDebug });
-  }
   let models = [];
   if (env.GEMINI_KEY) { try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
   return json({ gemini: !!env.GEMINI_KEY, models, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
@@ -345,46 +338,6 @@ en Latinoamérica y entre paréntesis el original si es distinto.
 Responde SOLO con JSON: {"title":"título corto","text":"2 a 4 frases","facts":["dato corto", "..."],
 "series":"nombre de la serie o vacío","season":0,"episode":0,"episodeTitle":"","sure":false}`;
 
-/**
- * Nombre real de un capítulo, comprobado con la Búsqueda de Google (Gemini con google_search).
- * Se guarda para siempre y sirve para todos. Devuelve "" si no se pudo comprobar.
- */
-let lastEpDebug = "";
-async function episodeTitle(env, series, season, episode) {
-  if (!env.GEMINI_KEY || !series || !season || !episode) return "";
-  const key = `ep|${norm(series)}|${season}|${episode}`;
-  const hit = await cacheGet(env, key, 3650 * 24 * 3600 * 1000);
-  if (hit) return hit.t || "";
-  const q = `Usa la búsqueda. ¿Cuál es el nombre del capítulo ${episode} de la temporada ${season} de la serie "${series}"? ` +
-    `Responde SOLO una línea con este formato: NOMBRE EN ESPAÑOL LATINO | NOMBRE ORIGINAL. Si no lo encuentras con certeza, responde: NO`;
-  let models = [];
-  try { models = await geminiModels(env); } catch { return ""; }
-  for (const model of models.filter((m) => !(geminiSkip.get(m) > Date.now()))) {
-    try {
-      const r = await fetch(`${GEMINI_BASE}/models/${model}:generateContent?key=${env.GEMINI_KEY}`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts: [{ text: q }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } }),
-      });
-      if (!r.ok) {
-        lastEpDebug = model + " " + r.status + " " + (await r.text()).slice(0, 200);
-        if (r.status === 429 || r.status === 503) geminiSkip.set(model, Date.now() + 10 * 60 * 1000);
-        continue;
-      }
-      const o = await r.json();
-      const text = (o.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("").trim();
-      lastEpDebug = model + ": " + text.slice(0, 200);
-      const line = text.split("\n").map((s) => s.trim()).find((s) => s && !/^no\.?$/i.test(s)) || "";
-      if (!line || /^no\b/i.test(line)) { await cachePut(env, key, { t: "" }); return ""; }
-      const [es, orig] = line.replace(/^["“]|["”]$/g, "").split("|").map((s) => s.trim().replace(/^["“«]|["”»]$/g, ""));
-      const t = orig && es && norm(orig) !== norm(es) ? `${es} (${orig})` : (es || orig || "");
-      await cachePut(env, key, { t: t.slice(0, 120) });
-      return t.slice(0, 120);
-    } catch { /* siguiente modelo */ }
-  }
-  return "";
-}
-
 export async function aiWhat(req, env) {
   let body;
   try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
@@ -404,16 +357,9 @@ export async function aiWhat(req, env) {
     const series = str(o.series, 80), season = num(o.season), episode = num(o.episode);
     let epTitle = str(o.episodeTitle, 120);
     let sure = o.sure === true;
-    if (series && season && episode) {
-      // El nombre del capítulo se comprueba con Google (la IA sola puede equivocarse de memoria)
-      const checked = await episodeTitle(env, series, season, episode);
-      if (checked) epTitle = checked;
-      else {
-        // Sin comprobar: solo es "seguro" si el nombre venía en la guía
-        const guide = norm(`${body.prog || ""} ${body.desc || ""}`);
-        if (epTitle && !guide.includes(norm(epTitle.split("(")[0]))) sure = false;
-      }
-    }
+    // El nombre del capítulo solo es "seguro" si venía en la guía; si no, la app lo confirma con TMDB
+    const guide = norm(`${body.prog || ""} ${body.desc || ""}`);
+    if (epTitle && !guide.includes(norm(epTitle.split("(")[0]))) sure = false;
     return json({
       ok: true, via, title: str(o.title, 100), text: str(o.text, 700), facts: list(o.facts, 5, 100),
       series, season, episode, episodeTitle: epTitle, sure,
