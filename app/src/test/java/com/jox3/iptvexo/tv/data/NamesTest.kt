@@ -1,6 +1,8 @@
 package com.jox3.iptvexo.tv.data
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Nombres limpios: sin emojis, estrellas ni códigos que ponen los servidores. */
@@ -45,5 +47,10 @@ class NamesTest {
         assertEquals(listOf("CNN EN ESPAÑOL", "CNN INGLES", "RT EN ESPANOL", "CNN INTERNACIONAL", "DW EN ESP", "IMAGEN"),
             Names.channelList(listOf("CNN en Español", "NOTI | CNN INGLES", "NOTI | RT EN ESPANOL", "NOTI | CNN INTERNACIONAL", "DW EN ESP", "IMAGEN"), "TV NOTICIAS"))
         assertEquals(listOf("ESPN | 2", "WIN SPORTS"), Names.channelList(listOf("ESPN | 2", "DEPORTES | WIN SPORTS"), "ESPN DEPORTES"))
+    }
+
+    @Test fun guiaVacia() {
+        listOf("No Data", "NO DATA", "No Information", "Sin información", "N/A", "---").forEach { assertTrue(it, Names.isEmptyProgram(it)) }
+        listOf("Rosalinda", "Noticias Caracol", "Data Science", "No Mires Arriba").forEach { assertFalse(it, Names.isEmptyProgram(it)) }
     }
 }

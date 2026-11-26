@@ -555,7 +555,7 @@ fun PhoneSearch(
     // ── Mejor opción (canales en vivo con varias señales) ──
     fun bestOf(h: ServerHub.Hit): ServerHub.Copy? =
         if (h.kind == "live" && h.copies.size > 1 && com.jox3.iptvexo.tv.player.Failover.enabled(ctx))
-            com.jox3.iptvexo.tv.player.Stability.best(ctx, h.copies) else null
+            com.jox3.iptvexo.tv.player.Stability.best(ctx, h.copies, me) else null
     fun bestLabel(b: ServerHub.Copy): String =
         "▶ " + (if (b.account.key == me.key || !multi) b.tag.ifBlank { "Mejor señal" }
             else ServerHub.letter(accounts, b.account) + (if (b.tag.isNotBlank()) " · " + b.tag else ""))
@@ -579,9 +579,10 @@ fun PhoneSearch(
             Text("¿De qué servidor lo quieres ver?", style = PType.Small, color = Jx.Muted, modifier = Modifier.padding(horizontal = 22.dp))
             LaunchedEffect(Unit) { ServerHub.refresh(h.servers) }
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                (if (h.kind == "live") h.copies.distinctBy { it.account.key + "|" + it.id }
+                val opts = (if (h.kind == "live") h.copies.distinctBy { it.account.key + "|" + it.id }
                     .sortedByDescending { com.jox3.iptvexo.tv.player.Stability.score(ctx, it.account, it.id, it.name) }.take(6)
-                 else h.copies.distinctBy { it.account.key }).forEachIndexed { i, c ->
+                 else h.copies.distinctBy { it.account.key })
+                opts.forEachIndexed { i, c ->
                     val st = ServerHub.status[c.account.key]
                     val cur = c.account.key == me.key
                     Row(
@@ -591,8 +592,10 @@ fun PhoneSearch(
                     ) {
                         val fg = if (i == 0) Jx.Bg else Jx.Text
                         Column(Modifier.weight(1f)) {
+                            // Dos señales del mismo servidor: se distinguen por el nombre del canal
+                            val twin = opts.count { it.account.key == c.account.key } > 1
                             Text("${ServerHub.letter(accounts, c.account)} · ${ServerHub.name(accounts, c.account)}" +
-                                (if (c.tag.isNotBlank()) " · ${c.tag}" else ""), style = PType.Label, color = fg, maxLines = 1)
+                                (if (twin) " · ${c.name}" else if (c.tag.isNotBlank()) " · ${c.tag}" else ""), style = PType.Label, color = fg, maxLines = 1)
                             Text((if (c.kind == "live" && i == 0 && h.copies.size > 1) "▶ Mejor opción · " else "") +
                                 (if (cur) "Servidor actual · " else "Cambia a este servidor · ") + com.jox3.iptvexo.tv.screens.statusText(st),
                                 style = PType.Tiny, color = if (i == 0) Jx.Line else Jx.Muted, maxLines = 1)

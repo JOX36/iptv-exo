@@ -177,7 +177,9 @@ fun ServerChooser(
                             Text(ServerHub.letter(accounts, c.account), style = Type.Label)
                         }
                         Column(Modifier.weight(1f)) {
-                            Text(ServerHub.name(accounts, c.account) + (if (c.tag.isNotBlank()) " · ${c.tag}" else ""),
+                            // Dos señales del mismo servidor: se distinguen por el nombre del canal
+                            val twin = options.count { it.account.key == c.account.key } > 1
+                            Text(ServerHub.name(accounts, c.account) + (if (twin) " · ${c.name}" else if (c.tag.isNotBlank()) " · ${c.tag}" else ""),
                                 style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             Text((if (c.kind == "live" && i == 0 && options.size > 1) "▶ Mejor opción · " else "") +
                                 (if (isCurrent) "Servidor actual · " else "Cambia a este servidor · ") + statusText(st),

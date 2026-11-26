@@ -85,10 +85,22 @@ object Stability {
             st.level >= 1 -> -6.0
             else -> 4.0
         }
+        // Tiempo de respuesta del servidor: desempata cuando aún no hay mediciones
+        // (394 ms gana a 800 ms); con historial pesa poco frente a lo medido
+        if (st != null && st.ok) base -= minOf(st.pingMs / 150.0, 8.0) * (if (s == null || s.starts == 0) 1.0 else 0.4)
         return base.toInt().coerceIn(0, 100)
     }
 
     /** La copia más estable de un canal (para "Mejor opción"). */
-    fun best(ctx: Context, copies: List<ServerHub.Copy>): ServerHub.Copy? =
-        copies.filter { it.kind == "live" }.maxByOrNull { score(ctx, it.account, it.id, it.name) }
+    fun best(ctx: Context, copies: List<ServerHub.Copy>, current: Account? = null): ServerHub.Copy? {
+        val live = copies.filter { it.kind == "live" }
+        // Solo señales del MISMO canal que el que se tocó (el buscador agrupa nombres parecidos;
+        // aquí se exige la misma identidad: "Caracol HD" sí, "Caracol Internacional" no)
+        val ref = live.firstOrNull { it.account.key == current?.key } ?: live.firstOrNull() ?: return null
+        val id = Failover.identity(ref.name)
+        val same = live.filter { Failover.identity(it.name) == id }
+        // A igual puntaje, el servidor actual (no gasta otra conexión)
+        return same.maxWithOrNull(compareBy<ServerHub.Copy> { score(ctx, it.account, it.id, it.name) }
+            .thenBy { if (it.account.key == current?.key) 1 else 0 })
+    }
 }
