@@ -157,6 +157,11 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             }, Modifier.fillMaxWidth())
             Text("Zona: " + com.jox3.iptvexo.tv.data.AppTime.label(tctx) + ". OK para cambiar entre automática y la del equipo.",
                 style = Type.Small, color = Jx.Faint)
+            // Búsqueda con IA (frases como "pon el partido de Millonarios")
+            var aiSearch by remember { mutableStateOf(com.jox3.iptvexo.tv.data.SmartSearch.enabled(tctx)) }
+            ActionButton("Búsqueda con IA: " + if (aiSearch) "Sí" else "No", {
+                aiSearch = !aiSearch; com.jox3.iptvexo.tv.data.SmartSearch.setEnabled(tctx, aiSearch)
+            }, Modifier.fillMaxWidth())
             // Clic suave al mover el cursor (como TiviMate)
             var navSound by remember { mutableStateOf(com.jox3.iptvexo.tv.ui.NavSound.enabled(tctx)) }
             ActionButton("Sonido al navegar: " + if (navSound) "Sí" else "No", {

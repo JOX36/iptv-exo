@@ -18,3 +18,7 @@ class_name = "Room"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Room"]
+
+# IA de Cloudflare (Workers AI): búsqueda inteligente y guía de programación
+[ai]
+binding = "AI"

@@ -74,13 +74,19 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
     LaunchedEffect(multi) { if (multi) ServerHub.ensureIndexes(others) }
     val indexVersion by ServerHub.indexVersion
     val index by produceState<TvRepo.Index?>(null) { value = repo.searchIndex() }
-    val results by produceState<ServerHub.Results?>(null, query, index, only, indexVersion) {
+    val outcome by produceState<com.jox3.iptvexo.tv.data.SmartSearch.Outcome?>(null, query, index, only, indexVersion) {
         val idx = index ?: return@produceState
         val q = TvRepo.normalize(query.trim())
         if (q.length < 2) { value = null; return@produceState }
         delay(220)   // esperar a que termine de escribir (si pulsa otra letra, esto se cancela)
-        value = ServerHub.search(query, account, idx, accounts, only, includeOthers = multi)
+        val S = com.jox3.iptvexo.tv.data.SmartSearch
+        val plain = S.plain(query, account, idx, accounts, only, includeOthers = multi)
+        val ai = S.wants(ctx, query)
+        value = S.Outcome(plain, thinking = ai)
+        // Frase larga o por voz: la IA dice qué buscar (partidos en la guía, películas de un actor…)
+        if (ai) { delay(600); value = S.smart(ctx, query, account, idx, accounts, only, includeOthers = multi) ?: S.Outcome(plain) }
     }
+    val results = outcome?.results
     fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()
     /** OK en un resultado: si solo está en este servidor se abre; si no, se elige de dónde. */
     fun open(h: ServerHub.Hit, direct: () -> Unit) {
@@ -200,12 +206,19 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                     onClear = { lib.clearSearches() },
                 )
                 r == null -> StatusBox("Buscando…")
+                r.isEmpty && outcome?.thinking == true -> StatusBox("✨ Entendiendo lo que pediste…")
                 r.isEmpty -> StatusBox("Sin resultados para “${query.trim()}”")
                 else -> LazyColumn(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(top = 27.dp, bottom = 32.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                 ) {
+                    // Lo que entendió la IA
+                    val o = outcome
+                    if (o != null && (o.say.isNotBlank() || o.thinking)) item(key = "ai") {
+                        Text(if (o.thinking) "✨ Buscando con IA…" else "✨ " + o.say, style = Type.Label,
+                            color = Jx.Accent, modifier = Modifier.padding(start = 28.dp, end = 32.dp))
+                    }
                     // Canales del servidor actual (para cambiar con ▲▼ dentro de los resultados)
                     val here = r.channels.mapNotNull { h -> h.copies.firstOrNull { it.account.key == account.key } }
                         .mapIndexed { i, c -> Channel(c.id, c.name, c.image, c.categoryId, i + 1) }
@@ -214,7 +227,9 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                             items(r.channels, key = { "c" + it.key }) { h ->
                                 val ctx = androidx.compose.ui.platform.LocalContext.current
                                 val epgV by repo.epgVersion
-                                val now by androidx.compose.runtime.produceState("", h.key, epgV) {
+                                val aiLabel = outcome?.labels?.get(h.key)
+                                val now by androidx.compose.runtime.produceState(aiLabel.orEmpty(), h.key, epgV, aiLabel) {
+                                    if (aiLabel != null) { value = aiLabel; return@produceState }
                                     val (t, from) = ServerHub.nowForHit(ctx, h, account)
                                     value = if (t.isEmpty()) "" else if (multi && from != null && from.key != account.key)
                                         "${ServerHub.letter(accounts, from)} · $t" else t
