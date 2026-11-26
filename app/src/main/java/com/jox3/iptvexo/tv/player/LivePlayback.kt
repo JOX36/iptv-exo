@@ -31,6 +31,7 @@ import com.jox3.iptvexo.NetClient
 import com.jox3.iptvexo.tv.data.Channel
 import com.jox3.iptvexo.tv.data.SavedItem
 import com.jox3.iptvexo.tv.data.TvRepo
+import kotlinx.coroutines.launch
 
 /** Acceso al reproductor en vivo desde cualquier pantalla. */
 val LocalLive = staticCompositionLocalOf<LivePlayback> { error("LivePlayback no disponible") }
@@ -88,6 +89,25 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     private var playingMime: String? = null
     private var startingMarked = false
     private var paused = false
+    /** Ya se buscó otra señal en esta ronda de fallos (se rearma cuando una señal arranca). */
+    private var exhausted = false
+
+    // ── Respaldo automático (ver Failover) ──
+    /** Señal de respaldo en uso (null = la del canal en este servidor). */
+    var backup by mutableStateOf<Failover.Alt?>(null); private set
+    /** Aviso corto arriba ("Ahora desde CNN FHD · servidor B"); se borra solo. */
+    var notice by mutableStateOf<String?>(null); private set
+    private val tried = HashSet<String>()
+    private var switching = false
+    private var switchedNow = false
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main)
+    private val clearNotice = Runnable { notice = null }
+    // Se queda cargando más de 12 s (canal pegado): se busca otra señal
+    private val stallRunnable = Runnable { if (status != null && current != null) failover("se quedó cargando") }
+
+    /** Dirección del canal: la de respaldo si se está usando una. */
+    private fun sourceUrl(ch: Channel): String =
+        backup?.let { XtreamApiCache.of(it.account).liveUrl(it.id) } ?: repo.api.liveUrl(ch.id)
 
     fun isPlaying(ch: Channel) = current?.id == ch.id && status == null
 
@@ -103,6 +123,11 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         current = ch
         retries = 0
         altStep = 0
+        tried.clear()
+        switching = false
+        // Siempre la mejor opción: si la última vez funcionó una señal de respaldo, se arranca en ella
+        backup = if (Failover.enabled(context)) Failover.remembered(context, repo.api.account, ch) else null
+        backup?.let { tried += it.key }
         repo.library.addRecentChannel(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
         load()
     }
@@ -133,15 +158,18 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
 
     fun playIndex(i: Int) { channels.getOrNull(i)?.let { play(it, channels, group) } }
 
-    fun reload() { retries = 0; altStep = 0; load() }
+    fun reload() { retries = 0; altStep = 0; tried.clear(); backup?.let { tried += it.key }; load() }
 
     fun stop() {
         // Cerrar sin que la app se caiga no es un arranque fallido de FFmpeg
         if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
         main.removeCallbacks(retryRunnable)
+        main.removeCallbacks(stallRunnable)
         exo?.stop()
         exo?.clearMediaItems()
         current = null
+        backup = null
+        notice = null
         fullscreen = false
         status = null
         playingNow = false
@@ -152,6 +180,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     fun onPause() {
         paused = true
         main.removeCallbacks(retryRunnable)
+        main.removeCallbacks(stallRunnable)
         exo?.stop()
     }
 
@@ -244,7 +273,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         val http = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
         val formatProblem = error.errorCode in 3000..3999 || http == 403 || http == 404 || http == 406 || http == 415
         if (!formatProblem) return false
-        val orig = repo.api.liveUrl(ch.id)
+        val orig = sourceUrl(ch)
         val next: Pair<String, String?> = if (altStep == 0) {
             val alt = swapFormat(playingUrl) ?: return false
             alt to mimeFor(alt)
@@ -262,8 +291,42 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         main.removeCallbacks(retryRunnable)
         status = if (retries == 0) "Cargando…" else "Reconectando ($retries/$MAX_RETRIES)…"
         altStep = 0
-        val (u, mime) = preferred(repo.api.liveUrl(ch.id))
+        val (u, mime) = preferred(sourceUrl(ch))
         start(u, mime)
+    }
+
+    /**
+     * El canal falló: pasa a la siguiente señal del mismo canal (otra calidad u otro servidor).
+     * Si no hay más, sigue con los reintentos normales.
+     */
+    private fun failover(why: String) {
+        val ch = current ?: return
+        if (switching) return
+        if (!Failover.enabled(context)) { scheduleRetry(); return }
+        switching = true
+        main.removeCallbacks(retryRunnable)
+        main.removeCallbacks(stallRunnable)
+        status = "${ch.name} $why · buscando otra señal…"
+        scope.launch {
+            val alts = runCatching { Failover.candidates(context, repo, ch, tried) }.getOrDefault(emptyList())
+            switching = false
+            if (current?.id != ch.id) return@launch   // ya cambió de canal
+            val alt = alts.firstOrNull()
+            if (alt == null) {
+                // Sin más señales: los reintentos de siempre sobre la actual
+                tried.clear(); backup?.let { tried += it.key }
+                exhausted = true
+                scheduleRetry(); return@launch
+            }
+            tried += alt.key
+            // La señal original del canal también cuenta como probada
+            tried += repo.api.account.key + "|" + ch.id
+            backup = if (alt.account.key == repo.api.account.key && alt.id == ch.id) null else alt
+            retries = 0
+            switchedNow = true
+            status = "Cambiando a ${Failover.label(context, repo.api.account, alt)}…"
+            load()
+        }
     }
 
     private fun start(url: String, mime: String?) {
@@ -284,6 +347,11 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     }
 
     private fun scheduleRetry() {
+        // Al segundo fallo (y sin haber agotado las señales) se prueba otra señal del canal
+        if (retries >= 1 && !switching && Failover.enabled(context) && current != null && tried.size < 12 && !exhausted) {
+            exhausted = true   // una búsqueda por ronda de fallos; se rearma cuando una señal arranca
+            failover("no responde"); return
+        }
         if (retries >= MAX_RETRIES) {
             status = "No se pudo conectar con el canal. Pulsa Recargar para intentarlo de nuevo."
             return
@@ -299,10 +367,27 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
             when (state) {
                 Player.STATE_READY -> {
                     status = null; retries = 0
+                    exhausted = false
+                    main.removeCallbacks(stallRunnable)
+                    if (switchedNow) {
+                        switchedNow = false
+                        val ch = current
+                        val b = backup
+                        if (ch != null) {
+                            // Funcionó: se recuerda para arrancar ahí la próxima vez
+                            if (b != null) Failover.remember(context, repo.api.account, ch, b) else Failover.forget(context, repo.api.account, ch)
+                            notice = "Ahora desde " + (b?.let { Failover.label(context, repo.api.account, it) } ?: "la señal original")
+                            main.removeCallbacks(clearNotice); main.postDelayed(clearNotice, 7000)
+                        }
+                    }
                     rememberFormat()
                     if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
                 }
-                Player.STATE_BUFFERING -> if (status == null) status = "Cargando…"
+                Player.STATE_BUFFERING -> {
+                    if (status == null) status = "Cargando…"
+                    main.removeCallbacks(stallRunnable)
+                    if (Failover.enabled(context)) main.postDelayed(stallRunnable, 12_000)
+                }
                 // Un canal en vivo no "termina": el servidor cortó la transmisión
                 Player.STATE_ENDED -> scheduleRetry()
                 else -> Unit
@@ -342,5 +427,13 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
 
     companion object {
         private const val MAX_RETRIES = 5
+    }
+}
+
+/** Un cliente Xtream por servidor (para armar las direcciones de las señales de respaldo). */
+internal object XtreamApiCache {
+    private val map = HashMap<String, com.jox3.iptvexo.tv.data.XtreamApi>()
+    fun of(acc: com.jox3.iptvexo.tv.data.Account) = synchronized(map) {
+        map.getOrPut(acc.key) { com.jox3.iptvexo.tv.data.XtreamApi(acc) }
     }
 }
