@@ -82,9 +82,9 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
         val S = com.jox3.iptvexo.tv.data.SmartSearch
         val plain = S.plain(query, account, idx, accounts, only, includeOthers = multi)
         val ai = S.wants(ctx, query)
-        value = S.Outcome(plain, thinking = ai)
+        value = com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain, thinking = ai)
         // Frase larga o por voz: la IA dice qué buscar (partidos en la guía, películas de un actor…)
-        if (ai) { delay(600); value = S.smart(ctx, query, account, idx, accounts, only, includeOthers = multi) ?: S.Outcome(plain) }
+        if (ai) { delay(600); value = S.smart(ctx, query, account, idx, accounts, only, includeOthers = multi) ?: com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain) }
     }
     val results = outcome?.results
     fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()

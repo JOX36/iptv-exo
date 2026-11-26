@@ -527,8 +527,8 @@ fun PhoneSearch(
         val plain = S.plain(query, me, idx, all, only, includeOthers = multi)
         // Frases largas: la IA dice qué buscar (con más espera, para no preguntar letra por letra)
         val ai = S.wants(ctx, query)
-        value = S.Outcome(plain, thinking = ai)
-        if (ai) { delay(700); value = S.smart(ctx, query, me, idx, all, only, includeOthers = multi) ?: S.Outcome(plain) }
+        value = com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain, thinking = ai)
+        if (ai) { delay(700); value = S.smart(ctx, query, me, idx, all, only, includeOthers = multi) ?: com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain) }
     }
     val results = outcome?.results
     LaunchedEffect(results) { val r = results ?: return@LaunchedEffect; if (!r.isEmpty) { delay(4000); lib.addSearch(query) } }
