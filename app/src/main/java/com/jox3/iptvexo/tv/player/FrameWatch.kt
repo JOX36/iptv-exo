@@ -101,13 +101,29 @@ object FrameWatch {
     // ── ¿Qué estoy viendo? ──
 
     /** Lo que respondió la IA sobre la imagen. */
-    data class What(val title: String, val text: String, val facts: List<String>)
+    data class What(
+        val title: String, val text: String, val facts: List<String>,
+        /** Serie y capítulo (si se pudo saber); [sure] = sale de la guía o de la pantalla, no deducido. */
+        val series: String = "", val season: Int = 0, val episode: Int = 0, val episodeTitle: String = "", val sure: Boolean = false,
+    ) {
+        /** "Malcolm · Temporada 4 · Capítulo 3 · «Nombre»" (vacío si no es una serie identificada). */
+        val episodeLine: String get() {
+            if (series.isBlank() || (season == 0 && episode == 0 && episodeTitle.isBlank())) return ""
+            return buildString {
+                append(series)
+                if (season > 0) append(" · Temporada ").append(season)
+                if (episode > 0) append(" · Capítulo ").append(episode)
+                if (episodeTitle.isNotBlank()) append(" · «").append(episodeTitle).append("»")
+                if (!sure) append("  (probable)")
+            }
+        }
+    }
 
     /**
      * Foto de la pantalla + lo que dice la guía → la IA explica qué se está viendo.
      * Devuelve el error en palabras simples si no se pudo.
      */
-    suspend fun describe(ctx: Context, channelName: String, prog: String, desc: String): Result<What> {
+    suspend fun describe(ctx: Context, channelName: String, prog: String, desc: String, episode: String = ""): Result<What> {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val day = (System.currentTimeMillis() / 86_400_000L).toInt()
         val n = if (p.getInt("what_day", -1) == day) p.getInt("what_n", 0) else 0
@@ -122,7 +138,7 @@ object FrameWatch {
         }
         return withContext(Dispatchers.IO) {
             runCatching {
-                val body = JSONObject().put("n", channelName.take(80)).put("prog", prog.take(120)).put("desc", desc.take(400))
+                val body = JSONObject().put("n", channelName.take(80)).put("prog", prog.take(120)).put("desc", desc.take(400)).put("ep", episode.take(60))
                     .put("img", b64).toString()
                 val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/ai/what")
                     .post(body.toRequestBody("application/json".toMediaType())).build()
@@ -130,7 +146,18 @@ object FrameWatch {
                     val o = JSONObject(r.body?.string().orEmpty().ifBlank { "{}" })
                     if (!r.isSuccessful || !o.optBoolean("ok")) throw Exception("La IA no está disponible en este momento. Prueba en un rato.")
                     val f = o.optJSONArray("facts")
-                    What(o.optString("title"), o.optString("text"), (0 until (f?.length() ?: 0)).map { f!!.optString(it) }.filter { it.isNotBlank() })
+                    What(o.optString("title"), o.optString("text"), (0 until (f?.length() ?: 0)).map { f!!.optString(it) }.filter { it.isNotBlank() },
+                        o.optString("series"), o.optInt("season"), o.optInt("episode"), o.optString("episodeTitle"), o.optBoolean("sure"))
+                }.let { w ->
+                    // El nombre del capítulo se toma de TMDB (exacto), no de la memoria de la IA
+                    val real = if (w.series.isNotBlank() && w.season > 0 && w.episode > 0)
+                        com.jox3.iptvexo.tv.data.Tmdb.episodeName(ctx, w.series, w.season, w.episode) else ""
+                    when {
+                        real.isNotBlank() -> w.copy(episodeTitle = real)
+                        // Sin confirmar y deducido por la IA: mejor no inventar el nombre
+                        !w.sure -> w.copy(episodeTitle = "")
+                        else -> w
+                    }
                 }
             }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
         }

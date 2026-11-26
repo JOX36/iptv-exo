@@ -92,7 +92,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
         val res by produceState<Result<com.jox3.iptvexo.tv.player.FrameWatch.What>?>(null, whatCh.id, ask) {
             value = null
             val now = repo?.cachedEpg(whatCh)?.let { repo.nowPlaying(it) }
-            value = com.jox3.iptvexo.tv.player.FrameWatch.describe(wctx, whatCh.name, now?.label.orEmpty(), now?.description.orEmpty())
+            value = com.jox3.iptvexo.tv.player.FrameWatch.describe(wctx, whatCh.name, now?.label.orEmpty(), now?.description.orEmpty(), now?.episode.orEmpty())
         }
         Column(Modifier.padding(horizontal = 22.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             val r = res
@@ -101,6 +101,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                 r.isFailure -> Text(r.exceptionOrNull()?.message ?: "No se pudo.", style = PType.Body, color = Jx.Muted)
                 else -> r.getOrNull()?.let { w ->
                     Text("✨ " + w.title.ifBlank { "Esto es lo que veo" }, style = PType.H2, color = Jx.Text)
+                    if (w.episodeLine.isNotBlank()) Text("📺 " + w.episodeLine, style = PType.Label, color = Jx.Accent)
                     Text(w.text, style = PType.Body, color = Jx.TextSoft)
                     w.facts.forEach { f -> Text("• $f", style = PType.Small, color = Jx.Muted) }
                 }

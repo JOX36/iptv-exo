@@ -55,7 +55,7 @@ export default {
       // IA: búsqueda inteligente y guía de programación (ver ai.js)
       if (url.pathname === "/v1/ai/search" && req.method === "POST") return await aiSearch(req, env);
       if (url.pathname === "/v1/ai/epg" && req.method === "POST") return await aiEpg(req, env);
-      if (url.pathname === "/v1/ai/status") return await aiStatus(env);
+      if (url.pathname === "/v1/ai/status") return await aiStatus(env, url);
       if (url.pathname === "/v1/ai/frame" && req.method === "POST") return await aiFrame(req, env);
       if (url.pathname === "/v1/ai/today" && req.method === "POST") return await aiToday(req, env);
       if (url.pathname === "/v1/ai/what" && req.method === "POST") return await aiWhat(req, env);

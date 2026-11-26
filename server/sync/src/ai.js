@@ -77,7 +77,7 @@ export let lastVia = "";
 let lastGeminiError = "";
 
 /** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
-export async function aiStatus(env) {
+export async function aiStatus(env, url) {
   let models = [];
   if (env.GEMINI_KEY) { try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
   return json({ gemini: !!env.GEMINI_KEY, models, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
@@ -329,7 +329,14 @@ créditos, nombres en grafismos) y la guía. Si es una película o serie: cuál 
 y algún dato útil (año, protagonistas si aparecen en la guía o en pantalla). Si es deporte: quiénes juegan,
 el marcador y el minuto si se ven, y la competencia. Si es noticia: el tema. No identifiques a personas
 por su cara: solo nombra a alguien si su nombre aparece en pantalla o en la guía. Si no se puede saber, dilo.
-Responde SOLO con JSON: {"title":"título corto","text":"2 a 4 frases","facts":["dato corto", "..."]}`;
+SERIES: intenta decir el capítulo exacto: serie, temporada, número de capítulo y nombre del capítulo.
+Úsalo en este orden: (1) lo que diga la guía (temporada/episodio, subtítulo del episodio, descripción),
+(2) el texto en pantalla, (3) lo que sepas de la serie reconociendo la escena y la trama de la descripción.
+Si viene de la guía o de la pantalla, "sure": true. Si lo deduces por la escena o la trama, "sure": false.
+Si no lo puedes saber, deja season/episode en 0 y episodeTitle vacío. El nombre del capítulo, como se conoce
+en Latinoamérica y entre paréntesis el original si es distinto.
+Responde SOLO con JSON: {"title":"título corto","text":"2 a 4 frases","facts":["dato corto", "..."],
+"series":"nombre de la serie o vacío","season":0,"episode":0,"episodeTitle":"","sure":false}`;
 
 export async function aiWhat(req, env) {
   let body;
@@ -339,12 +346,24 @@ export async function aiWhat(req, env) {
   const ctx = [`Canal: ${str(body.n, 80) || "desconocido"}`];
   if (body.prog) ctx.push(`Guía ahora: ${str(body.prog, 120)}`);
   if (body.desc) ctx.push(`Descripción en la guía: ${str(body.desc, 400)}`);
+  if (body.ep) ctx.push(`Episodio según la guía: ${str(body.ep, 60)}`);
   try {
     const o = await ask(env, WHAT_PROMPT, [
       { type: "text", text: ctx.join("\n") },
       { type: "image_url", image_url: { url: "data:image/jpeg;base64," + img } },
-    ], 400);
-    return json({ ok: true, via: lastVia, title: str(o.title, 100), text: str(o.text, 700), facts: list(o.facts, 5, 100) });
+    ], 500);
+    const num = (v) => Math.max(0, Math.min(999, Math.floor(Number(v) || 0)));
+    const via = lastVia;
+    const series = str(o.series, 80), season = num(o.season), episode = num(o.episode);
+    let epTitle = str(o.episodeTitle, 120);
+    let sure = o.sure === true;
+    // El nombre del capítulo solo es "seguro" si venía en la guía; si no, la app lo confirma con TMDB
+    const guide = norm(`${body.prog || ""} ${body.desc || ""}`);
+    if (epTitle && !guide.includes(norm(epTitle.split("(")[0]))) sure = false;
+    return json({
+      ok: true, via, title: str(o.title, 100), text: str(o.text, 700), facts: list(o.facts, 5, 100),
+      series, season, episode, episodeTitle: epTitle, sure,
+    });
   } catch (e) {
     return json({ ok: false, error: "ia no disponible" }, 503);
   }

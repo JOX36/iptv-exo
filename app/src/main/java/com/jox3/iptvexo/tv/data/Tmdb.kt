@@ -175,6 +175,28 @@ object Tmdb {
     }
 
     /** Primer resultado de la búsqueda, usando el año del nombre si lo trae. */
+    /**
+     * Nombre real de un capítulo según TMDB: "Nombre en español (Original)". "" si no lo encuentra.
+     * Para "¿Qué estoy viendo?": la IA dice serie, temporada y capítulo, y TMDB da el nombre exacto.
+     */
+    suspend fun episodeName(ctx: Context, series: String, season: Int, episode: Int): String = withContext(Dispatchers.IO) {
+        val k = key(ctx)
+        if (k.length < 20 || series.isBlank() || season <= 0 || episode <= 0) return@withContext ""
+        runCatching {
+            val show = search(k, "tv", series) ?: return@runCatching ""
+            val id = show.optInt("id")
+            val es = get(k, "tv/$id/season/$season/episode/$episode", "language=es-MX").optString("name")
+            val en = runCatching { get(k, "tv/$id/season/$season/episode/$episode", "language=en-US").optString("name") }.getOrDefault("")
+            // TMDB pone "Episodio 3" cuando no hay nombre traducido
+            val esOk = es.takeIf { it.isNotBlank() && !Regex("^(episodio|episode|capítulo)\\s*\\d+$", RegexOption.IGNORE_CASE).matches(it) }
+            when {
+                esOk != null && en.isNotBlank() && !en.equals(esOk, ignoreCase = true) -> "$esOk ($en)"
+                esOk != null -> esOk
+                else -> en
+            }
+        }.getOrDefault("")
+    }
+
     private fun search(k: String, type: String, name: String): JSONObject? {
         val clean = cleanTitle(name)
         if (clean.isBlank()) return null
