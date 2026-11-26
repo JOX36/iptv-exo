@@ -862,7 +862,7 @@ private fun WhatPanel(live: LivePlayback, repo: TvRepo, ch: Channel, focus: Focu
     val res by produceState<Result<FrameWatch.What>?>(null, ch.id, ask) {
         value = null
         val now = repo.cachedEpg(ch)?.let { repo.nowPlaying(it) }
-        value = FrameWatch.describe(ctx, ch.name, now?.label.orEmpty(), now?.description.orEmpty())
+        value = FrameWatch.describe(ctx, ch.name, now?.label.orEmpty(), now?.description.orEmpty(), now?.episode.orEmpty())
     }
     Column(Modifier.fillMaxSize().background(Color(0xE6101722), RoundedCornerShape(14.dp)).padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -872,6 +872,8 @@ private fun WhatPanel(live: LivePlayback, repo: TvRepo, ch: Channel, focus: Focu
             r.isFailure -> Text(r.exceptionOrNull()?.message ?: "No se pudo.", style = Type.Small, color = Jx.Muted)
             else -> r.getOrNull()?.let { w ->
                 Text("✨ " + w.title.ifBlank { "Esto es lo que veo" }, style = Type.Label, color = Jx.Accent)
+                // Serie: el capítulo exacto (si se pudo saber)
+                if (w.episodeLine.isNotBlank()) Text("📺 " + w.episodeLine, style = Type.Label, color = Jx.Text)
                 Text(w.text, style = Type.Small, color = Jx.Text)
                 w.facts.forEach { f -> Text("• $f", style = Type.Small, color = Jx.TextSoft) }
             }
