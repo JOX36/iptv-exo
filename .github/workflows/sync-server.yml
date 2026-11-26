@@ -79,7 +79,7 @@ jobs:
           # IA: búsqueda inteligente y guía (si la IA no responde, avisa pero no detiene la publicación)
           curl -sS -X POST "$U/v1/ai/search" -H 'content-type: application/json' \
             -d "{\"q\":\"pon el partido de millonarios hoy $(date +%s)\",\"now\":\"miércoles 20:00\"}" | tee /tmp/ai.json; echo
-          echo "::notice::IA de búsqueda respondió con: $(grep -o '"via":"[^"]*"' /tmp/ai.json)"
+          echo "::notice::IA de búsqueda respondió con: $(grep -o '"via":"[^"]*"' /tmp/ai.json) · Gemini: $(curl -sS "$U/v1/ai/status" | head -c 400)"
           if grep -q '"ok":true' /tmp/ai.json; then
             grep -q '"kind":"event"' /tmp/ai.json || echo "::warning::La IA no reconoció el partido"
             echo "::notice::IA de búsqueda: $(head -c 300 /tmp/ai.json)"

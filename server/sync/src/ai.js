@@ -65,6 +65,14 @@ async function askOpenAi(url, key, model, messages, maxTokens, extra = {}) {
 
 /** Quién respondió la última pregunta (para las pruebas). */
 export let lastVia = "";
+let lastGeminiError = "";
+
+/** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
+export async function aiStatus(env) {
+  let model = "";
+  if (env.GEMINI_KEY) { try { model = await geminiModel(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
+  return json({ gemini: !!env.GEMINI_KEY, model, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
+}
 
 /** Pregunta a la IA y devuelve el JSON que respondió (o lanza error). */
 async function ask(env, system, user, maxTokens = 600) {
@@ -83,7 +91,8 @@ async function ask(env, system, user, maxTokens = 600) {
       lastVia = "gemini:" + model;
       return out;
     } catch (e) {
-      console.log("Gemini falló, se usa Workers AI:", String(e).slice(0, 300));
+      lastGeminiError = String(e).slice(0, 300);
+      console.log("Gemini falló, se usa Workers AI:", lastGeminiError);
       geminiModelMem = null;
     }
   }
