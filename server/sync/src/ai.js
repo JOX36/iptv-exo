@@ -27,28 +27,35 @@ const json = (obj, status = 200) =>
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 let geminiModelMem = null;
 
-/** El modelo Flash más nuevo de Gemini (se consulta la lista de modelos y se guarda un día). */
-async function geminiModel(env) {
-  if (env.GEMINI_MODEL) return env.GEMINI_MODEL;
-  if (geminiModelMem && Date.now() - geminiModelMem.ts < 6 * 3600 * 1000) return geminiModelMem.name;
-  const cached = await cacheGet(env, "gemini|model", 24 * 3600 * 1000).catch(() => null);
-  if (cached?.name) { geminiModelMem = { name: cached.name, ts: Date.now() }; return cached.name; }
+/**
+ * Modelos de Gemini a probar, en orden: los Flash más nuevos y, al final, un Flash-Lite
+ * (cuando el más nuevo está saturado, responde el siguiente). Se consulta la lista una vez al día.
+ */
+async function geminiModels(env) {
+  if (env.GEMINI_MODEL) return [env.GEMINI_MODEL];
+  if (geminiModelMem && Date.now() - geminiModelMem.ts < 6 * 3600 * 1000) return geminiModelMem.list;
+  const cached = await cacheGet(env, "gemini|models", 24 * 3600 * 1000).catch(() => null);
+  if (cached?.list?.length) { geminiModelMem = { list: cached.list, ts: Date.now() }; return cached.list; }
   const r = await fetch(`${GEMINI_BASE}/models?pageSize=200&key=${env.GEMINI_KEY}`);
   if (!r.ok) throw new Error("gemini modelos " + r.status);
   const o = await r.json();
   const ver = (n) => (n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, "0"])[1] * 1;
-  const names = (o.models || [])
+  const all = (o.models || [])
     .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
     .map((m) => String(m.name || "").replace(/^models\//, ""))
-    // Flash normal: ni "lite", ni imagen, ni voz, ni pruebas ("exp", "preview" solo si no hay otro)
-    .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/lite|image|tts|audio|live|thinking|exp|embedding/.test(n));
-  const stable = names.filter((n) => !/preview/.test(n));
-  const pool = stable.length ? stable : names;
-  pool.sort((a, b) => ver(b) - ver(a) || a.length - b.length);
-  const name = pool[0] || "gemini-2.5-flash";
-  geminiModelMem = { name, ts: Date.now() };
-  await cachePut(env, "gemini|model", { name }).catch(() => {});
-  return name;
+    .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/image|tts|audio|live|thinking|exp|embedding/.test(n));
+  const order = (list) => {
+    const stable = list.filter((n) => !/preview/.test(n));
+    return [...stable, ...list.filter((n) => /preview/.test(n))]
+      .sort((a, b) => ver(b) - ver(a) || /preview/.test(a) - /preview/.test(b) || a.length - b.length);
+  };
+  const flash = order(all.filter((n) => !/lite/.test(n)));
+  const lite = order(all.filter((n) => /lite/.test(n)));
+  const list = [...new Set([...flash.slice(0, 3), ...lite.slice(0, 1)])];
+  if (!list.length) list.push("gemini-2.5-flash");
+  geminiModelMem = { list, ts: Date.now() };
+  await cachePut(env, "gemini|models", { list }).catch(() => {});
+  return list;
 }
 
 /** Pregunta a una API compatible con OpenAI (Gemini u otra) y devuelve el texto. */
@@ -69,18 +76,9 @@ let lastGeminiError = "";
 
 /** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
 export async function aiStatus(env) {
-  let model = "";
-  let test = "";
-  if (env.GEMINI_KEY) {
-    try {
-      model = await geminiModel(env);
-      // Prueba corta directa a Gemini (sin respaldo), para ver si responde y por qué no
-      const t = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model,
-        [{ role: "user", content: 'Responde solo {"ok":true}' }], 1600, { reasoning_effort: "low" });
-      test = t.slice(0, 80);
-    } catch (e) { lastGeminiError = String(e).slice(0, 400); }
-  }
-  return json({ gemini: !!env.GEMINI_KEY, model, test, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
+  let models = [];
+  if (env.GEMINI_KEY) { try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
+  return json({ gemini: !!env.GEMINI_KEY, models, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
 }
 
 /** Pregunta a la IA y devuelve el JSON que respondió (o lanza error). */
@@ -91,18 +89,21 @@ async function ask(env, system, user, maxTokens = 600) {
   ];
   // 1. Gemini (si hay clave). Si falla, sigue con la de Cloudflare.
   if (env.GEMINI_KEY) {
-    try {
-      const model = await geminiModel(env);
-      // Los modelos que "piensan" gastan tokens pensando: margen extra y pensamiento bajo
-      const text = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model, messages,
-        maxTokens + 1500, { reasoning_effort: "low" });
-      const out = parseJson(text);
-      lastVia = "gemini:" + model;
-      return out;
-    } catch (e) {
-      lastGeminiError = String(e).slice(0, 300);
-      console.log("Gemini falló, se usa Workers AI:", lastGeminiError);
-      geminiModelMem = null;
+    let models = [];
+    try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); }
+    for (const model of models) {
+      try {
+        // Los modelos que "piensan" gastan tokens pensando: margen extra y pensamiento bajo
+        const text = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model, messages,
+          maxTokens + 1500, { reasoning_effort: "low" });
+        const out = parseJson(text);
+        lastVia = "gemini:" + model;
+        return out;
+      } catch (e) {
+        // Saturado o sin cupo (503/429): el siguiente modelo. Otro error: también, por si acaso.
+        lastGeminiError = model + ": " + String(e).slice(0, 300);
+        console.log("Gemini falló:", lastGeminiError);
+      }
     }
   }
   let text;
