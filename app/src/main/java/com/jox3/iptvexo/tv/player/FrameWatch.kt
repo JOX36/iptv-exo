@@ -105,6 +105,12 @@ object FrameWatch {
         val title: String, val text: String, val facts: List<String>,
         /** Serie y capítulo (si se pudo saber); [sure] = sale de la guía o de la pantalla, no deducido. */
         val series: String = "", val season: Int = 0, val episode: Int = 0, val episodeTitle: String = "", val sure: Boolean = false,
+        /** Si no se pudo confirmar: los capítulos posibles ("T5 C20 «Nombre»"). */
+        val alternatives: List<String> = emptyList(),
+        /** Se escuchó el audio (si no, solo fotos). */
+        val heard: Boolean = false,
+        /** Por qué se eligió ese capítulo (comparando con el resumen real). */
+        val why: String = "",
     ) {
         /** "Malcolm · Temporada 4 · Capítulo 3 · «Nombre»" (vacío si no es una serie identificada). */
         val episodeLine: String get() {
@@ -159,6 +165,94 @@ object FrameWatch {
                         else -> w
                     }
                 }
+            }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
+        }
+    }
+
+    /**
+     * "¿Qué estoy viendo?" con audio (para canales sin guía, como los 24/7):
+     * 1) 3 fotos seguidas + los últimos 20 s de audio → la IA dice qué es y hasta 5 capítulos posibles.
+     * 2) De TMDB se trae el nombre y el resumen REAL de esos capítulos.
+     * 3) La IA elige cuál coincide con lo que se dijo. Si ninguno, se muestran las opciones.
+     */
+    suspend fun identify(ctx: Context, channelName: String, prog: String, desc: String, episode: String = ""): Result<What> {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val day = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val n = if (p.getInt("what_day", -1) == day) p.getInt("what_n", 0) else 0
+        if (n >= 30) return Result.failure(Exception("Ya se usaron las 30 consultas de hoy en este equipo. Mañana se renuevan."))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return Result.failure(Exception("Necesita Android 7 o más nuevo."))
+        // Fotos: ahora, a los 1,5 s y a los 3 s (la escena cambia y da más pistas)
+        val shots = ArrayList<String>()
+        repeat(3) { k ->
+            if (k > 0) kotlinx.coroutines.delay(1500)
+            grab(512, 288)?.let { bmp ->
+                shots += withContext(Dispatchers.Default) {
+                    val out = ByteArrayOutputStream()
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 65, out)
+                    android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+                }
+            }
+        }
+        if (shots.isEmpty()) return Result.failure(Exception("No pude tomar la imagen del canal. Prueba cuando se esté viendo."))
+        p.edit().putInt("what_day", day).putInt("what_n", n + 1).apply()
+        val audio = withContext(Dispatchers.Default) {
+            LiveAudio.lastWav(20)?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
+        }
+        fun post(path: String, body: JSONObject): JSONObject {
+            val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}$path")
+                .post(body.toString().toRequestBody("application/json".toMediaType())).build()
+            return com.jox3.iptvexo.NetClient.api().newCall(req).execute().use { r ->
+                val o = JSONObject(r.body?.string().orEmpty().ifBlank { "{}" })
+                if (!r.isSuccessful || !o.optBoolean("ok")) throw Exception("La IA no está disponible en este momento. Prueba en un rato.")
+                o
+            }
+        }
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val o = post("/v1/ai/what2", JSONObject().put("n", channelName.take(80)).put("prog", prog.take(120))
+                    .put("desc", desc.take(400)).put("ep", episode.take(60)).put("imgs", org.json.JSONArray(shots)).put("audio", audio ?: ""))
+                val f = o.optJSONArray("facts")
+                val facts = (0 until (f?.length() ?: 0)).map { f!!.optString(it) }.filter { it.isNotBlank() }
+                val base = What(o.optString("title"), o.optString("text"), facts, o.optString("series"), heard = o.optBoolean("heard"))
+                // Otro equipo ya lo identificó en este canal hace un momento
+                o.optJSONObject("picked")?.let { pk ->
+                    return@runCatching base.copy(season = pk.optInt("season"), episode = pk.optInt("episode"),
+                        episodeTitle = pk.optString("name"), sure = pk.optString("confidence") == "alta")
+                }
+                val ca = o.optJSONArray("candidates")
+                val cands = (0 until (ca?.length() ?: 0)).mapNotNull { ca!!.optJSONObject(it) }
+                    .map { it.optInt("season") to it.optInt("episode") }.filter { it.first > 0 && it.second > 0 }.distinct()
+                if (base.series.isBlank() || cands.isEmpty()) return@runCatching base
+                // Nombre y resumen reales de cada candidato (TMDB)
+                val info = kotlinx.coroutines.coroutineScope {
+                    cands.map { (s, e) -> kotlinx.coroutines.async { Triple(s, e, com.jox3.iptvexo.tv.data.Tmdb.episodeInfo(ctx, base.series, s, e)) } }
+                        .map { it.await() }
+                }.filter { it.third != null }
+                fun label(t: Triple<Int, Int, Pair<String, String>?>) = "T${t.first} C${t.second}" + (t.third?.first?.takeIf { it.isNotBlank() }?.let { " «$it»" } ?: "")
+                if (info.isEmpty()) {
+                    // Sin TMDB: lo que propuso la IA, como probable
+                    val (s, e) = cands.first()
+                    return@runCatching base.copy(season = s, episode = e, sure = o.optBoolean("fromGuide"))
+                }
+                if (o.optBoolean("fromGuide")) {
+                    val t = info.first()
+                    return@runCatching base.copy(season = t.first, episode = t.second, episodeTitle = t.third!!.first, sure = true)
+                }
+                val pick = runCatching {
+                    post("/v1/ai/pick", JSONObject().put("series", base.series).put("transcript", o.optString("transcript"))
+                        .put("scene", base.text).put("n", channelName.take(80)).put("prog", prog.take(120))
+                        .put("result", JSONObject().put("title", base.title).put("text", base.text).put("facts", org.json.JSONArray(facts)))
+                        .put("cands", org.json.JSONArray(info.map { t ->
+                            JSONObject().put("s", t.first).put("e", t.second).put("name", t.third!!.first).put("overview", t.third!!.second.take(600))
+                        })))
+                }.getOrNull()
+                val i = pick?.optInt("i", -1) ?: -1
+                val conf = pick?.optString("confidence").orEmpty()
+                if (i in info.indices && conf != "baja") {
+                    val t = info[i]
+                    base.copy(season = t.first, episode = t.second, episodeTitle = t.third!!.first, sure = conf == "alta",
+                        why = pick?.optString("why").orEmpty())
+                } else base.copy(alternatives = info.take(3).map { label(it) })
             }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
         }
     }

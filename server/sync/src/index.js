@@ -22,7 +22,7 @@
 // GET  /v1/room/<código>/ws  → WebSocket de la sala (órdenes de reproducir, pausar, adelantar…).
 // GET  /v/<código>            → página de la invitación (póster, sinopsis, botón para abrir la app).
 
-import { aiSearch, aiEpg, aiStatus, aiFrame, aiToday, aiWhat, aiSame } from "./ai.js";
+import { aiSearch, aiEpg, aiStatus, aiFrame, aiToday, aiWhat, aiSame, aiWhat2, aiPick } from "./ai.js";
 import { stabPost, stabGet } from "./stab.js";
 
 const LISTS = new Set(["fav", "recent", "resume", "profile", "vault"]);
@@ -60,6 +60,8 @@ export default {
       if (url.pathname === "/v1/ai/today" && req.method === "POST") return await aiToday(req, env);
       if (url.pathname === "/v1/ai/what" && req.method === "POST") return await aiWhat(req, env);
       if (url.pathname === "/v1/ai/same" && req.method === "POST") return await aiSame(req, env);
+      if (url.pathname === "/v1/ai/what2" && req.method === "POST") return await aiWhat2(req, env);
+      if (url.pathname === "/v1/ai/pick" && req.method === "POST") return await aiPick(req, env);
       // Puntajes de estabilidad compartidos (ver stab.js)
       if (url.pathname === "/v1/stab" && req.method === "POST") return await stabPost(req, env);
       if (url.pathname === "/v1/stab/get" && req.method === "POST") return await stabGet(req, env);
