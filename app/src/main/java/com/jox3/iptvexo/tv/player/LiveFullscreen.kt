@@ -245,6 +245,8 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
     // Todo se oculta solo tras 6 s sin tocar el control
     LaunchedEffect(bars, activity) {
         if (!bars) return@LaunchedEffect
+        // "¿Qué estoy viendo?" abierto: no se cierra solo (hay que poder leerlo); se cierra con Atrás
+        if (option == Opt.What && panelOpen) return@LaunchedEffect
         delay(if (option != null) 8000 else 5000)
         hideAll()
     }
@@ -307,7 +309,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                 }
             }
     ) {
-        if (bars && !(panelOpen && option == Opt.Info)) {
+        if (bars && !(panelOpen && (option == Opt.Info || option == Opt.What))) {
             // ── Arriba: canal + guía (con Información abierta, el panel ya trae todo) ──
             Column(
                 Modifier.fillMaxWidth()
@@ -343,8 +345,8 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
         val o = option
         if (bars && o != null && o.hasPanel && panelOpen) {
             Box(
-                (if (o == Opt.Info)
-                    // Información: ocupa toda la altura (de arriba hasta la barra de opciones)
+                (if (o == Opt.Info || o == Opt.What)
+                    // Información y "¿Qué estoy viendo?": toda la altura (de arriba hasta la barra de opciones)
                     Modifier.align(Alignment.TopStart).padding(bottom = 96.dp).fillMaxWidth(0.66f).fillMaxHeight()
                 else Modifier.align(Alignment.BottomStart).padding(bottom = 96.dp)
                     .width(if (o == Opt.Channels) 400.dp else 340.dp)
@@ -864,7 +866,8 @@ private fun WhatPanel(live: LivePlayback, repo: TvRepo, ch: Channel, focus: Focu
         val now = repo.cachedEpg(ch)?.let { repo.nowPlaying(it) }
         value = FrameWatch.identify(ctx, ch.name, now?.label.orEmpty(), now?.description.orEmpty(), now?.episode.orEmpty())
     }
-    Column(Modifier.fillMaxSize().background(Color(0xE6101722), RoundedCornerShape(14.dp)).padding(18.dp),
+    Column(Modifier.fillMaxSize().background(Color(0xE6101722), RoundedCornerShape(14.dp)).padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 18.dp)
+        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp)) {
         val r = res
         when {
@@ -877,13 +880,13 @@ private fun WhatPanel(live: LivePlayback, repo: TvRepo, ch: Channel, focus: Focu
                 if (w.why.isNotBlank()) Text("✔ " + w.why, style = Type.Small, color = Jx.Muted)
                 if (w.alternatives.isNotEmpty()) Text("No estoy seguro del capítulo. Podría ser: " + w.alternatives.joinToString(" · "),
                     style = Type.Small, color = Jx.TextSoft)
-                Text(w.text, style = Type.Small, color = Jx.Text)
-                w.facts.forEach { f -> Text("• $f", style = Type.Small, color = Jx.TextSoft) }
+                Text(w.text, style = Type.Body, color = Jx.Text)
+                w.facts.forEach { f -> Text("• $f", style = Type.Body, color = Jx.TextSoft) }
             }
         }
-        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
-        FocusSurface(onClick = { ask++ }, modifier = Modifier.focusRequester(focus).fillMaxWidth().height(42.dp), container = Jx.Surface) {
+        FocusSurface(onClick = { ask++ }, modifier = Modifier.focusRequester(focus).padding(top = 6.dp).width(260.dp).height(44.dp), container = Jx.Surface) {
             Text("Preguntar de nuevo", style = Type.Label, modifier = Modifier.align(Alignment.Center))
         }
+        Text("Atrás: cerrar", style = Type.Small, color = Jx.Faint)
     }
 }
