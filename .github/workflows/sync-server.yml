@@ -92,6 +92,11 @@ jobs:
           curl -sS -X POST "$U/v1/ai/today" -H 'content-type: application/json' -d "{\"k\":\"prueba-$(date +%s)\",\"now\":\"sábado 6:00 PM\",\"items\":[\"6:00 PM|Win Sports+|Fútbol: Millonarios vs Nacional|Deportes|EN VIVO\",\"6:00 PM|Canal 13|Televentas Mega Ofertas|Compras|\",\"8:00 PM|Cinemax|Oppenheimer|Película|ESTRENO\",\"7:00 PM|CNN|Noticias de la noche|Noticias|\"]}" | tee /tmp/ai4.json; echo
           if grep -q '"ok":true' /tmp/ai4.json && grep -q '"i":0' /tmp/ai4.json && ! grep -q '"i":1,' /tmp/ai4.json; then echo "::notice::Lo mejor de hoy: $(head -c 300 /tmp/ai4.json)"
           else echo "::warning::Lo mejor de hoy no respondió bien: $(head -c 300 /tmp/ai4.json)"; fi
+          # ¿Qué estoy viendo?: con la foto de barras debe responder algo con sentido
+          printf '{"n":"Canal de prueba","prog":"Carta de ajuste","img":"%s"}' "$(base64 -w0 test/bars.jpg)" > /tmp/what.json
+          curl -sS -X POST "$U/v1/ai/what" -H 'content-type: application/json' --data @/tmp/what.json | tee /tmp/ai5.json; echo
+          if grep -q '"ok":true' /tmp/ai5.json; then echo "::notice::¿Qué estoy viendo?: $(head -c 300 /tmp/ai5.json)"
+          else echo "::warning::¿Qué estoy viendo? no respondió: $(head -c 300 /tmp/ai5.json)"; fi
           # Vigilante de señal: barras de colores con "NO SIGNAL" → debe decir que falla
           printf '{"n":"Canal de prueba","img":"%s"}' "$(base64 -w0 test/bars.jpg)" > /tmp/frame.json
           curl -sS -X POST "$U/v1/ai/frame" -H 'content-type: application/json' --data @/tmp/frame.json | tee /tmp/ai3.json; echo

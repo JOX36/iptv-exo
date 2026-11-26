@@ -83,6 +83,31 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
     var locked by remember { mutableStateOf(false) }
     var castSheet by remember { mutableStateOf(false) }
     if (castSheet) CastSheet { castSheet = false }
+    // ¿Qué estoy viendo? (la IA mira la imagen)
+    var whatSheet by remember { mutableStateOf(false) }
+    val whatCh = live.current
+    if (whatSheet && whatCh != null) PlayerSheet({ whatSheet = false }) {
+        val wctx = LocalContext.current
+        var ask by remember(whatCh.id) { mutableStateOf(0) }
+        val res by produceState<Result<com.jox3.iptvexo.tv.player.FrameWatch.What>?>(null, whatCh.id, ask) {
+            value = null
+            val now = repo?.cachedEpg(whatCh)?.let { repo.nowPlaying(it) }
+            value = com.jox3.iptvexo.tv.player.FrameWatch.describe(wctx, whatCh.name, now?.label.orEmpty(), now?.description.orEmpty())
+        }
+        Column(Modifier.padding(horizontal = 22.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            val r = res
+            when {
+                r == null -> Text("✨ Mirando la imagen…", style = PType.Label, color = Jx.Accent)
+                r.isFailure -> Text(r.exceptionOrNull()?.message ?: "No se pudo.", style = PType.Body, color = Jx.Muted)
+                else -> r.getOrNull()?.let { w ->
+                    Text("✨ " + w.title.ifBlank { "Esto es lo que veo" }, style = PType.H2, color = Jx.Text)
+                    Text(w.text, style = PType.Body, color = Jx.TextSoft)
+                    w.facts.forEach { f -> Text("• $f", style = PType.Small, color = Jx.Muted) }
+                }
+            }
+            PButton("Preguntar de nuevo", Modifier.fillMaxWidth(), primary = false) { ask++ }
+        }
+    }
     val casting = LocalCast.current?.connectedTo != null
     Box(modifier.background(Color.Black)) {
         if (ch == null) {
@@ -129,6 +154,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
                         if (live.group.isNotBlank()) Text(live.group, style = PType.Tiny, color = Jx.Muted, maxLines = 1)
                         if (repo != null) FullscreenEpg(ch, repo, Modifier.padding(top = 4.dp))
                     }
+                    RoundIcon(R.drawable.tv_ic_search, "¿Qué estoy viendo?") { whatSheet = true; controls = false }
                     CastButton { castSheet = true }
                     PipButton()
                     RoundIcon(R.drawable.ic_lock_open, "Bloquear pantalla") { locked = true; controls = false }

@@ -144,6 +144,8 @@ private enum class Opt(val label: String, val hasPanel: Boolean) {
     Channels("Canales", true),
     // La guía va al principio, junto a Canales (antes quedaba fuera de la pantalla en el TV Box)
     Programs("Guía", true),
+    // La IA mira la imagen y dice qué se está viendo (película, partido y marcador…)
+    What("¿Qué estoy viendo?", true),
     // Ver el programa de ahora desde que empezó (si el canal guarda archivo; si no, lo explica)
     Restart("Desde el inicio", false),
     Guide("Elegir guía", true),
@@ -367,6 +369,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     Opt.Subtitles -> TrackPanel(live.player, live.tracksVersion, C.TRACK_TYPE_TEXT, panelReq)
                     Opt.Picture -> PicturePanel(live.resizeMode, { live.resizeMode = it }, panelReq)
                     Opt.Info -> LiveInfoPanel(live, repo, ch)
+                    Opt.What -> WhatPanel(live, repo, ch, panelReq)
                     Opt.Guide -> GuidePickPanel(repo, ch, panelReq)
                     Opt.Programs -> ProgramsPanel(repo, ch, panelReq)
                     Opt.Record -> RecordPanel(repo, ch, panelReq)
@@ -408,6 +411,7 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                                 Opt.Favorite -> if (isFav) R.drawable.tv_ic_star_filled else R.drawable.tv_ic_star
                                 Opt.Reload -> R.drawable.tv_ic_restart
                                 Opt.Info -> R.drawable.tv_ic_info
+                                Opt.What -> R.drawable.tv_ic_search
                                 Opt.Guide -> R.drawable.tv_ic_check
                                 Opt.Programs -> R.drawable.ic_guide
                                 Opt.Record -> R.drawable.ic_record
@@ -848,3 +852,33 @@ private fun RecordPanel(repo: TvRepo, ch: com.jox3.iptvexo.tv.data.Channel, req:
 }
 
 private fun nowMsIn(p: com.jox3.iptvexo.tv.data.EpgItem) = System.currentTimeMillis() in p.start until p.end
+
+
+/** "¿Qué estoy viendo?": la IA mira la imagen y la guía y lo explica. */
+@Composable
+private fun WhatPanel(live: LivePlayback, repo: TvRepo, ch: Channel, focus: FocusRequester) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    var ask by remember(ch.id) { mutableStateOf(0) }
+    val res by produceState<Result<FrameWatch.What>?>(null, ch.id, ask) {
+        value = null
+        val now = repo.cachedEpg(ch)?.let { repo.nowPlaying(it) }
+        value = FrameWatch.describe(ctx, ch.name, now?.label.orEmpty(), now?.description.orEmpty())
+    }
+    Column(Modifier.fillMaxSize().background(Color(0xE6101722), RoundedCornerShape(14.dp)).padding(18.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        val r = res
+        when {
+            r == null -> Text("✨ Mirando la imagen…", style = Type.Label, color = Jx.Accent)
+            r.isFailure -> Text(r.exceptionOrNull()?.message ?: "No se pudo.", style = Type.Small, color = Jx.Muted)
+            else -> r.getOrNull()?.let { w ->
+                Text("✨ " + w.title.ifBlank { "Esto es lo que veo" }, style = Type.Label, color = Jx.Accent)
+                Text(w.text, style = Type.Small, color = Jx.Text)
+                w.facts.forEach { f -> Text("• $f", style = Type.Small, color = Jx.TextSoft) }
+            }
+        }
+        androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+        FocusSurface(onClick = { ask++ }, modifier = Modifier.focusRequester(focus).fillMaxWidth().height(42.dp), container = Jx.Surface) {
+            Text("Preguntar de nuevo", style = Type.Label, modifier = Modifier.align(Alignment.Center))
+        }
+    }
+}

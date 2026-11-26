@@ -97,4 +97,42 @@ object FrameWatch {
             }.getOrNull()
         }
     }
+
+    // ── ¿Qué estoy viendo? ──
+
+    /** Lo que respondió la IA sobre la imagen. */
+    data class What(val title: String, val text: String, val facts: List<String>)
+
+    /**
+     * Foto de la pantalla + lo que dice la guía → la IA explica qué se está viendo.
+     * Devuelve el error en palabras simples si no se pudo.
+     */
+    suspend fun describe(ctx: Context, channelName: String, prog: String, desc: String): Result<What> {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val day = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val n = if (p.getInt("what_day", -1) == day) p.getInt("what_n", 0) else 0
+        if (n >= 30) return Result.failure(Exception("Ya se usaron las 30 consultas de hoy en este equipo. Mañana se renuevan."))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return Result.failure(Exception("Necesita Android 7 o más nuevo."))
+        val bmp = grab(768, 432) ?: return Result.failure(Exception("No pude tomar la imagen del canal. Prueba cuando se esté viendo."))
+        p.edit().putInt("what_day", day).putInt("what_n", n + 1).apply()
+        val b64 = withContext(Dispatchers.Default) {
+            val out = ByteArrayOutputStream()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+            android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+        }
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val body = JSONObject().put("n", channelName.take(80)).put("prog", prog.take(120)).put("desc", desc.take(400))
+                    .put("img", b64).toString()
+                val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/ai/what")
+                    .post(body.toRequestBody("application/json".toMediaType())).build()
+                com.jox3.iptvexo.NetClient.api().newCall(req).execute().use { r ->
+                    val o = JSONObject(r.body?.string().orEmpty().ifBlank { "{}" })
+                    if (!r.isSuccessful || !o.optBoolean("ok")) throw Exception("La IA no está disponible en este momento. Prueba en un rato.")
+                    val f = o.optJSONArray("facts")
+                    What(o.optString("title"), o.optString("text"), (0 until (f?.length() ?: 0)).map { f!!.optString(it) }.filter { it.isNotBlank() })
+                }
+            }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
+        }
+    }
 }

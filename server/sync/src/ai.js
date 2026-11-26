@@ -319,3 +319,33 @@ export async function aiToday(req, env) {
     return json({ ok: false, error: "ia no disponible" }, 503);
   }
 }
+
+// ── ¿Qué estoy viendo? ──
+
+const WHAT_PROMPT = `Eres el asistente de una app de TV en vivo. La persona pregunta "¿qué estoy viendo?".
+Te doy el canal, lo que dice la guía en este momento y una foto de la pantalla.
+Responde en español, claro y breve, usando la foto, el texto que se vea en pantalla (marcadores, títulos,
+créditos, nombres en grafismos) y la guía. Si es una película o serie: cuál es, de qué trata en una frase
+y algún dato útil (año, protagonistas si aparecen en la guía o en pantalla). Si es deporte: quiénes juegan,
+el marcador y el minuto si se ven, y la competencia. Si es noticia: el tema. No identifiques a personas
+por su cara: solo nombra a alguien si su nombre aparece en pantalla o en la guía. Si no se puede saber, dilo.
+Responde SOLO con JSON: {"title":"título corto","text":"2 a 4 frases","facts":["dato corto", "..."]}`;
+
+export async function aiWhat(req, env) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
+  const img = String(body.img || "");
+  if (img.length < 200 || img.length > 700_000 || !/^[A-Za-z0-9+/=]+$/.test(img)) return json({ error: "imagen inválida" }, 400);
+  const ctx = [`Canal: ${str(body.n, 80) || "desconocido"}`];
+  if (body.prog) ctx.push(`Guía ahora: ${str(body.prog, 120)}`);
+  if (body.desc) ctx.push(`Descripción en la guía: ${str(body.desc, 400)}`);
+  try {
+    const o = await ask(env, WHAT_PROMPT, [
+      { type: "text", text: ctx.join("\n") },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64," + img } },
+    ], 400);
+    return json({ ok: true, via: lastVia, title: str(o.title, 100), text: str(o.text, 700), facts: list(o.facts, 5, 100) });
+  } catch (e) {
+    return json({ ok: false, error: "ia no disponible" }, 503);
+  }
+}
