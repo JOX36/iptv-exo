@@ -30,6 +30,8 @@ object SmartSearch {
         val say: String = "",
         val labels: Map<String, String> = emptyMap(),
         val thinking: Boolean = false,
+        /** Si pidió un partido o evento: qué vigilar para "Avísame cuando juegue…". */
+        val alertTerms: List<String> = emptyList(),
     )
 
     fun enabled(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean("search", true)
@@ -121,7 +123,8 @@ object SmartSearch {
             }
             val found = ServerHub.Results(channels.take(40), movies.take(50), series.take(50))
             if (found.isEmpty) null
-            else Outcome(found, plan.say.ifBlank { "Resultados para “${query.trim()}”" }, labels)
+            else Outcome(found, plan.say.ifBlank { "Resultados para “${query.trim()}”" }, labels,
+                alertTerms = if (plan.kind == "event") plan.terms.take(2) else emptyList())
         }
     }
 

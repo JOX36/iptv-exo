@@ -318,6 +318,24 @@ private fun PhoneShell(
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalCast provides cast, com.jox3.iptvexo.tv.data.LocalServers provides serverCtx) {
     Box(Modifier.fillMaxSize().background(if (fullscreen || act.inPip) androidx.compose.ui.graphics.Color.Black else Jx.Bg)) {
+        // "Avísame cuando juegue…": aviso arriba cuando empieza lo que se pidió vigilar
+        com.jox3.iptvexo.tv.data.Today.repo = repo
+        LaunchedEffect(Unit) { com.jox3.iptvexo.tv.data.Today.watch(context) }
+        val alert = com.jox3.iptvexo.tv.data.Today.banner.value
+        if (alert != null && !act.inPip) {
+            LaunchedEffect(alert) { kotlinx.coroutines.delay(45_000); if (com.jox3.iptvexo.tv.data.Today.banner.value == alert) com.jox3.iptvexo.tv.data.Today.banner.value = null }
+            Row(Modifier.zIndex(10f).align(Alignment.TopCenter).statusBarsPadding().padding(10.dp).fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp)).background(androidx.compose.ui.graphics.Color(0xF2101722)).padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(Modifier.weight(1f)) {
+                    Text("🔔 " + (if (alert.liveNow) "Ya empezó" else "Empieza " + alert.whenText().lowercase()) + " · " + alert.guide,
+                        style = PType.Tiny, color = Jx.Accent, maxLines = 1)
+                    Text(alert.title, style = PType.Label, color = Jx.Text, maxLines = 2)
+                }
+                PButton("Ver", Modifier) { com.jox3.iptvexo.tv.data.Today.banner.value = null; playChannel(listOf(alert.channel), 0) }
+                RoundIcon(R.drawable.ic_close, "Después", tint = Jx.Muted, iconSize = 16.dp) { com.jox3.iptvexo.tv.data.Today.banner.value = null }
+            }
+        }
         // En la ventana flotante solo se ve el video (sin botones)
         if (act.inPip) {
             if (vod.open) PlayerSurface(vod.player, Modifier.fillMaxSize(), vod.resizeMode, keepOn = vod.playing)

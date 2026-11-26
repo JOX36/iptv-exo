@@ -88,6 +88,12 @@ private class HomeData(val hero: Movie?, val heroInfo: MovieInfo?, val movies: L
 @Composable
 fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Unit, onOpenSeries: (String, String, String) -> Unit,
               onPlayChannel: (List<Channel>, Int) -> Unit) {
+    run {
+        // Lo mejor de hoy: cuando la guía de internet esté lista
+        val tctx = LocalContext.current
+        val epgV by repo.epgVersion
+        LaunchedEffect(epgV, repo) { runCatching { com.jox3.iptvexo.tv.data.Today.load(tctx, repo) } }
+    }
     val lib = repo.library
     val data by produceState<HomeData?>(null) {
         value = runCatching {
@@ -115,6 +121,29 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
             if (hero != null) HeroCarousel(repo, launcher, d.movies.take(8), onOpenMovie)
             else Box(Modifier.padding(horizontal = 18.dp).fillMaxWidth().height(220.dp).clip(RoundedCornerShape(20.dp)).background(Jx.Surface)) {
                 CenterText(if (d == null) "Cargando…" else "")
+            }
+        }
+        // Lo mejor de hoy (Gemini elige de la guía)
+        val today = com.jox3.iptvexo.tv.data.Today.picks.value
+        if (today.isNotEmpty()) item {
+            val chans = today.mapIndexed { i, p -> p.channel.copy(num = i + 1) }
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionTitle("✨ Lo mejor de hoy")
+                LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    itemsIndexed(today, key = { i, p -> "t$i" + p.channel.id + p.start }) { i, p ->
+                        Row(Modifier.width(260.dp).clip(RoundedCornerShape(14.dp)).background(Jx.Surface)
+                            .clickable { onPlayChannel(chans, i) }.padding(10.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            RemoteImage(p.channel.logo, p.guide, Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(Jx.SurfaceHi).padding(5.dp),
+                                scale = androidx.compose.ui.layout.ContentScale.Fit)
+                            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                val w = p.whenText()
+                                Text(w + " · " + p.guide, style = PType.Tiny, color = if (w == "EN VIVO") Jx.Live else Jx.Accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(p.title, style = PType.Label, color = Jx.Text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                if (p.why.isNotBlank()) Text(p.why, style = PType.Tiny, color = Jx.Muted, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            }
+                        }
+                    }
+                }
             }
         }
         if (resume.isNotEmpty()) item {
@@ -658,8 +687,16 @@ fun PhoneSearch(
             else -> LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 val o = outcome
                 if (o != null && (o.say.isNotBlank() || o.thinking)) item {
-                    Text(if (o.thinking) "✨ Buscando con IA…" else "✨ " + o.say, style = PType.Label, color = Jx.Accent,
-                        modifier = Modifier.padding(horizontal = 18.dp))
+                    Column(Modifier.padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(if (o.thinking) "✨ Buscando con IA…" else "✨ " + o.say, style = PType.Label, color = Jx.Accent)
+                        val term = o.alertTerms.firstOrNull()
+                        if (term != null) {
+                            val on = term.lowercase() in com.jox3.iptvexo.tv.data.Today.alerts
+                            PButton(if (on) "🔔 Te aviso cuando juegue “$term”" else "🔔 Avísame cuando juegue “$term”", Modifier.fillMaxWidth(), primary = false) {
+                                if (on) com.jox3.iptvexo.tv.data.Today.removeAlert(ctx, term.lowercase()) else com.jox3.iptvexo.tv.data.Today.addAlert(ctx, term)
+                            }
+                        }
+                    }
                 }
                 if (r.channels.isNotEmpty()) item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -780,6 +817,15 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 var failover by remember { mutableStateOf(com.jox3.iptvexo.tv.player.Failover.enabled(tctx)) }
                 PButton("Cambiar sola de señal si el canal falla: " + if (failover) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
                     failover = !failover; com.jox3.iptvexo.tv.player.Failover.setEnabled(tctx, failover)
+                }
+                // Lo mejor de hoy (fila del Inicio) y avisos de partidos/programas
+                var todayOn by remember { mutableStateOf(com.jox3.iptvexo.tv.data.Today.enabled(tctx)) }
+                PButton("“Lo mejor de hoy” en el Inicio: " + if (todayOn) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
+                    todayOn = !todayOn; com.jox3.iptvexo.tv.data.Today.setEnabled(tctx, todayOn); if (!todayOn) com.jox3.iptvexo.tv.data.Today.picks.value = emptyList()
+                }
+                LaunchedEffect(Unit) { com.jox3.iptvexo.tv.data.Today.loadAlerts(tctx) }
+                com.jox3.iptvexo.tv.data.Today.alerts.toList().forEach { t ->
+                    PButton("🔔 Aviso: “$t” · quitar", Modifier.fillMaxWidth(), primary = false) { com.jox3.iptvexo.tv.data.Today.removeAlert(tctx, t) }
                 }
                 // Vigilante: imagen negra o letrero de error → otra señal
                 var watch by remember { mutableStateOf(com.jox3.iptvexo.tv.player.FrameWatch.enabled(tctx)) }

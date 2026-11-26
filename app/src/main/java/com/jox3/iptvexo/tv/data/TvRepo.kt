@@ -67,6 +67,9 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
 
     @Volatile private var epgCodes: List<String> = emptyList()
 
+    /** Países de la guía de internet de este servidor ("co,us"…), para compartir "Lo mejor de hoy". */
+    fun epgCountries(): String = epgCodes.sorted().joinToString(",")
+
     /** Un solo aviso por pantalla (aunque se pida muchas veces mientras descarga). */
     private val onExternalReady: () -> Unit = {
         // Los canales que quedaron sin guía se vuelven a consultar
