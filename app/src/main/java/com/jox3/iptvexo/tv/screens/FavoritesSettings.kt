@@ -167,6 +167,8 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("“Lo mejor de hoy” en el Inicio: " + if (todayOn) "Sí" else "No", {
                 todayOn = !todayOn; com.jox3.iptvexo.tv.data.Today.setEnabled(tctx, todayOn); if (!todayOn) com.jox3.iptvexo.tv.data.Today.picks.value = emptyList()
             }, Modifier.fillMaxWidth())
+            Text("Lo mejor de hoy: " + com.jox3.iptvexo.tv.data.Today.status.value, style = Type.Small, color = Jx.Muted)
+            ActionButton("Volver a preparar “Lo mejor de hoy”", { com.jox3.iptvexo.tv.data.Today.refresh() }, Modifier.fillMaxWidth())
             LaunchedEffect(Unit) { com.jox3.iptvexo.tv.data.Today.loadAlerts(tctx) }
             com.jox3.iptvexo.tv.data.Today.alerts.toList().forEach { t ->
                 ActionButton("🔔 Aviso: “$t” · quitar", { com.jox3.iptvexo.tv.data.Today.removeAlert(tctx, t) }, Modifier.fillMaxWidth())

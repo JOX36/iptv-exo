@@ -56,6 +56,13 @@ object Today {
     // ── Lo mejor de hoy ──
 
     val picks = mutableStateOf<List<Pick>>(emptyList())
+    /** Qué pasó la última vez (se ve en Ajustes): para saber por qué la fila no aparece. */
+    val status = mutableStateOf("Todavía no se ha preparado.")
+
+    /** Volver a preparar la fila ya (botón de Ajustes). */
+    fun refresh() { loadedAt = 0L; picks.value = emptyList(); tick.intValue++ }
+    /** Sube con "Volver a preparar": el Inicio la arma de nuevo. */
+    val tick = androidx.compose.runtime.mutableIntStateOf(0)
     @Volatile private var loadedFor = ""
     @Volatile private var loadedAt = 0L
 
@@ -65,7 +72,8 @@ object Today {
 
     /** Arma la fila (una vez por hora por servidor). Necesita la guía de internet descargada. */
     suspend fun load(ctx: Context, repo: TvRepo) {
-        if (!enabled(ctx) || !ExternalEpg.isReady()) return
+        if (!enabled(ctx)) { status.value = "Apagada."; return }
+        if (!ExternalEpg.isReady()) { status.value = "Esperando la guía de programación de internet…"; return }
         val acc = repo.api.account.key
         if (loadedFor == acc && System.currentTimeMillis() - loadedAt < 3600_000 && picks.value.isNotEmpty()) return
         val now = System.currentTimeMillis() / 1000
@@ -92,7 +100,8 @@ object Today {
             }
             out.sortedWith(compareByDescending<C> { weight(it) }.thenBy { it.p.start }).distinctBy { it.p.title.lowercase() + it.p.start }.take(500)
         }
-        if (cands.isEmpty()) return
+        if (cands.isEmpty()) { status.value = "La guía de internet no tiene programas para hoy en tus países."; return }
+        status.value = "Preguntando a la IA (${cands.size} programas de la guía)…"
         val bucket = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date()) + "-" + (java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) / 3)
         val res = withContext(Dispatchers.IO) {
             runCatching {
@@ -102,10 +111,12 @@ object Today {
                 val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/ai/today")
                     .post(body.toRequestBody("application/json".toMediaType())).build()
                 com.jox3.iptvexo.NetClient.api().newCall(req).execute().use { r ->
-                    if (!r.isSuccessful) null else JSONObject(r.body?.string().orEmpty()).optJSONArray("picks")
+                    if (!r.isSuccessful) { status.value = "La IA no respondió (HTTP ${r.code}). Se reintenta al volver al Inicio."; null }
+                    else JSONObject(r.body?.string().orEmpty()).optJSONArray("picks")
                 }
-            }.getOrNull()
+            }.onFailure { status.value = "Sin conexión con el servidor de JOX3: ${it.message?.take(60)}" }.getOrNull()
         } ?: return
+        status.value = "La IA eligió ${res.length()} programas; buscándolos en tu servidor…"
         val byLine = cands.associateBy { it.line }
         val out = ArrayList<Pick>()
         for (i in 0 until res.length()) {
@@ -118,6 +129,8 @@ object Today {
         }
         picks.value = out
         loadedFor = acc; loadedAt = System.currentTimeMillis()
+        status.value = if (out.isEmpty()) "La IA eligió ${res.length()} programas, pero ninguno está en los canales de este servidor."
+            else "Lista: ${out.size} programas (de ${res.length()} que eligió la IA)."
     }
 
     // ── Avísame cuando juegue… ──

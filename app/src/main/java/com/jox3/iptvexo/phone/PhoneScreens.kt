@@ -92,7 +92,8 @@ fun PhoneHome(repo: TvRepo, launcher: PlayerLauncher, onOpenMovie: (Movie) -> Un
         // Lo mejor de hoy: cuando la guía de internet esté lista
         val tctx = LocalContext.current
         val epgV by repo.epgVersion
-        LaunchedEffect(epgV, repo) { runCatching { com.jox3.iptvexo.tv.data.Today.load(tctx, repo) } }
+        val todayTick by com.jox3.iptvexo.tv.data.Today.tick
+        LaunchedEffect(epgV, repo, todayTick) { runCatching { com.jox3.iptvexo.tv.data.Today.load(tctx, repo) } }
     }
     val lib = repo.library
     val data by produceState<HomeData?>(null) {
@@ -828,6 +829,8 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("“Lo mejor de hoy” en el Inicio: " + if (todayOn) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
                     todayOn = !todayOn; com.jox3.iptvexo.tv.data.Today.setEnabled(tctx, todayOn); if (!todayOn) com.jox3.iptvexo.tv.data.Today.picks.value = emptyList()
                 }
+                Text("Lo mejor de hoy: " + com.jox3.iptvexo.tv.data.Today.status.value, style = PType.Tiny, color = Jx.Muted)
+                PButton("Volver a preparar “Lo mejor de hoy”", Modifier.fillMaxWidth(), primary = false) { com.jox3.iptvexo.tv.data.Today.refresh() }
                 LaunchedEffect(Unit) { com.jox3.iptvexo.tv.data.Today.loadAlerts(tctx) }
                 com.jox3.iptvexo.tv.data.Today.alerts.toList().forEach { t ->
                     PButton("🔔 Aviso: “$t” · quitar", Modifier.fillMaxWidth(), primary = false) { com.jox3.iptvexo.tv.data.Today.removeAlert(tctx, t) }

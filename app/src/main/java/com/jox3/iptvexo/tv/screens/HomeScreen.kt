@@ -95,7 +95,8 @@ fun HomeScreen(repo: TvRepo, nav: Nav, host: TvHost) {
     // Lo mejor de hoy: cuando la guía de internet esté lista
     val ctxToday = androidx.compose.ui.platform.LocalContext.current
     val epgV by repo.epgVersion
-    LaunchedEffect(epgV, repo) { runCatching { com.jox3.iptvexo.tv.data.Today.load(ctxToday, repo) } }
+    val todayTick by com.jox3.iptvexo.tv.data.Today.tick
+    LaunchedEffect(epgV, repo, todayTick) { runCatching { com.jox3.iptvexo.tv.data.Today.load(ctxToday, repo) } }
 
     val result = state
     if (result == null) { StatusBox("Cargando…"); return }
