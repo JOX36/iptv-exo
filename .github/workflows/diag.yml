@@ -1,0 +1,16 @@
+name: Diagnóstico del servidor
+
+# Muestra el estado de la IA del servidor (sin claves): modelos, último error y la última
+# vez que se armó "Lo mejor de hoy". Se lanza a mano desde la pestaña Actions.
+on:
+  workflow_dispatch:
+
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Estado de la IA
+        run: |
+          S=$(curl -sS https://jox3-sync.jox3tv.workers.dev/v1/ai/status | head -c 1500)
+          echo "$S"
+          echo "::notice::$S"

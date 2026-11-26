@@ -80,7 +80,8 @@ let lastGeminiError = "";
 export async function aiStatus(env, url) {
   let models = [];
   if (env.GEMINI_KEY) { try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
-  return json({ gemini: !!env.GEMINI_KEY, models, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
+  const today = await cacheGet(env, "t|diag", 30 * 24 * 3600 * 1000).catch(() => null);
+  return json({ gemini: !!env.GEMINI_KEY, models, today, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
 }
 
 /** Pregunta a la IA y devuelve el JSON que respondió (o lanza error). */
@@ -321,8 +322,10 @@ export async function aiToday(req, env) {
       .slice(0, 12).map((p) => ({ i: p.i, why: str(p.why, 90), t: items[p.i] }));
     const out = { picks };
     await cachePut(env, key, out);
+    await cachePut(env, "t|diag", { ts: Date.now(), items: items.length, picks: picks.length, via: lastVia }).catch(() => {});
     return json({ ok: true, via: lastVia, ...out });
   } catch (e) {
+    await cachePut(env, "t|diag", { ts: Date.now(), items: items.length, error: String(e).slice(0, 200) }).catch(() => {});
     return json({ ok: false, error: "ia no disponible" }, 503);
   }
 }

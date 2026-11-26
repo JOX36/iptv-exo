@@ -45,6 +45,15 @@ jobs:
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
 
+      - name: Últimas veces que se armó "Lo mejor de hoy"
+        uses: cloudflare/wrangler-action@v3
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server/sync
+          command: d1 execute jox3 --remote --command "SELECT k, datetime(ts/1000,'unixepoch') AS cuando, substr(v,1,160) AS v FROM ai_cache WHERE k LIKE 't|%' ORDER BY ts DESC LIMIT 6"
+
       - name: Probar que responde
         env:
           URL: ${{ steps.deploy.outputs.deployment-url }}
