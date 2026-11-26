@@ -107,6 +107,28 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
             }
         }
     }
+    // ── Mejor opción (canales en vivo con varias señales) ──
+    /** La señal más estable del canal, si tiene más de una. */
+    fun bestOf(h: ServerHub.Hit): ServerHub.Copy? =
+        if (h.kind == "live" && h.copies.size > 1 && com.jox3.iptvexo.tv.player.Failover.enabled(ctx))
+            com.jox3.iptvexo.tv.player.Stability.best(ctx, h.copies) else null
+    fun bestLabel(b: ServerHub.Copy): String =
+        "▶ " + (if (b.account.key == account.key || !multi) b.tag.ifBlank { "Mejor señal" }
+            else ServerHub.letter(accounts, b.account) + (if (b.tag.isNotBlank()) " · " + b.tag else ""))
+    /** OK en un canal con varias señales: se reproduce directo la mejor (sin preguntar). */
+    fun playBest(h: ServerHub.Hit, best: ServerHub.Copy, channels: List<Channel>) {
+        lib.addSearch(query)
+        val mine = h.copies.firstOrNull { it.account.key == account.key }
+        when {
+            best.account.key == account.key -> openCopy(best, channels)
+            // El canal también está en este servidor: se abre aquí, pero con la señal del otro
+            mine != null -> {
+                live.preferSource(mine.id, com.jox3.iptvexo.tv.player.Failover.Alt(best.account, best.id, best.name, best.tag))
+                openCopy(mine, channels)
+            }
+            else -> openCopy(best, channels)   // solo está en otro servidor: se cambia a ese
+        }
+    }
     val firstKey = remember { FocusRequester() }
     // ── Búsqueda por voz (reconocedor de Google del equipo) ──
     val voice = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -234,9 +256,13 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
                                     value = if (t.isEmpty()) "" else if (multi && from != null && from.key != account.key)
                                         "${ServerHub.letter(accounts, from)} · $t" else t
                                 }
-                                ChannelTile(h.name, h.image, badges = letters(h), now = now, width = if (big) 156.dp else 112.dp, onClick = {
-                                    open(h) { openCopy(h.copies.first(), here) }
-                                })
+                                val best = remember(h.key, ServerHub.status.size) { bestOf(h) }
+                                ChannelTile(h.name, h.image, badges = letters(h),
+                                    now = best?.let { b -> bestLabel(b) + (if (now.isNotBlank()) " · $now" else "") } ?: now,
+                                    width = if (big) 156.dp else 112.dp,
+                                    onClick = { if (best != null) playBest(h, best, here) else open(h) { openCopy(h.copies.first(), here) } },
+                                    // Mantener OK: elegir a mano la señal
+                                    onLongClick = if (h.copies.size > 1) ({ lib.addSearch(query); choose = h }) else null)
                             }
                         }
                     }

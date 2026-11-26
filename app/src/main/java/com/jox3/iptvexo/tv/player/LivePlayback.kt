@@ -105,6 +105,14 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     // Se queda cargando más de 12 s (canal pegado): se busca otra señal
     private val stallRunnable = Runnable { if (status != null && current != null) failover("se quedó cargando") }
 
+    // Medición para el puntaje de estabilidad (Stability)
+    private var srcAcc: com.jox3.iptvexo.tv.data.Account? = null
+    private var srcId = ""
+    private var srcT0 = 0L
+    private var srcReady = false
+    /** El próximo [play] de este canal arranca en la señal [alt] (otro servidor u otra calidad). */
+    fun preferSource(channelId: String, alt: Failover.Alt) { Failover.preset = channelId to alt }
+
     /** Dirección del canal: la de respaldo si se está usando una. */
     private fun sourceUrl(ch: Channel): String =
         backup?.let { XtreamApiCache.of(it.account).liveUrl(it.id) } ?: repo.api.liveUrl(ch.id)
@@ -126,7 +134,9 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         tried.clear()
         switching = false
         // Siempre la mejor opción: si la última vez funcionó una señal de respaldo, se arranca en ella
-        backup = if (Failover.enabled(context)) Failover.remembered(context, repo.api.account, ch) else null
+        backup = Failover.preset?.takeIf { it.first == ch.id }?.second
+            ?: if (Failover.enabled(context)) Failover.remembered(context, repo.api.account, ch) else null
+        Failover.preset = null
         backup?.let { tried += it.key }
         repo.library.addRecentChannel(SavedItem("live", ch.id, ch.name, ch.logo, categoryId = ch.categoryId))
         load()
@@ -306,6 +316,9 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         switching = true
         main.removeCallbacks(retryRunnable)
         main.removeCallbacks(stallRunnable)
+        // La señal que falló baja su puntaje
+        srcAcc?.let { if (!srcReady) Stability.failed(context, it, srcId) else Stability.stalled(context, it, srcId) }
+        srcAcc = null
         status = "${ch.name} $why · buscando otra señal…"
         scope.launch {
             val alts = runCatching { Failover.candidates(context, repo, ch, tried) }.getOrDefault(emptyList())
@@ -331,6 +344,11 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
 
     private fun start(url: String, mime: String?) {
         val ch = current ?: return
+        val b = backup
+        srcAcc = b?.account ?: repo.api.account
+        srcId = b?.id ?: ch.id
+        srcT0 = android.os.SystemClock.elapsedRealtime()
+        srcReady = false
         playingUrl = url
         playingMime = mime
         quality = ""
@@ -369,6 +387,10 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
                     status = null; retries = 0
                     exhausted = false
                     main.removeCallbacks(stallRunnable)
+                    srcAcc?.let { a ->
+                        if (!srcReady) Stability.started(context, a, srcId, android.os.SystemClock.elapsedRealtime() - srcT0)
+                        srcReady = true
+                    }
                     if (switchedNow) {
                         switchedNow = false
                         val ch = current
@@ -384,6 +406,8 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
                     if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
                 }
                 Player.STATE_BUFFERING -> {
+                    // Se pegó después de haber arrancado: cuenta para el puntaje
+                    if (srcReady && status == null) srcAcc?.let { Stability.stalled(context, it, srcId) }
                     if (status == null) status = "Cargando…"
                     main.removeCallbacks(stallRunnable)
                     if (Failover.enabled(context)) main.postDelayed(stallRunnable, 12_000)

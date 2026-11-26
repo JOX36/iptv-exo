@@ -148,8 +148,14 @@ fun ServerChooser(
     val firstReq = remember { FocusRequester() }
     BackHandler(onBack = onDismiss)
     LaunchedEffect(Unit) { ServerHub.refresh(hit.servers) }
-    // Una copia por servidor (la primera); el servidor actual va primero
-    val options = hit.copies.distinctBy { it.account.key }
+    val ctx0 = androidx.compose.ui.platform.LocalContext.current
+    // Canales: cada señal (calidades y servidores), la más estable primero.
+    // Películas y series: una copia por servidor; el servidor actual va primero.
+    val options = remember(hit.key) {
+        if (hit.kind == "live") hit.copies.distinctBy { it.account.key + "|" + it.id }
+            .sortedByDescending { com.jox3.iptvexo.tv.player.Stability.score(ctx0, it.account, it.id, it.name) }.take(6)
+        else hit.copies.distinctBy { it.account.key }
+    }
     Box(Modifier.fillMaxSize().background(Color(0xCC000000)), contentAlignment = Alignment.Center) {
         Column(
             Modifier.width(520.dp).background(Jx.Rail, RoundedCornerShape(16.dp)).padding(22.dp).focusGroup(),
@@ -173,7 +179,8 @@ fun ServerChooser(
                         Column(Modifier.weight(1f)) {
                             Text(ServerHub.name(accounts, c.account) + (if (c.tag.isNotBlank()) " · ${c.tag}" else ""),
                                 style = Type.Label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text((if (isCurrent) "Servidor actual · " else "Cambia a este servidor · ") + statusText(st),
+                            Text((if (c.kind == "live" && i == 0 && options.size > 1) "▶ Mejor opción · " else "") +
+                                (if (isCurrent) "Servidor actual · " else "Cambia a este servidor · ") + statusText(st),
                                 style = Type.Small, color = Jx.Muted, maxLines = 1)
                             if (c.kind == "live") {
                                 val ctx = androidx.compose.ui.platform.LocalContext.current
