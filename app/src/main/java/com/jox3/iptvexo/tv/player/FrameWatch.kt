@@ -30,7 +30,22 @@ import kotlin.coroutines.resume
  */
 object FrameWatch {
     private const val PREFS = "jox3_player"
-    private const val DAILY_MAX = 40
+    private const val DAILY_MAX = 60
+    /** Consultas de "¿Qué estoy viendo?" por equipo al día (solo cuentan las que responden). */
+    private const val WHAT_MAX = 40
+
+    /** Día según la hora del equipo: el cupo se renueva a la medianoche local. */
+    private fun localDay(): Int {
+        val now = System.currentTimeMillis()
+        return ((now + java.util.TimeZone.getDefault().getOffset(now)) / 86_400_000L).toInt()
+    }
+
+    private fun countWhat(ctx: Context) {
+        val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val day = localDay()
+        val n = if (p.getInt("what_day", -1) == day) p.getInt("what_n", 0) else 0
+        p.edit().putInt("what_day", day).putInt("what_n", n + 1).apply()
+    }
 
     private var surface: WeakReference<SurfaceView>? = null
 
@@ -70,7 +85,7 @@ object FrameWatch {
     /** ¿Queda cupo hoy para preguntarle a la IA? (máximo [DAILY_MAX] por equipo al día) */
     private fun takeQuota(ctx: Context): Boolean {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val day = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val day = localDay()
         val n = if (p.getInt("fw_day", -1) == day) p.getInt("fw_n", 0) else 0
         if (n >= DAILY_MAX) return false
         p.edit().putInt("fw_day", day).putInt("fw_n", n + 1).apply()
@@ -133,12 +148,11 @@ object FrameWatch {
      */
     suspend fun describe(ctx: Context, channelName: String, prog: String, desc: String, episode: String = ""): Result<What> {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val day = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val day = localDay()
         val n = if (p.getInt("what_day", -1) == day) p.getInt("what_n", 0) else 0
-        if (n >= 30) return Result.failure(Exception("Ya se usaron las 30 consultas de hoy en este equipo. Mañana se renuevan."))
+        if (n >= WHAT_MAX) return Result.failure(Exception("Ya se usaron las $WHAT_MAX consultas de hoy en este equipo. Se renuevan a la medianoche."))
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return Result.failure(Exception("Necesita Android 7 o más nuevo."))
         val bmp = grab(768, 432) ?: return Result.failure(Exception("No pude tomar la imagen del canal. Prueba cuando se esté viendo."))
-        p.edit().putInt("what_day", day).putInt("what_n", n + 1).apply()
         val b64 = withContext(Dispatchers.Default) {
             val out = ByteArrayOutputStream()
             bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
@@ -168,6 +182,7 @@ object FrameWatch {
                     }
                 }
             }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
+                .onSuccess { countWhat(ctx) }
         }
     }
 
@@ -179,9 +194,9 @@ object FrameWatch {
      */
     suspend fun identify(ctx: Context, channelName: String, prog: String, desc: String, episode: String = ""): Result<What> {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val day = (System.currentTimeMillis() / 86_400_000L).toInt()
+        val day = localDay()
         val n = if (p.getInt("what_day", -1) == day) p.getInt("what_n", 0) else 0
-        if (n >= 30) return Result.failure(Exception("Ya se usaron las 30 consultas de hoy en este equipo. Mañana se renuevan."))
+        if (n >= WHAT_MAX) return Result.failure(Exception("Ya se usaron las $WHAT_MAX consultas de hoy en este equipo. Se renuevan a la medianoche."))
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return Result.failure(Exception("Necesita Android 7 o más nuevo."))
         // Fotos: ahora, a los 1,5 s y a los 3 s (la escena cambia y da más pistas)
         val shots = ArrayList<String>()
@@ -196,7 +211,6 @@ object FrameWatch {
             }
         }
         if (shots.isEmpty()) return Result.failure(Exception("No pude tomar la imagen del canal. Prueba cuando se esté viendo."))
-        p.edit().putInt("what_day", day).putInt("what_n", n + 1).apply()
         val audio = withContext(Dispatchers.Default) {
             LiveAudio.lastWav(20)?.let { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }
         }
@@ -256,6 +270,7 @@ object FrameWatch {
                         why = pick?.optString("why").orEmpty())
                 } else base.copy(alternatives = info.take(3).map { label(it) })
             }.recoverCatching { e -> throw if (e.message?.startsWith("La IA") == true) e else Exception("Sin conexión con la IA. Revisa el internet.") }
+                .onSuccess { countWhat(ctx) }
         }
     }
 }

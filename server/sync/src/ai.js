@@ -94,8 +94,14 @@ async function ask(env, system, user, maxTokens = 600) {
     let models = [];
     try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); }
     const now = Date.now();
-    const usable = models.filter((m) => !(geminiSkip.get(m) > now));
-    for (const model of usable.length ? usable : models) {
+    // Texto (búsqueda, guía, lo mejor de hoy…): primero Flash-Lite (500 al día por modelo en el plan
+    // gratis). Imagen o audio: primero Flash (mejor para ver y escuchar, pero solo 20 al día por modelo).
+    const isLite = (m) => /lite/.test(m);
+    const ordered = typeof user === "string"
+      ? [...models.filter(isLite), ...models.filter((m) => !isLite(m))]
+      : [...models.filter((m) => !isLite(m)), ...models.filter(isLite)];
+    const usable = ordered.filter((m) => !(geminiSkip.get(m) > now));
+    for (const model of usable.length ? usable : ordered) {
       try {
         // Los modelos que "piensan" gastan tokens pensando: margen extra y pensamiento bajo
         const text = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model, messages,
@@ -106,7 +112,8 @@ async function ask(env, system, user, maxTokens = 600) {
       } catch (e) {
         // Saturado o sin cupo (503/429): el siguiente modelo. Otro error: también, por si acaso.
         lastGeminiError = model + ": " + String(e).slice(0, 300);
-        geminiSkip.set(model, Date.now() + 10 * 60 * 1000);
+        // Sin cupo (429): se salta 1 hora (el cupo del día no vuelve antes). Saturado u otro error: 10 min.
+        geminiSkip.set(model, Date.now() + (/ 429 /.test(String(e)) ? 60 : 10) * 60 * 1000);
         console.log("Gemini falló:", lastGeminiError);
       }
     }
