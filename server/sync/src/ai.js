@@ -26,6 +26,8 @@ const json = (obj, status = 200) =>
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 let geminiModelMem = null;
+/** Modelos que acaban de fallar (saturados o sin cupo): se saltan por 10 minutos. */
+const geminiSkip = new Map();
 
 /**
  * Modelos de Gemini a probar, en orden: los Flash más nuevos y, al final, un Flash-Lite
@@ -34,7 +36,7 @@ let geminiModelMem = null;
 async function geminiModels(env) {
   if (env.GEMINI_MODEL) return [env.GEMINI_MODEL];
   if (geminiModelMem && Date.now() - geminiModelMem.ts < 6 * 3600 * 1000) return geminiModelMem.list;
-  const cached = await cacheGet(env, "gemini|models", 24 * 3600 * 1000).catch(() => null);
+  const cached = await cacheGet(env, "gemini|models2", 24 * 3600 * 1000).catch(() => null);
   if (cached?.list?.length) { geminiModelMem = { list: cached.list, ts: Date.now() }; return cached.list; }
   const r = await fetch(`${GEMINI_BASE}/models?pageSize=200&key=${env.GEMINI_KEY}`);
   if (!r.ok) throw new Error("gemini modelos " + r.status);
@@ -51,10 +53,10 @@ async function geminiModels(env) {
   };
   const flash = order(all.filter((n) => !/lite/.test(n)));
   const lite = order(all.filter((n) => /lite/.test(n)));
-  const list = [...new Set([...flash.slice(0, 3), ...lite.slice(0, 1)])];
+  const list = [...new Set([...flash.slice(0, 5), ...lite.slice(0, 2)])];
   if (!list.length) list.push("gemini-2.5-flash");
   geminiModelMem = { list, ts: Date.now() };
-  await cachePut(env, "gemini|models", { list }).catch(() => {});
+  await cachePut(env, "gemini|models2", { list }).catch(() => {});
   return list;
 }
 
@@ -91,7 +93,9 @@ async function ask(env, system, user, maxTokens = 600) {
   if (env.GEMINI_KEY) {
     let models = [];
     try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); }
-    for (const model of models) {
+    const now = Date.now();
+    const usable = models.filter((m) => !(geminiSkip.get(m) > now));
+    for (const model of usable.length ? usable : models) {
       try {
         // Los modelos que "piensan" gastan tokens pensando: margen extra y pensamiento bajo
         const text = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model, messages,
@@ -102,6 +106,7 @@ async function ask(env, system, user, maxTokens = 600) {
       } catch (e) {
         // Saturado o sin cupo (503/429): el siguiente modelo. Otro error: también, por si acaso.
         lastGeminiError = model + ": " + String(e).slice(0, 300);
+        geminiSkip.set(model, Date.now() + 10 * 60 * 1000);
         console.log("Gemini falló:", lastGeminiError);
       }
     }
