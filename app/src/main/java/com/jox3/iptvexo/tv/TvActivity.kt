@@ -91,13 +91,15 @@ class TvActivity : ComponentActivity(), TvHost {
             event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
         val guard = com.jox3.iptvexo.tv.ui.LongPressGuard
         if (guard.armed && event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) guard.armed = false
-        if (ok && guard.armed && event.action == android.view.KeyEvent.ACTION_UP) { guard.armed = false; return true }
-        if (event.action == android.view.KeyEvent.ACTION_DOWN) when (event.keyCode) {
-            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT ->
-                com.jox3.iptvexo.tv.ui.NavSound.arm()
+        if (ok && guard.armed && event.action == android.view.KeyEvent.ACTION_UP) { guard.armed = false; true }
+        else {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) when (event.keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT ->
+                    com.jox3.iptvexo.tv.ui.NavSound.arm()
+            }
+            super.dispatchKeyEvent(event)
         }
-        super.dispatchKeyEvent(event)
     } catch (e: IllegalStateException) {
         if (e.message?.contains("FocusRequester is not initialized") == true) {
             android.util.Log.w("JOX3", "Foco perdido, se ignora la tecla", e)
