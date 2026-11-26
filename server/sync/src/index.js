@@ -22,7 +22,7 @@
 // GET  /v1/room/<código>/ws  → WebSocket de la sala (órdenes de reproducir, pausar, adelantar…).
 // GET  /v/<código>            → página de la invitación (póster, sinopsis, botón para abrir la app).
 
-import { aiSearch, aiEpg } from "./ai.js";
+import { aiSearch, aiEpg, aiStatus } from "./ai.js";
 
 const LISTS = new Set(["fav", "recent", "resume", "profile", "vault"]);
 const MAX_CHANGES = 500;
@@ -54,6 +54,7 @@ export default {
       // IA: búsqueda inteligente y guía de programación (ver ai.js)
       if (url.pathname === "/v1/ai/search" && req.method === "POST") return await aiSearch(req, env);
       if (url.pathname === "/v1/ai/epg" && req.method === "POST") return await aiEpg(req, env);
+      if (url.pathname === "/v1/ai/status") return await aiStatus(env);
       const inv = url.pathname.match(/^\/v\/(\d{6})$/);
       if (inv && req.method === "GET") return await invitePage(env, inv[1]);
       const m = url.pathname.match(/^\/v1\/room\/(\d{6})\/ws$/);

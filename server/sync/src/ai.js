@@ -1,5 +1,8 @@
 // IA de JOX3 TV. La app nunca habla con la IA directamente: pregunta aquí y este servidor
-// decide cuál usar. Por defecto, Workers AI de Cloudflare (modelos abiertos, sin claves).
+// decide cuál usar:
+//   1. Gemini (Google), si está el secreto GEMINI_KEY (viene de GEMINI_API_KEY en GitHub).
+//      El modelo se elige solo: el Flash más nuevo disponible (o GEMINI_MODEL si se fija).
+//   2. Si Gemini falla o se acaba el cupo del día: Workers AI de Cloudflare (sin claves).
 // Para usar otra (Gemini, OpenAI, OpenRouter…) basta con poner estos secretos en el Worker,
 // sin actualizar la app:
 //   AI_URL   = https://…/v1/chat/completions   (cualquier API compatible con OpenAI;
@@ -21,12 +24,93 @@ const json = (obj, status = 200) =>
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" },
   });
 
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
+let geminiModelMem = null;
+/** Modelos que acaban de fallar (saturados o sin cupo): se saltan por 10 minutos. */
+const geminiSkip = new Map();
+
+/**
+ * Modelos de Gemini a probar, en orden: los Flash más nuevos y, al final, un Flash-Lite
+ * (cuando el más nuevo está saturado, responde el siguiente). Se consulta la lista una vez al día.
+ */
+async function geminiModels(env) {
+  if (env.GEMINI_MODEL) return [env.GEMINI_MODEL];
+  if (geminiModelMem && Date.now() - geminiModelMem.ts < 6 * 3600 * 1000) return geminiModelMem.list;
+  const cached = await cacheGet(env, "gemini|models2", 24 * 3600 * 1000).catch(() => null);
+  if (cached?.list?.length) { geminiModelMem = { list: cached.list, ts: Date.now() }; return cached.list; }
+  const r = await fetch(`${GEMINI_BASE}/models?pageSize=200&key=${env.GEMINI_KEY}`);
+  if (!r.ok) throw new Error("gemini modelos " + r.status);
+  const o = await r.json();
+  const ver = (n) => (n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, "0"])[1] * 1;
+  const all = (o.models || [])
+    .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+    .map((m) => String(m.name || "").replace(/^models\//, ""))
+    .filter((n) => /^gemini-[\d.]+-flash/.test(n) && !/image|tts|audio|live|thinking|exp|embedding/.test(n));
+  const order = (list) => {
+    const stable = list.filter((n) => !/preview/.test(n));
+    return [...stable, ...list.filter((n) => /preview/.test(n))]
+      .sort((a, b) => ver(b) - ver(a) || /preview/.test(a) - /preview/.test(b) || a.length - b.length);
+  };
+  const flash = order(all.filter((n) => !/lite/.test(n)));
+  const lite = order(all.filter((n) => /lite/.test(n)));
+  const list = [...new Set([...flash.slice(0, 5), ...lite.slice(0, 2)])];
+  if (!list.length) list.push("gemini-2.5-flash");
+  geminiModelMem = { list, ts: Date.now() };
+  await cachePut(env, "gemini|models2", { list }).catch(() => {});
+  return list;
+}
+
+/** Pregunta a una API compatible con OpenAI (Gemini u otra) y devuelve el texto. */
+async function askOpenAi(url, key, model, messages, maxTokens, extra = {}) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer " + key },
+    body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: maxTokens, response_format: { type: "json_object" }, ...extra }),
+  });
+  if (!r.ok) throw new Error("ia " + r.status + " " + (await r.text()).slice(0, 200));
+  const o = await r.json();
+  return o.choices?.[0]?.message?.content || "";
+}
+
+/** Quién respondió la última pregunta (para las pruebas). */
+export let lastVia = "";
+let lastGeminiError = "";
+
+/** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
+export async function aiStatus(env) {
+  let models = [];
+  if (env.GEMINI_KEY) { try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
+  return json({ gemini: !!env.GEMINI_KEY, models, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
+}
+
 /** Pregunta a la IA y devuelve el JSON que respondió (o lanza error). */
 async function ask(env, system, user, maxTokens = 600) {
   const messages = [
     { role: "system", content: system },
     { role: "user", content: user },
   ];
+  // 1. Gemini (si hay clave). Si falla, sigue con la de Cloudflare.
+  if (env.GEMINI_KEY) {
+    let models = [];
+    try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); }
+    const now = Date.now();
+    const usable = models.filter((m) => !(geminiSkip.get(m) > now));
+    for (const model of usable.length ? usable : models) {
+      try {
+        // Los modelos que "piensan" gastan tokens pensando: margen extra y pensamiento bajo
+        const text = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model, messages,
+          maxTokens + 1500, { reasoning_effort: "low" });
+        const out = parseJson(text);
+        lastVia = "gemini:" + model;
+        return out;
+      } catch (e) {
+        // Saturado o sin cupo (503/429): el siguiente modelo. Otro error: también, por si acaso.
+        lastGeminiError = model + ": " + String(e).slice(0, 300);
+        geminiSkip.set(model, Date.now() + 10 * 60 * 1000);
+        console.log("Gemini falló:", lastGeminiError);
+      }
+    }
+  }
   let text;
   if (env.AI_URL && env.AI_KEY) {
     const r = await fetch(env.AI_URL, {
@@ -43,10 +127,12 @@ async function ask(env, system, user, maxTokens = 600) {
     if (!r.ok) throw new Error("ia " + r.status);
     const o = await r.json();
     text = o.choices?.[0]?.message?.content || "";
+    lastVia = "otra:" + (env.AI_MODEL || "");
   } else {
     if (!env.AI) throw new Error("sin ia");
     const o = await env.AI.run(MODEL, { messages, temperature: 0.1, max_tokens: maxTokens });
     text = typeof o.response === "string" ? o.response : JSON.stringify(o.response || "");
+    lastVia = "cloudflare";
   }
   return parseJson(text);
 }
@@ -118,7 +204,7 @@ export async function aiSearch(req, env) {
     return json({ ok: false, error: "ia no disponible" }, 503);
   }
   await cachePut(env, key, plan);
-  return json({ ok: true, ...plan });
+  return json({ ok: true, via: lastVia, ...plan });
 }
 
 // ── Guía de programación ──
@@ -163,5 +249,5 @@ export async function aiEpg(req, env) {
       await cachePut(env, keys[i], { g: v >= 0 ? items[i].c[v] : "" });
     }
   }
-  return json({ ok: true, r: out });
+  return json({ ok: true, via: ask1.length ? lastVia : "cache", r: out });
 }

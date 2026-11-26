@@ -39,6 +39,11 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: server/sync
           command: deploy
+          # Clave de Gemini (secreto GEMINI_API_KEY de GitHub) → secreto GEMINI_KEY del Worker
+          secrets: |
+            GEMINI_KEY
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: Probar que responde
         env:
@@ -73,13 +78,14 @@ jobs:
           curl -fsS "$U/v1/skip/prints?s=$S&series=prueba&season=1&kind=intro" | head -c 120; echo
           # IA: búsqueda inteligente y guía (si la IA no responde, avisa pero no detiene la publicación)
           curl -sS -X POST "$U/v1/ai/search" -H 'content-type: application/json' \
-            -d '{"q":"pon el partido de millonarios","now":"miércoles 20:00"}' | tee /tmp/ai.json; echo
+            -d "{\"q\":\"pon el partido de millonarios hoy $(date +%s)\",\"now\":\"miércoles 20:00\"}" | tee /tmp/ai.json; echo
+          echo "::notice::IA de búsqueda respondió con: $(grep -o '"via":"[^"]*"' /tmp/ai.json) · Gemini: $(curl -sS "$U/v1/ai/status" | head -c 400)"
           if grep -q '"ok":true' /tmp/ai.json; then
             grep -q '"kind":"event"' /tmp/ai.json || echo "::warning::La IA no reconoció el partido"
             echo "::notice::IA de búsqueda: $(head -c 300 /tmp/ai.json)"
           else echo "::warning::La IA de búsqueda no respondió: $(head -c 200 /tmp/ai.json)"; fi
           curl -sS -X POST "$U/v1/ai/epg" -H 'content-type: application/json' \
-            -d '{"items":[{"n":"WIN SPORTS PLUS HD","c":["Win Sports","Win Sports+","ESPN 2 Colombia"]},{"n":"CNN ES","c":["CNN International","CNN en Español","HLN"]}]}' | tee /tmp/ai2.json; echo
+            -d '{"items":[{"n":"WIN SPORTS PLUS HD","c":["Win Sports","Win Sports+","ESPN 2 Colombia"]},{"n":"CNN ES","c":["CNN International","CNN en Español","HLN","Canal '"$(date +%s)"'"]}]}' | tee /tmp/ai2.json; echo
           if grep -q '"ok":true' /tmp/ai2.json; then echo "::notice::IA de guía: $(head -c 200 /tmp/ai2.json)"
           else echo "::warning::La IA de guía no respondió: $(head -c 200 /tmp/ai2.json)"; fi
           # Ver juntos: crear una sala
