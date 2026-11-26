@@ -85,7 +85,8 @@ internal fun speedLabel(s: Float) = if (abs(s - 1f) < 0.01f) "Normal" else "${s.
 /** Video de ExoPlayer (sin controles propios: los dibuja la app). */
 @OptIn(UnstableApi::class)
 @Composable
-fun PlayerSurface(player: ExoPlayer?, modifier: Modifier = Modifier, resizeMode: Int = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT, keepOn: Boolean = true) {
+fun PlayerSurface(player: ExoPlayer?, modifier: Modifier = Modifier, resizeMode: Int = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT, keepOn: Boolean = true,
+                  live: Boolean = false) {
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -97,6 +98,7 @@ fun PlayerSurface(player: ExoPlayer?, modifier: Modifier = Modifier, resizeMode:
         },
         update = { v ->
             if (v.player !== player) v.player = player
+            if (live) com.jox3.iptvexo.tv.player.FrameWatch.attach(v.videoSurfaceView)   // el vigilante mira esta imagen
             v.resizeMode = resizeMode
             v.keepScreenOn = keepOn
         },

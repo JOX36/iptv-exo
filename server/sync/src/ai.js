@@ -111,6 +111,8 @@ async function ask(env, system, user, maxTokens = 600) {
       }
     }
   }
+  // Con imagen solo sirve Gemini (o la API configurada); la de Cloudflare no ve imágenes aquí
+  if (typeof user !== "string" && !(env.AI_URL && env.AI_KEY)) throw new Error("sin visión");
   let text;
   if (env.AI_URL && env.AI_KEY) {
     const r = await fetch(env.AI_URL, {
@@ -250,4 +252,35 @@ export async function aiEpg(req, env) {
     }
   }
   return json({ ok: true, via: ask1.length ? lastVia : "cache", r: out });
+}
+
+// ── Vigilante de señal: ¿la imagen es un error? ──
+
+const FRAME_PROMPT = `Eres el vigilante de una app de TV en vivo (IPTV). Te muestran un cuadro de un canal
+que lleva varios segundos con la imagen quieta. Decide si el canal está FALLANDO o si es contenido normal.
+Falla ("bad": true): letrero de "canal no disponible", "señal no disponible", "no signal", "stream offline",
+"este canal no está disponible en tu región", error de servidor o de cuenta, "contacte a su proveedor",
+barras de colores de prueba, pantalla negra o casi negra, pantalla gris o de un solo color, logo solo
+de "sin señal", imagen rota o pixelada por completo.
+Normal ("bad": false): cualquier programa, noticia, partido, película, publicidad, gráfico de un noticiero,
+emisora de radio con imagen fija o carátula, logo del canal sobre un programa, cuenta regresiva de un evento.
+Si dudas, "bad": false.
+Responde SOLO con JSON: {"bad": true|false, "kind": "error"|"bars"|"black"|"blank"|"normal", "why": "frase corta en español"}`;
+
+export async function aiFrame(req, env) {
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "json inválido" }, 400); }
+  const img = String(body.img || "");
+  if (img.length < 200 || img.length > 400_000 || !/^[A-Za-z0-9+/=]+$/.test(img)) return json({ error: "imagen inválida" }, 400);
+  const name = str(body.n, 80);
+  try {
+    const o = await ask(env, FRAME_PROMPT, [
+      { type: "text", text: `Canal: ${name || "desconocido"}` },
+      { type: "image_url", image_url: { url: "data:image/jpeg;base64," + img } },
+    ], 120);
+    const kinds = ["error", "bars", "black", "blank", "normal"];
+    return json({ ok: true, via: lastVia, bad: o.bad === true, kind: kinds.includes(o.kind) ? o.kind : "normal", why: str(o.why, 120) });
+  } catch (e) {
+    return json({ ok: false, error: "ia no disponible" }, 503);
+  }
 }

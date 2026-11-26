@@ -321,7 +321,7 @@ private fun PhoneShell(
         // En la ventana flotante solo se ve el video (sin botones)
         if (act.inPip) {
             if (vod.open) PlayerSurface(vod.player, Modifier.fillMaxSize(), vod.resizeMode, keepOn = vod.playing)
-            else PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow)
+            else PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow, live = true)
             return@Box
         }
         if (fullscreen) {

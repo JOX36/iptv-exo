@@ -92,7 +92,7 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
             }
             return@Box
         }
-        PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow)
+        PlayerSurface(live.player, Modifier.fillMaxSize(), live.resizeMode, keepOn = live.playingNow, live = true)
         // Transmitiendo al Chromecast: en lugar del video, sus controles
         if (casting) {
             CastingOverlay(ch.name, live = true, onOpenSheet = { castSheet = true })
