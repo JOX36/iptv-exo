@@ -70,8 +70,17 @@ let lastGeminiError = "";
 /** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
 export async function aiStatus(env) {
   let model = "";
-  if (env.GEMINI_KEY) { try { model = await geminiModel(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
-  return json({ gemini: !!env.GEMINI_KEY, model, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
+  let test = "";
+  if (env.GEMINI_KEY) {
+    try {
+      model = await geminiModel(env);
+      // Prueba corta directa a Gemini (sin respaldo), para ver si responde y por qué no
+      const t = await askOpenAi(`${GEMINI_BASE}/openai/chat/completions`, env.GEMINI_KEY, model,
+        [{ role: "user", content: 'Responde solo {"ok":true}' }], 1600, { reasoning_effort: "low" });
+      test = t.slice(0, 80);
+    } catch (e) { lastGeminiError = String(e).slice(0, 400); }
+  }
+  return json({ gemini: !!env.GEMINI_KEY, model, test, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
 }
 
 /** Pregunta a la IA y devuelve el JSON que respondió (o lanza error). */
