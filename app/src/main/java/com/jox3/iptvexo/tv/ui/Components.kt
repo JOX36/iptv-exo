@@ -60,6 +60,14 @@ fun JxIcon(@DrawableRes res: Int, size: Dp = 20.dp, tint: Color = Color.Unspecif
     )
 }
 
+/**
+ * Toque largo con OK: el menú que abre (p. ej. la lista de servidores) toma el foco y recibiría
+ * el "soltar" de ese mismo OK, eligiendo la primera opción sola. TvActivity descarta ese soltar.
+ */
+object LongPressGuard {
+    @Volatile var armed = false
+}
+
 /** Superficie enfocable con el estilo de la app. */
 @Composable
 fun FocusSurface(
@@ -81,7 +89,8 @@ fun FocusSurface(
     var focused by remember { mutableStateOf(false) }
     Surface(
         onClick = onClick,
-        onLongClick = onLongClick,
+        // Al soltar OK tras el toque largo, ese "soltar" no debe elegir lo que se acaba de abrir
+        onLongClick = onLongClick?.let { f -> { LongPressGuard.armed = true; f() } },
         modifier = modifier.trackFocus().onFocusChanged { focused = it.isFocused },
         shape = ClickableSurfaceDefaults.shape(shape = shape),
         colors = ClickableSurfaceDefaults.colors(

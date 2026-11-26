@@ -86,12 +86,20 @@ class TvActivity : ComponentActivity(), TvHost {
      * cierra. Aquí se ignora esa pulsación (la siguiente funciona normal) en vez de cerrar.
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean = try {
-        if (event.action == android.view.KeyEvent.ACTION_DOWN) when (event.keyCode) {
-            android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
-            android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT ->
-                com.jox3.iptvexo.tv.ui.NavSound.arm()
+        // Soltar OK después de un toque largo: no cuenta como clic en el menú que se abrió
+        val ok = event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+            event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+        val guard = com.jox3.iptvexo.tv.ui.LongPressGuard
+        if (guard.armed && event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) guard.armed = false
+        if (ok && guard.armed && event.action == android.view.KeyEvent.ACTION_UP) { guard.armed = false; true }
+        else {
+            if (event.action == android.view.KeyEvent.ACTION_DOWN) when (event.keyCode) {
+                android.view.KeyEvent.KEYCODE_DPAD_UP, android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT, android.view.KeyEvent.KEYCODE_DPAD_RIGHT ->
+                    com.jox3.iptvexo.tv.ui.NavSound.arm()
+            }
+            super.dispatchKeyEvent(event)
         }
-        super.dispatchKeyEvent(event)
     } catch (e: IllegalStateException) {
         if (e.message?.contains("FocusRequester is not initialized") == true) {
             android.util.Log.w("JOX3", "Foco perdido, se ignora la tecla", e)
