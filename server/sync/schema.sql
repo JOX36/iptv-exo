@@ -107,3 +107,17 @@ CREATE TABLE IF NOT EXISTS ai_cache (
   v   TEXT    NOT NULL,
   ts  INTEGER NOT NULL
 );
+
+-- Estabilidad de cada señal en vivo (servidor + canal), sumada entre todos los equipos.
+-- srv = huella del servidor (no la dirección); id = número del canal en ese servidor.
+CREATE TABLE IF NOT EXISTS stab (
+  srv     TEXT    NOT NULL,
+  id      TEXT    NOT NULL,
+  starts  INTEGER NOT NULL DEFAULT 0,
+  ok      INTEGER NOT NULL DEFAULT 0,
+  fails   INTEGER NOT NULL DEFAULT 0,
+  stalls  INTEGER NOT NULL DEFAULT 0,
+  ms      INTEGER NOT NULL DEFAULT 0,
+  ts      INTEGER NOT NULL,
+  PRIMARY KEY (srv, id)
+);

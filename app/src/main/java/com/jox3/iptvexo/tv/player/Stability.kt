@@ -1,13 +1,28 @@
 package com.jox3.iptvexo.tv.player
 
 import android.content.Context
+import androidx.compose.runtime.mutableIntStateOf
 import com.jox3.iptvexo.tv.data.Account
+import com.jox3.iptvexo.tv.data.CloudSync
 import com.jox3.iptvexo.tv.data.ServerHub
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Puntaje de estabilidad de cada señal en vivo (servidor + canal), de 0 a 100.
  * Se arma con lo que pasa al verla en este equipo: si arranca, cuánto tarda, si se pega
  * o se cae. Con eso se elige la "Mejor opción" en el buscador y el orden del respaldo.
+ *
+ * Además se comparte: cada equipo sube lo que midió (sin usuario ni clave: solo la huella del
+ * servidor y el número del canal) y consulta lo que midieron todos los demás con ese servidor.
  */
 object Stability {
     private const val PREFS = "jox3_stability"
@@ -40,7 +55,87 @@ object Stability {
 
     private fun update(ctx: Context, acc: Account, id: String, f: (Stats) -> Stats) {
         val s = read(ctx, acc, id) ?: Stats(0, 0, 0, 0, 0, 0)
-        write(ctx, acc, id, f(s).copy(ts = System.currentTimeMillis()))
+        val n = f(s).copy(ts = System.currentTimeMillis())
+        write(ctx, acc, id, n)
+        // Lo nuevo (la diferencia) se sube después, junto con lo demás
+        share(acc, id, Stats(n.starts - s.starts, n.ok - s.ok, n.stalls - s.stalls, n.fails - s.fails, n.msTotal - s.msTotal, 0))
+    }
+
+    // ── Compartido entre todos los equipos ──
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val pending = HashMap<String, Stats>()          // "srv|id" → lo medido aún sin subir
+    private val global = HashMap<String, Pair<Long, Stats?>>()  // "srv|id" → (cuándo se consultó, suma de todos)
+    @Volatile private var flushing = false
+    /** Sube cuando llegan puntajes de otros equipos (la "Mejor opción" se vuelve a calcular). */
+    val version = mutableIntStateOf(0)
+
+    private fun srvOf(acc: Account) = com.jox3.iptvexo.tv.player.skip.SkipDetector.srvKey(acc.host)
+
+    private fun share(acc: Account, id: String, d: Stats) {
+        if (!Regex("[A-Za-z0-9_.-]{1,40}").matches(id)) return
+        val k = srvOf(acc) + "|" + id
+        synchronized(pending) {
+            val p = pending[k] ?: Stats(0, 0, 0, 0, 0, 0)
+            pending[k] = Stats(p.starts + d.starts, p.ok + d.ok, p.stalls + d.stalls, p.fails + d.fails, p.msTotal + d.msTotal, 0)
+        }
+        if (flushing) return
+        flushing = true
+        scope.launch {
+            delay(90_000)   // juntar varias mediciones en un solo envío
+            val batch = synchronized(pending) { HashMap(pending).also { pending.clear() } }
+            flushing = false
+            if (batch.isEmpty()) return@launch
+            runCatching {
+                val items = JSONArray()
+                batch.forEach { (k, s) ->
+                    items.put(JSONObject().put("s", k.substringBefore('|')).put("id", k.substringAfter('|'))
+                        .put("st", s.starts).put("ok", s.ok).put("f", s.fails).put("sl", s.stalls).put("ms", s.msTotal))
+                }
+                val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/stab")
+                    .post(JSONObject().put("items", items).toString().toRequestBody("application/json".toMediaType())).build()
+                com.jox3.iptvexo.NetClient.api().newCall(req).execute().close()
+            }
+        }
+    }
+
+    /**
+     * Trae lo que midieron los demás equipos para estas señales (las que no se consultaron en
+     * los últimos 30 min). Después, [score] ya los tiene en cuenta.
+     */
+    suspend fun prefetch(signals: List<Pair<Account, String>>) {
+        val now = System.currentTimeMillis()
+        val want = signals.map { (a, id) -> srvOf(a) to id }.distinct().filter { (s, id) ->
+            synchronized(global) { global[s + "|" + id] }?.let { now - it.first > 30 * 60_000 } ?: true
+        }.take(300)
+        if (want.isEmpty()) return
+        val res = withContext(Dispatchers.IO) {
+            runCatching {
+                val q = JSONArray()
+                want.groupBy({ it.first }, { it.second }).forEach { (s, ids) -> q.put(JSONObject().put("s", s).put("ids", JSONArray(ids))) }
+                val req = okhttp3.Request.Builder().url("${CloudSync.SERVER}/v1/stab/get")
+                    .post(JSONObject().put("q", q).toString().toRequestBody("application/json".toMediaType())).build()
+                com.jox3.iptvexo.NetClient.api().newCall(req).execute().use { r ->
+                    if (!r.isSuccessful) null else JSONObject(r.body?.string().orEmpty()).optJSONObject("r")
+                }
+            }.getOrNull()
+        } ?: return
+        synchronized(global) {
+            want.forEach { (s, id) ->
+                val k = "$s|$id"
+                val a = res.optJSONArray(k)
+                global[k] = now to a?.let { Stats(it.optInt(0), it.optInt(1), it.optInt(3), it.optInt(2), it.optLong(4), 0) }
+            }
+        }
+        version.intValue++
+    }
+
+    /** Lo de los demás equipos, con un tope (20 arranques) para que no tape lo medido aquí. */
+    private fun others(acc: Account, id: String): Stats? {
+        val g = synchronized(global) { global[srvOf(acc) + "|" + id] }?.second ?: return null
+        if (g.starts <= 0) return null
+        val f = minOf(1.0, 20.0 / g.starts)
+        return Stats((g.starts * f).toInt(), (g.ok * f).toInt(), (g.stalls * f).toInt(), (g.fails * f).toInt(), (g.msTotal * f).toLong(), 0)
     }
 
     /** Arrancó y tardó [ms]. */
@@ -60,7 +155,12 @@ object Stability {
      * Suman la calidad (FHD/HD) y el estado del servidor (rojo resta mucho).
      */
     fun score(ctx: Context, acc: Account, id: String, name: String): Int {
-        val s = read(ctx, acc, id)
+        // Lo medido en este equipo + lo de los demás (con tope). Lo propio pesa igual o más.
+        val mine = read(ctx, acc, id)
+        val g = others(acc, id)
+        val s = if (g == null) mine else (mine ?: Stats(0, 0, 0, 0, 0, 0)).let {
+            Stats(it.starts + g.starts, it.ok + g.ok, it.stalls + g.stalls, it.fails + g.fails, it.msTotal + g.msTotal, it.ts)
+        }
         var base = 60.0
         if (s != null && s.starts > 0) {
             val success = (s.ok + 1.0) / (s.starts + 2.0)

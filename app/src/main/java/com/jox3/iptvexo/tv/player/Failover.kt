@@ -10,6 +10,8 @@ import com.jox3.iptvexo.tv.data.XtreamApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 
 /**
  * Respaldo automático de canales en vivo: si un canal se cae o se queda cargando, la app pasa
@@ -86,14 +88,28 @@ object Failover {
         val me = repo.api.account
         val accounts = listOf(me) + AccountStore(ctx).shown().filter { it.key != me.key }
         val out = ArrayList<Alt>()
-        accounts.sortedBy { a ->
+        val lists = accounts.sortedBy { a ->
             val st = ServerHub.status[a.key]
             when { a.key == me.key -> 0; st == null || st.ok -> 1; else -> 2 }
-        }.forEach { acc ->
-            out += channelsOf(acc, repo).filter { c -> identity(c.name) == id }
+        }.map { acc -> acc to channelsOf(acc, repo) }
+        // Nombres que la IA ya confirmó como el mismo canal (p. ej. "CNN ES" = "CNN en Español")
+        val alsoSame = sameByAi(ctx, ch.name)
+        lists.forEach { (acc, chans) ->
+            out += chans.filter { c -> identity(c.name).let { it == id || it in alsoSame } }
                 .map { c -> Alt(acc, c.id, c.name, ServerHub.tagOf(c.name)) }
                 .filter { it.key !in skip && !(acc.key == me.key && it.id == ch.id) }
         }
+        // Ninguna señal con el mismo nombre: la IA revisa nombres parecidos de tus servidores
+        if (out.isEmpty() && alsoSame.isEmpty()) {
+            val learned = askSame(ctx, ch, lists.flatMap { it.second })
+            if (learned.isNotEmpty()) lists.forEach { (acc, chans) ->
+                out += chans.filter { c -> identity(c.name) in learned }
+                    .map { c -> Alt(acc, c.id, c.name, ServerHub.tagOf(c.name)) }
+                    .filter { it.key !in skip && !(acc.key == me.key && it.id == ch.id) }
+            }
+        }
+        // Lo que midieron los demás equipos con estas señales (para ordenarlas mejor)
+        runCatching { Stability.prefetch(out.map { it.account to it.id }) }
         // La más estable primero (puntaje medido en este equipo); el mismo servidor tiene una
         // pequeña ventaja porque no gasta otra conexión. A igual puntaje, por calidad.
         out.sortedWith(compareByDescending<Alt> {
@@ -103,6 +119,46 @@ object Failover {
 
     /** Señal elegida desde el buscador ("Mejor opción") para el próximo canal que se abra: id del canal → señal. */
     @Volatile var preset: Pair<String, Alt>? = null
+
+    // ── IA: mismo canal con nombres muy distintos ──
+
+    private fun sameKey(name: String) = "same_" + identity(name)
+
+    /** Identidades que la IA ya dijo que son este mismo canal. */
+    private fun sameByAi(ctx: Context, name: String): Set<String> =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(sameKey(name), null)
+            ?.split('|')?.filter { it.isNotBlank() }?.toSet().orEmpty()
+
+    /**
+     * Pregunta a la IA cuáles de los canales con nombre parecido (que comparten una palabra
+     * importante) son el mismo. Lo que responde se guarda para la próxima vez.
+     */
+    private suspend fun askSame(ctx: Context, ch: Channel, all: List<Channel>): Set<String> {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.contains(sameKey(ch.name))) return emptySet()   // ya se preguntó (y dijo que ninguno)
+        val words = TvRepo.normalize(com.jox3.iptvexo.tv.data.Names.channel(ch.name)).split(Regex("[^a-z0-9]+"))
+            .filter { it.length >= 3 && it !in setOf("hd", "fhd", "sd", "uhd", "tv", "canal", "channel") }
+        if (words.isEmpty()) return emptySet()
+        val me = identity(ch.name)
+        val near = all.asSequence().filter { c ->
+            val n = TvRepo.normalize(c.name)
+            identity(c.name) != me && words.any { w -> n.contains(w) }
+        }.distinctBy { identity(it.name) }.take(15).toList()
+        if (near.isEmpty()) { prefs.edit().putString(sameKey(ch.name), "").apply(); return emptySet() }
+        val res = withContext(Dispatchers.IO) {
+            runCatching {
+                val body = org.json.JSONObject().put("n", ch.name).put("c", org.json.JSONArray(near.map { it.name })).toString()
+                val req = okhttp3.Request.Builder().url("${com.jox3.iptvexo.tv.data.CloudSync.SERVER}/v1/ai/same")
+                    .post(body.toRequestBody("application/json".toMediaType())).build()
+                com.jox3.iptvexo.NetClient.api().newCall(req).execute().use { r ->
+                    if (!r.isSuccessful) null else org.json.JSONObject(r.body?.string().orEmpty()).optJSONArray("same")
+                }
+            }.getOrNull()
+        } ?: return emptySet()
+        val same = (0 until res.length()).mapNotNull { near.getOrNull(res.optInt(it, -1))?.let { c -> identity(c.name) } }.toSet()
+        prefs.edit().putString(sameKey(ch.name), same.joinToString("|")).apply()
+        return same
+    }
 
     // ── La señal que funcionó, por canal ──
 
