@@ -101,6 +101,8 @@ jobs:
           curl -sS -X POST "$U/v1/ai/same" -H 'content-type: application/json' -d "{\"n\":\"CNN ES HD $(date +%s)\",\"c\":[\"CNN EN ESPAÑOL FHD\",\"CNN INTERNATIONAL\",\"CNN Español 720p\",\"HLN\"]}" | tee /tmp/same.json; echo
           if grep -q '"ok":true' /tmp/same.json; then echo "::notice::Mismo canal: $(head -c 200 /tmp/same.json)"
           else echo "::warning::IA mismo canal no respondió: $(head -c 200 /tmp/same.json)"; fi
+          # Nombre de capítulo comprobado con Google
+          echo "::notice::Búsqueda de capítulo: $(curl -sS "$U/v1/ai/status?s=Malcolm%20in%20the%20Middle&t=4&e=3" | head -c 400)"
           # ¿Qué estoy viendo?: capítulo de una serie a partir de la guía
           printf '{"n":"Sony","prog":"Malcolm","desc":"Malcolm y sus hermanos intentan ocultar a sus padres que incendiaron la casa.","ep":"T4 E3","img":"%s"}' "$(base64 -w0 test/bars.jpg)" > /tmp/what2.json
           curl -sS -X POST "$U/v1/ai/what" -H 'content-type: application/json' --data @/tmp/what2.json | tee /tmp/ai6.json; echo

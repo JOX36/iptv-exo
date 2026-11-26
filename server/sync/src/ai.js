@@ -77,7 +77,14 @@ export let lastVia = "";
 let lastGeminiError = "";
 
 /** GET /v1/ai/status: si Gemini está configurado, qué modelo usa y el último error (sin la clave). */
-export async function aiStatus(env) {
+export async function aiStatus(env, url) {
+  // Prueba del nombre de capítulo: /v1/ai/status?s=Serie&t=4&e=3 (sin guardar en caché)
+  if (url && url.searchParams.get("s")) {
+    const s = str(url.searchParams.get("s"), 80), t = Number(url.searchParams.get("t")) || 0, e = Number(url.searchParams.get("e")) || 0;
+    await env.DB.prepare("DELETE FROM ai_cache WHERE k = ?").bind(`ep|${norm(s)}|${t}|${e}`).run();
+    const title = await episodeTitle(env, s, t, e);
+    return json({ title, debug: lastEpDebug });
+  }
   let models = [];
   if (env.GEMINI_KEY) { try { models = await geminiModels(env); } catch (e) { lastGeminiError = String(e).slice(0, 300); } }
   return json({ gemini: !!env.GEMINI_KEY, models, lastVia, lastError: lastGeminiError.replaceAll(env.GEMINI_KEY || "\u0000", "***") });
@@ -342,6 +349,7 @@ Responde SOLO con JSON: {"title":"título corto","text":"2 a 4 frases","facts":[
  * Nombre real de un capítulo, comprobado con la Búsqueda de Google (Gemini con google_search).
  * Se guarda para siempre y sirve para todos. Devuelve "" si no se pudo comprobar.
  */
+let lastEpDebug = "";
 async function episodeTitle(env, series, season, episode) {
   if (!env.GEMINI_KEY || !series || !season || !episode) return "";
   const key = `ep|${norm(series)}|${season}|${episode}`;
@@ -358,9 +366,14 @@ async function episodeTitle(env, series, season, episode) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ contents: [{ parts: [{ text: q }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0 } }),
       });
-      if (!r.ok) { if (r.status === 429 || r.status === 503) geminiSkip.set(model, Date.now() + 10 * 60 * 1000); continue; }
+      if (!r.ok) {
+        lastEpDebug = model + " " + r.status + " " + (await r.text()).slice(0, 200);
+        if (r.status === 429 || r.status === 503) geminiSkip.set(model, Date.now() + 10 * 60 * 1000);
+        continue;
+      }
       const o = await r.json();
       const text = (o.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join("").trim();
+      lastEpDebug = model + ": " + text.slice(0, 200);
       const line = text.split("\n").map((s) => s.trim()).find((s) => s && !/^no\.?$/i.test(s)) || "";
       if (!line || /^no\b/i.test(line)) { await cachePut(env, key, { t: "" }); return ""; }
       const [es, orig] = line.replace(/^["“]|["”]$/g, "").split("|").map((s) => s.trim().replace(/^["“«]|["”»]$/g, ""));
