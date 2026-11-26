@@ -157,6 +157,11 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             }, Modifier.fillMaxWidth())
             Text("Zona: " + com.jox3.iptvexo.tv.data.AppTime.label(tctx) + ". OK para cambiar entre automática y la del equipo.",
                 style = Type.Small, color = Jx.Faint)
+            // Respaldo automático: si un canal se cae, otra señal del mismo canal
+            var failover by remember { mutableStateOf(com.jox3.iptvexo.tv.player.Failover.enabled(tctx)) }
+            ActionButton("Cambiar sola de señal si el canal falla: " + if (failover) "Sí" else "No", {
+                failover = !failover; com.jox3.iptvexo.tv.player.Failover.setEnabled(tctx, failover)
+            }, Modifier.fillMaxWidth())
             // Búsqueda con IA (frases como "pon el partido de Millonarios")
             var aiSearch by remember { mutableStateOf(com.jox3.iptvexo.tv.data.SmartSearch.enabled(tctx)) }
             ActionButton("Búsqueda con IA: " + if (aiSearch) "Sí" else "No", {

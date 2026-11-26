@@ -101,6 +101,10 @@ fun LiveVideo(live: LivePlayback, fullscreen: Boolean, onFullscreen: () -> Unit,
         }
         if (locked) { LockOverlay { locked = false; controls = true; touched = System.currentTimeMillis() }; return@Box }
         GestureLayer(onTap = { controls = !controls; touched = System.currentTimeMillis() }, onSeek = null)
+        live.notice?.let { n ->
+            Text("⇄ $n", style = PType.Small, color = Jx.Accent, modifier = Modifier.align(Alignment.TopCenter).padding(top = 52.dp)
+                .background(Color(0xE6070A0F), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp))
+        }
         live.status?.let { st ->
             Text(st, style = PType.Small, color = Jx.Text, modifier = Modifier.align(Alignment.Center)
                 .background(Color(0xCC070A0F), RoundedCornerShape(10.dp)).padding(horizontal = 14.dp, vertical = 8.dp))

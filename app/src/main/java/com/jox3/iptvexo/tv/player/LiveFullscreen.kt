@@ -121,6 +121,13 @@ fun VideoLayer(live: LivePlayback, modifier: Modifier = Modifier) {
             },
             modifier = Modifier.fillMaxSize(),
         )
+        // Respaldo automático: aviso corto de que cambió de señal
+        live.notice?.let { n ->
+            Box(Modifier.align(Alignment.TopCenter).padding(top = if (full) 28.dp else 8.dp)
+                .background(Color(0xE6070A0F), RoundedCornerShape(10.dp)).padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text("⇄ $n", style = if (full) Type.Label else Type.Small, color = Jx.Accent)
+            }
+        }
         val st = live.status
         if (st != null) {
             Box(Modifier.align(Alignment.Center).background(Color(0xCC070A0F), RoundedCornerShape(10.dp))
@@ -316,6 +323,12 @@ fun LiveFullscreen(live: LivePlayback, repo: TvRepo, onExit: () -> Unit) {
                     if (live.quality.isNotEmpty()) {
                         Text(live.quality, style = Type.Small, color = Jx.Accent,
                             modifier = Modifier.background(Color(0x33081626), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
+                    }
+                    // Señal de respaldo en uso (cambió sola porque la original falló)
+                    live.backup?.let { b ->
+                        val all = com.jox3.iptvexo.tv.data.AccountStore(androidx.compose.ui.platform.LocalContext.current).all()
+                        Text("⇄ Respaldo · " + com.jox3.iptvexo.tv.data.ServerHub.letter(all, b.account), style = Type.Small, color = Jx.Text,
+                            modifier = Modifier.background(Color(0x55FFB020), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp))
                     }
                     Clock()
                 }
