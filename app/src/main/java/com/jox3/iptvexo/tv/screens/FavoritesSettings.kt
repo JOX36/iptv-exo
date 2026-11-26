@@ -162,6 +162,11 @@ fun SettingsScreen(repo: TvRepo, host: TvHost, account: Account, onLogout: () ->
             ActionButton("Cambiar sola de señal si el canal falla: " + if (failover) "Sí" else "No", {
                 failover = !failover; com.jox3.iptvexo.tv.player.Failover.setEnabled(tctx, failover)
             }, Modifier.fillMaxWidth())
+            // Vigilante: imagen negra o letrero de error → otra señal
+            var watch by remember { mutableStateOf(com.jox3.iptvexo.tv.player.FrameWatch.enabled(tctx)) }
+            ActionButton("Vigilar la imagen (letreros de error, pantalla negra): " + if (watch) "Sí" else "No", {
+                watch = !watch; com.jox3.iptvexo.tv.player.FrameWatch.setEnabled(tctx, watch)
+            }, Modifier.fillMaxWidth())
             // Búsqueda con IA (frases como "pon el partido de Millonarios")
             var aiSearch by remember { mutableStateOf(com.jox3.iptvexo.tv.data.SmartSearch.enabled(tctx)) }
             ActionButton("Búsqueda con IA: " + if (aiSearch) "Sí" else "No", {

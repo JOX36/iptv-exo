@@ -88,6 +88,11 @@ jobs:
             -d '{"items":[{"n":"WIN SPORTS PLUS HD","c":["Win Sports","Win Sports+","ESPN 2 Colombia"]},{"n":"CNN ES","c":["CNN International","CNN en Español","HLN","Canal '"$(date +%s)"'"]}]}' | tee /tmp/ai2.json; echo
           if grep -q '"ok":true' /tmp/ai2.json; then echo "::notice::IA de guía: $(head -c 200 /tmp/ai2.json)"
           else echo "::warning::La IA de guía no respondió: $(head -c 200 /tmp/ai2.json)"; fi
+          # Vigilante de señal: barras de colores con "NO SIGNAL" → debe decir que falla
+          printf '{"n":"Canal de prueba","img":"%s"}' "$(base64 -w0 test/bars.jpg)" > /tmp/frame.json
+          curl -sS -X POST "$U/v1/ai/frame" -H 'content-type: application/json' --data @/tmp/frame.json | tee /tmp/ai3.json; echo
+          if grep -q '"bad":true' /tmp/ai3.json; then echo "::notice::Vigilante: $(head -c 300 /tmp/ai3.json)"
+          else echo "::warning::El vigilante no reconoció las barras: $(head -c 300 /tmp/ai3.json)"; fi
           # Ver juntos: crear una sala
           curl -fsS -X POST "$U/v1/room" | tee /tmp/room.json ; echo
           grep -q '"code":"[0-9]\{6\}"' /tmp/room.json

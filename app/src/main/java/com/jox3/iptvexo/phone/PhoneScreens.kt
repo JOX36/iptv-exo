@@ -781,6 +781,11 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Cambiar sola de señal si el canal falla: " + if (failover) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
                     failover = !failover; com.jox3.iptvexo.tv.player.Failover.setEnabled(tctx, failover)
                 }
+                // Vigilante: imagen negra o letrero de error → otra señal
+                var watch by remember { mutableStateOf(com.jox3.iptvexo.tv.player.FrameWatch.enabled(tctx)) }
+                PButton("Vigilar la imagen (letreros de error, pantalla negra): " + if (watch) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
+                    watch = !watch; com.jox3.iptvexo.tv.player.FrameWatch.setEnabled(tctx, watch)
+                }
                 // Búsqueda con IA (frases como "pon el partido de Millonarios")
                 var aiSearch by remember { mutableStateOf(com.jox3.iptvexo.tv.data.SmartSearch.enabled(tctx)) }
                 PButton("Búsqueda con IA: " + if (aiSearch) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {

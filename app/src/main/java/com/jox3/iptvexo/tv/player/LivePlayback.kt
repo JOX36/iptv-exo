@@ -110,6 +110,43 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
     private var srcId = ""
     private var srcT0 = 0L
     private var srcReady = false
+    // ── Vigilante de señal (FrameWatch): imagen negra o quieta con letrero de error ──
+    private var watchJob: kotlinx.coroutines.Job? = null
+
+    private fun startWatch() {
+        watchJob?.cancel()
+        val ch = current ?: return
+        if (!Failover.enabled(context) || !FrameWatch.enabled(context)) return
+        watchJob = scope.launch {
+            var prev: IntArray? = null
+            var blackFor = 0
+            var stillFor = 0
+            var asked = false
+            while (true) {
+                kotlinx.coroutines.delay(2000)
+                if (current?.id != ch.id) return@launch
+                val p = exo
+                // Solo mientras se ve (no cargando, no en pausa)
+                if (status != null || p == null || !p.isPlaying) { prev = null; blackFor = 0; stillFor = 0; continue }
+                val bmp = FrameWatch.grab(32, 18) ?: continue
+                val l = FrameWatch.luma(bmp)
+                val avg = l.average()
+                val diff = prev?.let { pv -> l.indices.sumOf { kotlin.math.abs(l[it] - pv[it]) }.toDouble() / l.size } ?: 99.0
+                prev = l
+                blackFor = if (avg < 14) blackFor + 2 else 0
+                stillFor = if (diff < 1.2) stillFor + 2 else 0
+                if (blackFor >= 16) { failover("se ve en negro"); return@launch }
+                // Quieta 12 s: la IA mira una foto (una vez por canal)
+                if (stillFor >= 12 && !asked) {
+                    asked = true
+                    val r = FrameWatch.isBroken(context, ch.name)
+                    if (current?.id != ch.id) return@launch
+                    if (r != null && r.first) { failover(r.second.ifBlank { "muestra un aviso de error" }.lowercase()); return@launch }
+                }
+            }
+        }
+    }
+
     /** El próximo [play] de este canal arranca en la señal [alt] (otro servidor u otra calidad). */
     fun preferSource(channelId: String, alt: Failover.Alt) { Failover.preset = channelId to alt }
 
@@ -175,6 +212,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         if (startingMarked) { startingMarked = false; PlayerSafety.startedOk(context) }
         main.removeCallbacks(retryRunnable)
         main.removeCallbacks(stallRunnable)
+        watchJob?.cancel()
         exo?.stop()
         exo?.clearMediaItems()
         current = null
@@ -191,6 +229,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         paused = true
         main.removeCallbacks(retryRunnable)
         main.removeCallbacks(stallRunnable)
+        watchJob?.cancel()
         exo?.stop()
     }
 
@@ -314,6 +353,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
         if (switching) return
         if (!Failover.enabled(context)) { scheduleRetry(); return }
         switching = true
+        watchJob?.cancel()
         main.removeCallbacks(retryRunnable)
         main.removeCallbacks(stallRunnable)
         // La señal que falló baja su puntaje
@@ -387,6 +427,7 @@ class LivePlayback(private val context: Context, private val repo: TvRepo) {
                     status = null; retries = 0
                     exhausted = false
                     main.removeCallbacks(stallRunnable)
+                    startWatch()
                     srcAcc?.let { a ->
                         if (!srcReady) Stability.started(context, a, srcId, android.os.SystemClock.elapsedRealtime() - srcT0)
                         srcReady = true

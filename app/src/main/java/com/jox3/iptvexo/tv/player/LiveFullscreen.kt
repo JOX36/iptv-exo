@@ -115,6 +115,7 @@ fun VideoLayer(live: LivePlayback, modifier: Modifier = Modifier) {
             },
             update = { v ->
                 if (v.player !== live.player) v.player = live.player
+                FrameWatch.attach(v.videoSurfaceView)   // el vigilante mira esta imagen
                 v.resizeMode = if (full) live.resizeMode else AspectRatioFrameLayout.RESIZE_MODE_FIT
                 // Mientras el canal se reproduce, el TV no entra en reposo ni en protector de pantalla
                 v.keepScreenOn = live.playingNow
