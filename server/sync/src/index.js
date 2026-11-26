@@ -15,10 +15,14 @@
 // GET  /v2/skip/prints?s=&series=&season=&kind=&name= → huellas de este servidor + las de la misma
 //   serie en otros servidores (marcadas foreign), para aprender aunque aquí nadie la haya visto.
 //
+// IA (ver ai.js): POST /v1/ai/search { q, now } y POST /v1/ai/epg { items }.
+//
 // Ver juntos:
 // POST /v1/room              → crea una sala y devuelve su código de 6 números.
 // GET  /v1/room/<código>/ws  → WebSocket de la sala (órdenes de reproducir, pausar, adelantar…).
 // GET  /v/<código>            → página de la invitación (póster, sinopsis, botón para abrir la app).
+
+import { aiSearch, aiEpg } from "./ai.js";
 
 const LISTS = new Set(["fav", "recent", "resume", "profile", "vault"]);
 const MAX_CHANGES = 500;
@@ -47,6 +51,9 @@ export default {
       if (url.pathname === "/v1/skip" && req.method === "POST") return await skipPost(req, env, 1);
       if (url.pathname === "/v2/skip" && req.method === "POST") return await skipPost(req, env, 2);
       if (url.pathname === "/v1/room" && req.method === "POST") return await createRoom(env);
+      // IA: búsqueda inteligente y guía de programación (ver ai.js)
+      if (url.pathname === "/v1/ai/search" && req.method === "POST") return await aiSearch(req, env);
+      if (url.pathname === "/v1/ai/epg" && req.method === "POST") return await aiEpg(req, env);
       const inv = url.pathname.match(/^\/v\/(\d{6})$/);
       if (inv && req.method === "GET") return await invitePage(env, inv[1]);
       const m = url.pathname.match(/^\/v1\/room\/(\d{6})\/ws$/);

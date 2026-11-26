@@ -100,3 +100,10 @@ CREATE TABLE IF NOT EXISTS skip_pname (
   ts      INTEGER NOT NULL,
   PRIMARY KEY (name, season, kind, srv, ep)
 );
+
+-- IA: respuestas ya resueltas (búsquedas y guías emparejadas), compartidas por todos.
+CREATE TABLE IF NOT EXISTS ai_cache (
+  k   TEXT    PRIMARY KEY,
+  v   TEXT    NOT NULL,
+  ts  INTEGER NOT NULL
+);

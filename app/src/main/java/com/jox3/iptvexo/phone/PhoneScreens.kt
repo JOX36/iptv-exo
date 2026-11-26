@@ -517,13 +517,20 @@ fun PhoneSearch(
     val indexVersion by ServerHub.indexVersion
     val index by produceState<TvRepo.Index?>(null) { value = runCatching { repo.searchIndex() }.getOrNull() }
     val me = account ?: Account("", "", "")
-    val results by produceState<ServerHub.Results?>(null, query, index, only, indexVersion) {
+    val outcome by produceState<com.jox3.iptvexo.tv.data.SmartSearch.Outcome?>(null, query, index, only, indexVersion) {
         val idx = index ?: return@produceState
         val q = TvRepo.normalize(query.trim())
         if (q.length < 2) { value = null; return@produceState }
         delay(200)
-        value = ServerHub.search(query, me, idx, if (multi) accounts else listOf(me), only, includeOthers = multi)
+        val S = com.jox3.iptvexo.tv.data.SmartSearch
+        val all = if (multi) accounts else listOf(me)
+        val plain = S.plain(query, me, idx, all, only, includeOthers = multi)
+        // Frases largas: la IA dice qué buscar (con más espera, para no preguntar letra por letra)
+        val ai = S.wants(ctx, query)
+        value = com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain, thinking = ai)
+        if (ai) { delay(700); value = S.smart(ctx, query, me, idx, all, only, includeOthers = multi) ?: com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain) }
     }
+    val results = outcome?.results
     LaunchedEffect(results) { val r = results ?: return@LaunchedEffect; if (!r.isEmpty) { delay(4000); lib.addSearch(query) } }
     fun letters(h: ServerHub.Hit) = if (multi) h.servers.map { ServerHub.letter(accounts, it) } else emptyList()
     val here = results?.channels.orEmpty().mapNotNull { h -> h.copies.firstOrNull { it.account.key == me.key } }
@@ -620,15 +627,23 @@ fun PhoneSearch(
                 }
             }
             r == null -> CenterText("Buscando…")
+            r.isEmpty && outcome?.thinking == true -> CenterText("✨ Entendiendo lo que pediste…")
             r.isEmpty -> CenterText("Sin resultados para “${query.trim()}”")
             else -> LazyColumn(contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                val o = outcome
+                if (o != null && (o.say.isNotBlank() || o.thinking)) item {
+                    Text(if (o.thinking) "✨ Buscando con IA…" else "✨ " + o.say, style = PType.Label, color = Jx.Accent,
+                        modifier = Modifier.padding(horizontal = 18.dp))
+                }
                 if (r.channels.isNotEmpty()) item {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SectionTitle("En vivo · ${r.channels.size}")
                         LazyRow(contentPadding = PaddingValues(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             items(r.channels, key = { it.key }) { h ->
                                 val epgV by repo.epgVersion
-                                val now by produceState("", h.key, epgV) {
+                                val aiLabel = outcome?.labels?.get(h.key)
+                                val now by produceState(aiLabel.orEmpty(), h.key, epgV, aiLabel) {
+                                    if (aiLabel != null) { value = aiLabel; return@produceState }
                                     val (t, from) = ServerHub.nowForHit(ctx, h, me)
                                     value = if (t.isEmpty()) "" else if (multi && from != null && from.key != me.key)
                                         "${ServerHub.letter(accounts, from)} · $t" else t
@@ -728,6 +743,11 @@ fun PhoneSettings(repo: TvRepo, act: PhoneActivity, account: Account, onAddAccou
                 PButton("Hora: " + nowLabel +
                     if (tzAuto) " (automática)" else " (del equipo)", Modifier.fillMaxWidth(), primary = false) {
                     tzAuto = !tzAuto; com.jox3.iptvexo.tv.data.AppTime.setAuto(tctx, tzAuto)
+                }
+                // Búsqueda con IA (frases como "pon el partido de Millonarios")
+                var aiSearch by remember { mutableStateOf(com.jox3.iptvexo.tv.data.SmartSearch.enabled(tctx)) }
+                PButton("Búsqueda con IA: " + if (aiSearch) "Sí" else "No", Modifier.fillMaxWidth(), primary = false) {
+                    aiSearch = !aiSearch; com.jox3.iptvexo.tv.data.SmartSearch.setEnabled(tctx, aiSearch)
                 }
                 // Series: saltar la intro solo / aprender intros y créditos
                 var skipAuto by remember { mutableStateOf(com.jox3.iptvexo.tv.player.skip.SkipDetector.autoSkip(tctx)) }

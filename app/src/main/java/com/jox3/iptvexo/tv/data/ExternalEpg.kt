@@ -437,6 +437,28 @@ object ExternalEpg {
             .take(limit).toList()
     }
 
+    /**
+     * Programas de la guía cuyo título nombra [terms] (equipos, luchadores, programas…) entre
+     * [fromSec] y [toSec]. Para "¿dónde dan el partido?". Primero los que nombran más términos
+     * y, entre ellos, los que empiezan antes. Un resultado por canal.
+     */
+    fun findPrograms(terms: List<String>, fromSec: Long, toSec: Long, limit: Int = 12): List<Pair<Chan, Prog>> {
+        fun fold(x: String) = java.text.Normalizer.normalize(x.lowercase(Locale.ROOT), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+        val ts = terms.map { fold(it).trim() }.filter { it.length >= 3 }.distinct()
+        if (ts.isEmpty()) return emptyList()
+        class F(val c: Chan, val p: Prog, val n: Int)
+        val found = ArrayList<F>()
+        for (c in chans.values) for (p in c.progs) {
+            if (p.stop <= fromSec || p.start >= toSec) continue
+            val t = fold(p.title)
+            val n = ts.count { term -> Regex("(?<![a-z0-9])" + Regex.escape(term) + "(?![a-z0-9])").containsMatchIn(t) }
+            if (n > 0) found += F(c, p, n)
+        }
+        return found.sortedWith(compareByDescending<F> { it.n }.thenBy { it.p.start })
+            .distinctBy { it.c.key }.take(limit).map { it.c to it.p }
+    }
+
     /** Nombre para mostrar de una guía. */
     fun displayName(c: Chan): String = c.names.firstOrNull() ?: idFormName(c.id)
 
