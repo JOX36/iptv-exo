@@ -261,7 +261,7 @@ class XtreamApi(val account: Account) {
             val start = o.optString("start_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
             val end = o.optString("stop_timestamp", "").toLongOrNull()?.times(1000) ?: 0L
             EpgItem(b64(o.optString("title")), b64(o.optString("description")), start, end)
-        }.filter { it.title.isNotBlank() }
+        }.filter { !Names.isEmptyProgram(it.title) }   // "No Data" = sin guía (se usa la de internet)
     }
 
     private fun b64(s: String): String = try {

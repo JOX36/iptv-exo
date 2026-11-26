@@ -100,6 +100,11 @@ object Names {
         return catWords.any { c -> c.startsWith(w) || (c.length >= 4 && w.startsWith(c)) }
     }
 
+    private val NO_EPG = Regex("^(no ?data|no ?info(rmation)?|no ?epg|no ?program(me|a)?( info(rmation)?)?|sin (datos|informaci[oó]n|programaci[oó]n|gu[ií]a)|n/?a|tba|tbd|null|-+|\\.+)$", RegexOption.IGNORE_CASE)
+
+    /** Títulos de guía que en realidad dicen "no hay guía" ("No Data", "Sin información"…). */
+    fun isEmptyProgram(title: String) = title.isBlank() || NO_EPG.matches(title.trim())
+
     /** Quita emojis, banderas, estrellas y símbolos de adorno, y los guiones/asteriscos de las puntas. */
     fun strip(raw: String): String {
         val sb = StringBuilder(raw.length)

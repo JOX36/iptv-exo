@@ -111,7 +111,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
     /** La señal más estable del canal, si tiene más de una. */
     fun bestOf(h: ServerHub.Hit): ServerHub.Copy? =
         if (h.kind == "live" && h.copies.size > 1 && com.jox3.iptvexo.tv.player.Failover.enabled(ctx))
-            com.jox3.iptvexo.tv.player.Stability.best(ctx, h.copies) else null
+            com.jox3.iptvexo.tv.player.Stability.best(ctx, h.copies, account) else null
     fun bestLabel(b: ServerHub.Copy): String =
         "▶ " + (if (b.account.key == account.key || !multi) b.tag.ifBlank { "Mejor señal" }
             else ServerHub.letter(accounts, b.account) + (if (b.tag.isNotBlank()) " · " + b.tag else ""))

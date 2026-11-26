@@ -152,7 +152,7 @@ object ServerEpg {
                         }
                     }
                 } else if (ev == XmlPullParser.END_TAG && p.name == "programme") {
-                    if (keep && title.isNotEmpty()) {
+                    if (keep && !Names.isEmptyProgram(title)) {
                         out.getOrPut(ch) { ArrayList() }.add(ExternalEpg.Prog(start, stop, title, desc, icon, cat, live, isNew, ep))
                     }
                     inProg = false; keep = false
