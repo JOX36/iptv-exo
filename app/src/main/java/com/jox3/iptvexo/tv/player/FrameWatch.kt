@@ -10,6 +10,8 @@ import android.view.SurfaceView
 import android.view.View
 import com.jox3.iptvexo.tv.data.CloudSync
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -224,8 +226,8 @@ object FrameWatch {
                     .map { it.optInt("season") to it.optInt("episode") }.filter { it.first > 0 && it.second > 0 }.distinct()
                 if (base.series.isBlank() || cands.isEmpty()) return@runCatching base
                 // Nombre y resumen reales de cada candidato (TMDB)
-                val info = kotlinx.coroutines.coroutineScope {
-                    cands.map { (s, e) -> kotlinx.coroutines.async { Triple(s, e, com.jox3.iptvexo.tv.data.Tmdb.episodeInfo(ctx, base.series, s, e)) } }
+                val info: List<Triple<Int, Int, Pair<String, String>?>> = coroutineScope {
+                    cands.map { (s, e) -> async { Triple(s, e, com.jox3.iptvexo.tv.data.Tmdb.episodeInfo(ctx, base.series, s, e)) } }
                         .map { it.await() }
                 }.filter { it.third != null }
                 fun label(t: Triple<Int, Int, Pair<String, String>?>) = "T${t.first} C${t.second}" + (t.third?.first?.takeIf { it.isNotBlank() }?.let { " «$it»" } ?: "")
