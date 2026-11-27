@@ -15,12 +15,12 @@ package com.jox3.iptvexo.tv.data
  */
 object Names {
     /** Separadores "tipo barra" entre el código y el nombre. */
-    private val BAR = Regex("^\\s*([^|│┃¦]{1,8}?)\\s*[|│┃¦]\\s*(.+)$")
+    private val BAR = Regex("^\\s*([^|│┃¦•●]{1,8}?)\\s*[|│┃¦•●]\\s*(.+)$")
     /** "CO: Deportes", "LAT - Acción", "ES » Cine": código corto en MAYÚSCULAS + separador. */
     private val CODE = Regex("^\\s*([A-Z0-9+]{1,4})\\s*(?::|»|›|\\s-\\s)\\s*(.+)$")
     /** Prefijos genéricos que no son parte del nombre (tipo, país, sección). */
     private val GENERIC = setOf(
-        "TV", "PREMIUM", "NOTI", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
+        "TV", "PREMIUM", "NOTI", "CUL", "ENT", "KIDS", "REL", "NOT", "NEWS", "DEP", "INF", "DOC", "MUS", "VIP", "PPV", "VOD", "SER", "PEL",
         "USA", "LAT", "ARG", "COL", "MEX", "ESP", "PER", "CHI", "VEN", "ECU", "URU", "PAR", "BOL", "BRA", "CAN", "EUR",
     )
     private val KEEP = setOf(
@@ -117,19 +117,25 @@ object Names {
                 t == Character.PRIVATE_USE.toInt() || t == Character.SURROGATE.toInt() ||
                 cp in 0x1F1E6..0x1F1FF ||                              // letras de banderas
                 cp in 0xFE00..0xFE0F || cp == 0x200D || cp == 0x20E3 || // variantes de emoji, unión, tecla
-                cp in 0x1F3FB..0x1F3FF || cp in 0xE0020..0xE007F       // tonos de piel, etiquetas
+                cp in 0x1F3FB..0x1F3FF || cp in 0xE0020..0xE007F ||    // tonos de piel, etiquetas
+                cp in 0x2190..0x21FF || cp in 0x27F0..0x27FF ||        // flechas: → ← ⇨ ⟶
+                cp in 0x2900..0x297F || cp in 0x2B00..0x2BFF ||        // más flechas: ⤷ ⬅ ⮕
+                cp in 0x2794..0x27BF                                   // flechas decorativas: ➔ ➜ ➤
             if (junk) sb.append(' ') else sb.appendCodePoint(cp)
         }
         val out = sb.toString()
+            .replace(MARK_NUM, " $1")   // "TLC (HD) »2«" → "TLC (HD) 2"
             .replace(EDGE_START, "").replace(EDGE_END, "")
             .replace(Regex("\\s{2,}"), " ").trim()
         return out.ifBlank { raw.trim() }
     }
 
     /** Adornos en las puntas ("-★-", "**", "~", "•", "|", "=="). No quita "+" de "+18" ni "!" de un título. */
-    private val SHARED = Regex("^\\s*([^|│┃¦]{1,20}?)\\s*[|│┃¦]\\s*(.+)$")
-    private val EDGE_START = Regex("^[\\s\\-–—_*~=•·.:|/\\\\#>]+")
-    private val EDGE_END = Regex("[\\s\\-–—_*~=•·:|/\\\\#<]+$")
+    private val SHARED = Regex("^\\s*([^|│┃¦•●]{1,20}?)\\s*[|│┃¦•●]\\s*(.+)$")
+    private val EDGE_START = Regex("^[\\s\\-–—_*~=•●·.:|/\\\\#>»«›‹]+")
+    private val EDGE_END = Regex("[\\s\\-–—_*~=•●·:|/\\\\#<»«›‹]+$")
+    /** Número de copia entre comillas angulares: "»1«", "«2»". */
+    private val MARK_NUM = Regex("\\s*[»«›‹]\\s*(\\d{1,2})\\s*[«»‹›]")
     private val LEAD_COUNTRY = Regex("^(COL|MEX|ARG|ESP|PER|CHI|VEN|ECU|URU|PAR|BOL|BRA|CRC|GUA|HON|DOM)\\s+(.+)$", RegexOption.IGNORE_CASE)
     private val TAIL_CODE = Regex("\\s+\\d{1,4}\\s*-\\s*\\d{1,4}$")
     private val QUALITY_NUM = Regex("(?i)\\b(FHD|UHD|HD|SD|4K)\\s+\\d{1,4}$")

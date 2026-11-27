@@ -53,4 +53,13 @@ class NamesTest {
         listOf("No Data", "NO DATA", "No Information", "Sin información", "N/A", "---").forEach { assertTrue(it, Names.isEmptyProgram(it)) }
         listOf("Rosalinda", "Noticias Caracol", "Data Science", "No Mires Arriba").forEach { assertFalse(it, Names.isEmptyProgram(it)) }
     }
+
+    @Test fun flechasYPuntos() {
+        val cat = Names.category("→ CULTURA ←")
+        assertTrue(cat, cat.endsWith("CULTURA") && !cat.contains('→') && !cat.contains('←'))
+        assertEquals("FUTBÓL CHILE", Names.clean("→ FUTBÓL CHILE ←").uppercase())
+        assertEquals(listOf("LOVE NATURE (HD)", "TLC (HD) 1", "EL GOURMET (HD) 2"),
+            Names.channelList(listOf("CUL• LOVE NATURE (HD)", "CUL• TLC (HD) »1«", "CUL• EL GOURMET (HD) »2«"), "→ CULTURA ←"))
+        assertEquals("ESPN 2", Names.channel("➜ ESPN 2 ⬅"))
+    }
 }
