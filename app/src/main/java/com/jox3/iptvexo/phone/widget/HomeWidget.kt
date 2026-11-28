@@ -52,8 +52,25 @@ object HomeWidget {
         val acc = repo.api.account
         val lib = repo.library
         val o = JSONObject().put("profile", profileName).put("ts", System.currentTimeMillis())
-        // Seguir viendo: lo más reciente a medias
-        lib.continueWatching().firstOrNull()?.let { r ->
+        val now0 = System.currentTimeMillis()
+        // Lo que dan en un canal desde ahora hasta 8 horas (guía de internet o del servidor)
+        fun progsOf(c: SavedItem): JSONArray {
+            val ch = Channel(c.id, c.name, c.image, c.categoryId, 1)
+            val list = (ExternalEpg.match(app, c.name, null)?.progs?.map { Triple(it.start * 1000, it.stop * 1000, it.title) }
+                ?: repo.cachedEpg(ch)?.map { Triple(it.start, it.end, it.title) }.orEmpty())
+                .filter { it.second > now0 && it.first < now0 + 8 * 3600_000 }.take(12)
+            return JSONArray(list.map { (a, b, t) -> JSONArray().put(a).put(b).put(t) })
+        }
+        // Seguir viendo: lo más reciente a medias (película o capítulo)
+        val resume = lib.continueWatching().firstOrNull()
+        // Sin nada a medias: el último canal que se vio
+        val lastLive = if (resume == null) lib.recentChannels.firstOrNull() else null
+        lastLive?.let { c ->
+            o.put("resume", JSONObject().put("label", "live").put("title", Names.channel(c.name))
+                .put("image", c.image).put("link", GoogleTv.link(acc, c).toString()).put("progs", progsOf(c)))
+            saveImage(app, c.image, 96, 96, 18f)
+        }
+        resume?.let { r ->
             val isEp = r.item.kind == "episode"
             o.put("resume", JSONObject()
                 .put("title", r.item.name.substringBefore(" · ").ifBlank { r.item.name })
@@ -65,18 +82,11 @@ object HomeWidget {
         }
         // Canales: favoritos en vivo (y si faltan, los últimos vistos)
         val chans = (lib.favorites.filter { it.kind == "live" } + lib.recentChannels)
-            .distinctBy { it.id }.take(4)
+            .distinctBy { it.id }.filter { it.id != lastLive?.id }.take(4)
         val arr = JSONArray()
         for (c in chans) {
-            val ch = Channel(c.id, c.name, c.image, c.categoryId, 1)
-            // Lo que dan desde ahora hasta 8 horas (guía de internet o del servidor)
-            val now = System.currentTimeMillis()
-            val progs = (ExternalEpg.match(app, c.name, null)?.progs?.map { Triple(it.start * 1000, it.stop * 1000, it.title) }
-                ?: repo.cachedEpg(ch)?.map { Triple(it.start, it.end, it.title) }.orEmpty())
-                .filter { it.second > now && it.first < now + 8 * 3600_000 }.take(12)
             arr.put(JSONObject().put("name", Names.channel(c.name)).put("logo", c.image)
-                .put("link", GoogleTv.link(acc, c).toString())
-                .put("progs", JSONArray(progs.map { (a, b, t) -> JSONArray().put(a).put(b).put(t) })))
+                .put("link", GoogleTv.link(acc, c).toString()).put("progs", progsOf(c)))
             saveImage(app, c.image, 96, 96, 18f)
         }
         o.put("channels", arr)
@@ -130,7 +140,15 @@ object HomeWidget {
         return PendingIntent.getActivity(ctx, code, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    private val NAME_IDS = intArrayOf(R.id.w_name0, R.id.w_name1, R.id.w_name2, R.id.w_name3)
+    /** Lo que dan ahora según los programas guardados ("" si no hay guía). */
+    private fun nowOf(progs: JSONArray?, now: Long): String {
+        if (progs == null) return ""
+        for (k in 0 until progs.length()) {
+            val p = progs.optJSONArray(k) ?: continue
+            if (p.optLong(0) <= now && now < p.optLong(1)) return p.optString(2)
+        }
+        return ""
+    }
     private val NOW_IDS = intArrayOf(R.id.w_now0, R.id.w_now1, R.id.w_now2, R.id.w_now3)
     private val LOGO_IDS = intArrayOf(R.id.w_logo0, R.id.w_logo1, R.id.w_logo2, R.id.w_logo3)
     private val CH_IDS = intArrayOf(R.id.w_ch0, R.id.w_ch1, R.id.w_ch2, R.id.w_ch3)
@@ -141,12 +159,22 @@ object HomeWidget {
         v.setOnClickPendingIntent(R.id.w_root, tap(ctx, 0, null))
         v.setTextViewText(R.id.w_profile, data.optString("profile"))
         val r = data.optJSONObject("resume")
+        val now = System.currentTimeMillis()
         if (r != null) {
             v.setViewVisibility(R.id.w_resume, View.VISIBLE)
             v.setViewVisibility(R.id.w_empty, View.GONE)
             v.setTextViewText(R.id.w_title, r.optString("title"))
-            v.setTextViewText(R.id.w_sub, r.optString("sub"))
-            v.setProgressBar(R.id.w_progress, 1000, r.optInt("fraction"), false)
+            if (r.optString("label") == "live") {
+                // Último canal: lo que dan ahora, sin barra de progreso
+                v.setTextViewText(R.id.w_label, ctx.getString(R.string.widget_last_channel))
+                v.setTextViewText(R.id.w_sub, nowOf(r.optJSONArray("progs"), now).ifBlank { "En vivo" })
+                v.setViewVisibility(R.id.w_progress, View.GONE)
+            } else {
+                v.setTextViewText(R.id.w_label, ctx.getString(R.string.widget_continue))
+                v.setTextViewText(R.id.w_sub, r.optString("sub"))
+                v.setViewVisibility(R.id.w_progress, View.VISIBLE)
+                v.setProgressBar(R.id.w_progress, 1000, r.optInt("fraction"), false)
+            }
             image(ctx, r.optString("image"))?.let { v.setImageViewBitmap(R.id.w_poster, it) }
                 ?: v.setImageViewResource(R.id.w_poster, R.drawable.widget_card)
             v.setOnClickPendingIntent(R.id.w_resume, tap(ctx, 1, r.optString("link")))
@@ -155,21 +183,13 @@ object HomeWidget {
             v.setViewVisibility(R.id.w_empty, View.VISIBLE)
         }
         val chans = data.optJSONArray("channels") ?: JSONArray()
-        val now = System.currentTimeMillis()
         v.setViewVisibility(R.id.w_channels, if (chans.length() > 0) View.VISIBLE else View.GONE)
         for (i in 0 until 4) {
             val c = chans.optJSONObject(i)
             if (c == null) { v.setViewVisibility(CH_IDS[i], View.INVISIBLE); continue }
             v.setViewVisibility(CH_IDS[i], View.VISIBLE)
-            v.setTextViewText(NAME_IDS[i], c.optString("name"))
-            // Lo que dan ahora, con la hora del celular (aunque la app esté cerrada)
-            val progs = c.optJSONArray("progs") ?: JSONArray()
-            var nowTitle = ""
-            for (k in 0 until progs.length()) {
-                val p = progs.optJSONArray(k) ?: continue
-                if (p.optLong(0) <= now && now < p.optLong(1)) { nowTitle = p.optString(2); break }
-            }
-            v.setTextViewText(NOW_IDS[i], nowTitle.ifBlank { "En vivo" })
+            // Debajo del logo: lo que dan ahora (con la hora del celular) o, sin guía, el nombre del canal
+            v.setTextViewText(NOW_IDS[i], nowOf(c.optJSONArray("progs"), now).ifBlank { c.optString("name") })
             image(ctx, c.optString("logo"))?.let { v.setImageViewBitmap(LOGO_IDS[i], it) }
                 ?: v.setImageViewResource(LOGO_IDS[i], R.drawable.ic_launcher)
             v.setOnClickPendingIntent(CH_IDS[i], tap(ctx, 10 + i, c.optString("link")))
