@@ -145,6 +145,13 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+        <!-- Widget del celular "Ahora en JOX3" -->
+        <receiver android:name=".phone.widget.HomeWidgetProvider" android:exported="false" android:label="Ahora en JOX3">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_home_info" />
+        </receiver>
         <receiver android:name=".tv.data.ReminderReceiver" android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

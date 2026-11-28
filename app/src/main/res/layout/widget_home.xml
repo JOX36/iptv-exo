@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Widget "Ahora en JOX3" (celular, 4×2): seguir viendo + canales favoritos con lo que dan ahora -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="12dp">
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="J3" android:textColor="#FF22C3EE" android:textSize="13sp" android:textStyle="bold" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="6dp" android:text="@string/widget_home_title" android:textColor="#FFE8EDF5"
+            android:textSize="13sp" android:textStyle="bold" />
+        <TextView android:id="@+id/w_profile" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:maxLines="1" android:textColor="#FF8A97AA" android:textSize="11sp" />
+    </LinearLayout>
+
+    <LinearLayout android:id="@+id/w_resume" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:background="@drawable/widget_card" android:gravity="center_vertical"
+        android:orientation="horizontal" android:padding="8dp">
+        <ImageView android:id="@+id/w_poster" android:layout_width="40dp" android:layout_height="54dp"
+            android:scaleType="centerCrop" android:contentDescription="@null" />
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:layout_marginStart="10dp" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="@string/widget_continue" android:textColor="#FF8A97AA" android:textSize="10sp" />
+            <TextView android:id="@+id/w_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:maxLines="1" android:ellipsize="end" android:textColor="#FFE8EDF5" android:textSize="13sp" android:textStyle="bold" />
+            <TextView android:id="@+id/w_sub" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:maxLines="1" android:ellipsize="end" android:textColor="#FF8A97AA" android:textSize="11sp" />
+            <ProgressBar android:id="@+id/w_progress" style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="match_parent" android:layout_height="4dp" android:layout_marginTop="5dp"
+                android:max="1000" android:progressDrawable="@drawable/widget_progress" />
+        </LinearLayout>
+        <ImageView android:id="@+id/w_play" android:layout_width="32dp" android:layout_height="32dp"
+            android:layout_marginStart="8dp" android:background="@drawable/widget_play" android:padding="8dp"
+            android:src="@drawable/ic_play" android:contentDescription="@string/widget_continue" />
+    </LinearLayout>
+
+    <TextView android:id="@+id/w_empty" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:background="@drawable/widget_card" android:padding="10dp"
+        android:text="@string/widget_empty" android:textColor="#FF8A97AA" android:textSize="12sp" android:visibility="gone" />
+
+    <LinearLayout android:id="@+id/w_channels" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:orientation="horizontal">
+        <LinearLayout android:id="@+id/w_ch0" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+            <ImageView android:id="@+id/w_logo0" android:layout_width="36dp" android:layout_height="36dp"
+                android:scaleType="fitCenter" android:contentDescription="@null" />
+            <TextView android:id="@+id/w_name0" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FFE8EDF5" android:textSize="11sp" />
+            <TextView android:id="@+id/w_now0" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FF8A97AA" android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/w_ch1" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+            <ImageView android:id="@+id/w_logo1" android:layout_width="36dp" android:layout_height="36dp"
+                android:scaleType="fitCenter" android:contentDescription="@null" />
+            <TextView android:id="@+id/w_name1" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FFE8EDF5" android:textSize="11sp" />
+            <TextView android:id="@+id/w_now1" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FF8A97AA" android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/w_ch2" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+            <ImageView android:id="@+id/w_logo2" android:layout_width="36dp" android:layout_height="36dp"
+                android:scaleType="fitCenter" android:contentDescription="@null" />
+            <TextView android:id="@+id/w_name2" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FFE8EDF5" android:textSize="11sp" />
+            <TextView android:id="@+id/w_now2" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FF8A97AA" android:textSize="10sp" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/w_ch3" android:layout_width="0dp" android:layout_height="wrap_content"
+            android:layout_weight="1" android:gravity="center_horizontal" android:orientation="vertical">
+            <ImageView android:id="@+id/w_logo3" android:layout_width="36dp" android:layout_height="36dp"
+                android:scaleType="fitCenter" android:contentDescription="@null" />
+            <TextView android:id="@+id/w_name3" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="2dp" android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FFE8EDF5" android:textSize="11sp" />
+            <TextView android:id="@+id/w_now3" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:gravity="center" android:maxLines="1" android:ellipsize="end"
+                android:textColor="#FF8A97AA" android:textSize="10sp" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

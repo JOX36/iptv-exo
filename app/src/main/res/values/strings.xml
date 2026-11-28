@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_home_title">Ahora en JOX3</string>
+    <string name="widget_home_desc">Seguir viendo y tus canales favoritos con lo que dan ahora</string>
+    <string name="widget_continue">Seguir viendo</string>
+    <string name="widget_empty">Abre JOX3 TV y mira algo: aquí aparecerá para seguir viéndolo.</string>
+</resources>
