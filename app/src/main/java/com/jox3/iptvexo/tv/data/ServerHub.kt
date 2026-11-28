@@ -188,22 +188,38 @@ object ServerHub {
         am.isLowRamDevice || am.memoryClass <= 256
     }.getOrDefault(true)
 
-    /** Descarga en segundo plano el catálogo de los otros servidores (una vez por sesión, de a uno). */
-    fun ensureIndexes(others: List<Account>) {
+    /**
+     * Prepara el catálogo de los otros servidores para el buscador (de a uno).
+     * Primero lo guardado en el equipo ([CatalogCache], al instante); si no hay o es viejo, se
+     * descarga y se guarda. Con [keep] = false (equipos con poca memoria) solo se deja al día
+     * el guardado, sin ocupar memoria: el buscador lo lee del disco cuando se abre.
+     */
+    fun ensureIndexes(ctx: Context, others: List<Account>, keep: Boolean = true) {
+        val app = ctx.applicationContext
         others.forEach { acc ->
-            if (hasIndex(acc) || loadingIndex[acc.key] == true) return@forEach
+            if ((keep && hasIndex(acc)) || loadingIndex[acc.key] == true) return@forEach
             loadingIndex[acc.key] = true
             scope.launch {
                 val built = queueLock.withLock {
-                    if (hasIndex(acc)) return@withLock null
+                    if (keep && hasIndex(acc)) return@withLock null
+                    val age = CatalogCache.age(app, acc)
+                    val saved = if (keep && age != null && age < CatalogCache.MAX_AGE) withContext(Dispatchers.IO) { CatalogCache.load(app, acc) } else null
+                    if (saved != null && (age ?: Long.MAX_VALUE) < CatalogCache.REFRESH_AGE) return@withLock saved
+                    if (!keep && age != null && age < CatalogCache.REFRESH_AGE) return@withLock null   // ya está al día en el disco
+                    // Publicar lo guardado ya (aunque sea viejo) mientras llega lo nuevo
+                    if (saved != null) {
+                        synchronized(indexes) { indexes[acc.key] = saved }
+                        withContext(Dispatchers.Main) { indexVersion.intValue++ }
+                    }
                     val api = XtreamApi(acc)
                     runCatching {
                         // Uno detrás de otro: así nunca hay dos listas grandes llegando a la vez
                         val ch = runCatching { api.channels() }.getOrDefault(emptyList())
                         val mv = runCatching { api.movies() }.getOrDefault(emptyList())
                         val sr = runCatching { api.series() }.getOrDefault(emptyList())
-                        withContext(Dispatchers.Default) { TvRepo.Index(ch, mv, sr) }
-                    }.getOrNull()
+                        if (ch.isEmpty() && mv.isEmpty() && sr.isEmpty()) return@runCatching saved
+                        withContext(Dispatchers.Default) { TvRepo.Index(ch, mv, sr) }.also { CatalogCache.save(app, acc, it) }
+                    }.getOrNull()?.takeIf { keep }
                 }
                 synchronized(indexes) { if (built != null) indexes[acc.key] = built }
                 withContext(Dispatchers.Main) {
