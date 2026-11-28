@@ -271,12 +271,27 @@ private fun PhoneShell(
     LaunchedEffect(openLink) {
         val (accKey, item) = com.jox3.iptvexo.tv.GoogleTv.parse(openLink) ?: return@LaunchedEffect
         com.jox3.iptvexo.tv.GoogleTv.pendingLink = null
-        if (item.kind != "live") return@LaunchedEffect
-        val ch = com.jox3.iptvexo.tv.data.Channel(item.id, item.name, item.image, item.categoryId, 1)
-        if (accKey == account.key) playChannel(listOf(ch), 0)
-        else accounts.shown().firstOrNull { it.key == accKey }?.let { a ->
-            ServerHub.pendingOpen = ServerHub.Copy(a, "live", item.id, item.name, item.image, "", item.categoryId); onSwitch(a)
+        // De otro servidor: se cambia a ese y se abre allá
+        if (accKey != account.key) {
+            accounts.shown().firstOrNull { it.key == accKey }?.let { a ->
+                val kind = when (item.kind) { "episode" -> "series"; else -> item.kind }
+                val id = if (item.kind == "episode") item.seriesId.ifBlank { item.id } else item.id
+                ServerHub.pendingOpen = ServerHub.Copy(a, kind, id, item.name.substringBefore(" · "), item.image, item.ext, item.categoryId); onSwitch(a)
+            }
+            return@LaunchedEffect
         }
+        // Recordatorio o widget: poner el canal, seguir la película o abrir la serie
+        when (item.kind) {
+            "live" -> playChannel(listOf(com.jox3.iptvexo.tv.data.Channel(item.id, item.name, item.image, item.categoryId, 1)), 0)
+            "movie" -> launcher.playMovie(item.id, item.name, item.image, item.ext, item.categoryId)
+            "episode", "series" -> openSeries(item.seriesId.ifBlank { item.id }, item.name.substringBefore(" · "), item.image)
+        }
+    }
+    // Widget del celular: se deja al día con lo que se ve (seguir viendo, favoritos)
+    val widgetTick = repo.library.progressVersion.value + repo.library.favorites.size * 31 + (repo.library.recentChannels.firstOrNull()?.id?.hashCode() ?: 0)
+    LaunchedEffect(account.key, widgetTick) {
+        kotlinx.coroutines.delay(3000)
+        runCatching { com.jox3.iptvexo.phone.widget.HomeWidget.publish(context, repo, com.jox3.iptvexo.tv.data.Profiles.current?.name.orEmpty()) }
     }
 
     // ── Varios servidores ──
