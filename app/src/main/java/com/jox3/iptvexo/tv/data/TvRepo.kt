@@ -4,6 +4,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withPermit
 import java.text.Normalizer
 
@@ -253,11 +255,13 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
         index?.let { return it }
         val job = synchronized(this) {
             building ?: indexScope.async {
-                // De a una lista (menos memoria). Si una falla, se sigue con las otras.
-                val ch = safeList { api.channels() }
-                val mv = safeList { api.movies() }
-                val sr = safeList { api.series() }
-                Index(ch, mv, sr).also { index = it }
+                // Primero lo guardado en el equipo (al instante); si es de hace más de 6 h, se renueva aparte
+                CatalogCache.load(context, api.account)?.let { saved ->
+                    index = saved
+                    if ((CatalogCache.age(context, api.account) ?: Long.MAX_VALUE) > CatalogCache.REFRESH_AGE) indexScope.launch { download(save = true) }
+                    return@async saved
+                }
+                download(save = true)
             }.also { building = it }
         }
         return try { job.await() } catch (e: Exception) {
@@ -265,6 +269,19 @@ class TvRepo(private val context: android.content.Context, val api: XtreamApi, v
             synchronized(this) { if (building === job) building = null }                 // falló: el próximo intento empieza de nuevo
             throw e
         }
+    }
+
+    /** Descarga el catálogo completo (de a una lista: menos memoria) y lo guarda en el equipo. */
+    private suspend fun download(save: Boolean): Index {
+        val ch = safeList { api.channels() }
+        val mv = safeList { api.movies() }
+        val sr = safeList { api.series() }
+        val idx = Index(ch, mv, sr)
+        // Si todo vino vacío (sin internet), no se pisa lo que ya había
+        if (ch.isEmpty() && mv.isEmpty() && sr.isEmpty()) index?.let { return it }
+        index = idx
+        if (save) kotlinx.coroutines.withContext(Dispatchers.IO) { CatalogCache.save(context, api.account, idx) }
+        return idx
     }
 
     /** Como runCatching, pero sin tragarse la cancelación (para no dejar listas vacías a medias). */

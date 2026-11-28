@@ -71,7 +71,7 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
     var choose by remember { mutableStateOf<ServerHub.Hit?>(null) }
     val multi = accounts.size > 1 && ServerHub.searchAllEnabled(ctx)
     val others = remember(accounts, account) { accounts.filter { it.key != account.key } }
-    LaunchedEffect(multi) { if (multi) ServerHub.ensureIndexes(others) }
+    LaunchedEffect(multi) { if (multi) ServerHub.ensureIndexes(ctx, others) }
     val indexVersion by ServerHub.indexVersion
     val index by produceState<TvRepo.Index?>(null) { value = repo.searchIndex() }
     val outcome by produceState<com.jox3.iptvexo.tv.data.SmartSearch.Outcome?>(null, query, index, only, indexVersion) {
@@ -79,12 +79,8 @@ fun SearchScreen(repo: TvRepo, nav: Nav, host: TvHost, account: Account, account
         val q = TvRepo.normalize(query.trim())
         if (q.length < 2) { value = null; return@produceState }
         delay(220)   // esperar a que termine de escribir (si pulsa otra letra, esto se cancela)
-        val S = com.jox3.iptvexo.tv.data.SmartSearch
-        val plain = S.plain(query, account, idx, accounts, only, includeOthers = multi)
-        val ai = S.wants(ctx, query)
-        value = com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain, thinking = ai)
-        // Frase larga o por voz: la IA dice qué buscar (partidos en la guía, películas de un actor…)
-        if (ai) { delay(600); value = S.smart(ctx, query, account, idx, accounts, only, includeOthers = multi) ?: com.jox3.iptvexo.tv.data.SmartSearch.Outcome(plain) }
+        // Normal al instante; frases → IA; sin resultados → nombres parecidos o IA
+        com.jox3.iptvexo.tv.data.SmartSearch.run(ctx, query, account, idx, accounts, only, includeOthers = multi) { value = it }
     }
     val results = outcome?.results
     // Puntajes de los demás equipos para los canales con varias señales ("Mejor opción" más acertada)

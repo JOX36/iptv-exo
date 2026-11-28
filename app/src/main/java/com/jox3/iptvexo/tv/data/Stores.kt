@@ -96,29 +96,45 @@ class LibraryStore(context: Context, val accountKey: String, val profileId: Stri
     /** Sube cada vez que cambia el progreso: obliga a recalcular "continuar viendo". */
     val progressVersion = mutableStateOf(0)
 
-    /** Búsquedas recientes (como en TiviMate), la más nueva primero. */
+    /**
+     * Búsquedas recientes (como en TiviMate), la más nueva primero. Son de la PERSONA (perfil),
+     * no del servidor: antes cada servidor tenía su propia lista y al cambiar de servidor
+     * "desaparecían".
+     */
+    private val searchKey = "search.p." + profileId
     val searchHistory = mutableStateListOf<String>().apply {
-        val arr = try { JSONArray(prefs.getString("$ns.search", "[]")) } catch (e: Exception) { JSONArray() }
+        fun read(k: String) = try { JSONArray(prefs.getString(k, "[]")) } catch (e: Exception) { JSONArray() }
+        val arr = read(searchKey)
         for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { add(it) }
+        // Lo que había guardado por servidor se suma (una sola vez)
+        val old = read("$ns.search")
+        if (old.length() > 0) {
+            for (i in 0 until old.length()) old.optString(i).takeIf { it.isNotBlank() && none { x -> x.equals(it, true) } }?.let { add(it) }
+            while (size > 15) removeAt(size - 1)
+            prefs.edit().remove("$ns.search").putString(searchKey, JSONArray(toList()).toString()).apply()
+        }
     }
 
     fun addSearch(query: String) {
-        val q = query.trim()
+        val q = query.trim().replace(Regex("\\s+"), " ")
         if (q.length < 2) return
-        // Mientras se escribe no se guardan los pedazos: "los" → "los simps" → "los simpson"
-        // queda solo "los simpson" (se quitan las búsquedas que eran el comienzo de esta,
-        // y si esta es el comienzo de una ya guardada, no se agrega).
-        if (searchHistory.any { it.length > q.length && it.startsWith(q, ignoreCase = true) }) return
-        searchHistory.removeAll { q.startsWith(it, ignoreCase = true) }
+        val now = android.os.SystemClock.elapsedRealtime()
+        fun recent(s: String) = now - (searchAddedAt[s.lowercase()] ?: Long.MIN_VALUE / 2) < 120_000
+        // Mientras se escribe no se guardan los pedazos ("los" → "los simps" → "los simpson"):
+        // solo se reemplazan los que se guardaron hace menos de 2 minutos. Una búsqueda vieja
+        // que empieza igual ("caracol tv") no impide guardar la nueva ("caracol").
+        if (searchHistory.any { it.length > q.length && it.startsWith(q, true) && recent(it) }) return
+        searchHistory.removeAll { it.equals(q, true) || (q.startsWith(it, true) && recent(it)) }
         searchHistory.add(0, q)
-        while (searchHistory.size > 12) searchHistory.removeAt(searchHistory.size - 1)
+        searchAddedAt[q.lowercase()] = now
+        while (searchHistory.size > 15) searchHistory.removeAt(searchHistory.size - 1)
         saveSearches()
     }
 
     fun removeSearch(query: String) { searchHistory.remove(query); saveSearches() }
     fun clearSearches() { searchHistory.clear(); saveSearches() }
     private fun saveSearches() {
-        prefs.edit().putString("$ns.search", JSONArray(searchHistory.toList()).toString()).apply()
+        prefs.edit().putString(searchKey, JSONArray(searchHistory.toList()).toString()).apply()
     }
 
     fun isFavorite(kind: String, id: String) = favorites.any { it.kind == kind && it.id == id }
@@ -400,3 +416,6 @@ class LibraryStore(context: Context, val accountKey: String, val profileId: Stri
         categoryId = o.optString("categoryId"), ts = o.optLong("ts"),
     )
 }
+
+/** Cuándo se guardó cada búsqueda en esta sesión (para no guardar los pedazos al escribir). */
+private val searchAddedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()

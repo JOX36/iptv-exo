@@ -283,9 +283,12 @@ private fun PhoneShell(
     LaunchedEffect(account.key) {
         val all = accounts.shown()
         ServerHub.refresh(all)
-        if (all.size > 1 && ServerHub.searchAllEnabled(context) && !ServerHub.lowMemory(context)) {
-            kotlinx.coroutines.delay(4000)
-            ServerHub.ensureIndexes(all.filter { it.key != account.key })
+        // El catálogo de este servidor se lee (del equipo o de internet) apenas abre: el buscador responde al instante
+        kotlinx.coroutines.delay(4000)
+        runCatching { repo.searchIndex() }
+        if (all.size > 1 && ServerHub.searchAllEnabled(context)) {
+            kotlinx.coroutines.delay(3000)
+            ServerHub.ensureIndexes(context, all.filter { it.key != account.key }, keep = !ServerHub.lowMemory(context))
         }
     }
     // Se llegó aquí desde el buscador de otro servidor: abrir lo que se eligió

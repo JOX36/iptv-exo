@@ -253,9 +253,13 @@ private fun MainShell(
     LaunchedEffect(account.key) {
         ServerHub.refresh(allAccounts)
         // El catálogo de los otros servidores se prepara en segundo plano para el buscador universal
-        if (allAccounts.size > 1 && ServerHub.searchAllEnabled(context) && !ServerHub.lowMemory(context)) {
-            delay(4000)
-            ServerHub.ensureIndexes(allAccounts.filter { it.key != account.key })
+        // El catálogo de este servidor se lee (del equipo o de internet) apenas abre: el buscador responde al instante
+        delay(4000)
+        runCatching { repo.searchIndex() }
+        // Los otros servidores: en memoria si el equipo da; si no, solo se deja al día el guardado en el equipo
+        if (allAccounts.size > 1 && ServerHub.searchAllEnabled(context)) {
+            delay(3000)
+            ServerHub.ensureIndexes(context, allAccounts.filter { it.key != account.key }, keep = !ServerHub.lowMemory(context))
         }
     }
     // ── Ver juntos: escuchar el reproductor y abrir lo que ve la sala ──

@@ -69,6 +69,105 @@ object SmartSearch {
         return p
     }
 
+    /**
+     * Toda la búsqueda, para la TV y el celular. Va mostrando ([emit]) lo que tiene:
+     * 1) la búsqueda normal, al instante;
+     * 2) frases largas o por voz → la IA dice qué buscar;
+     * 3) sin resultados → nombres parecidos ("simsons" → "Los Simpson") y, si tampoco, la IA
+     *    (p. ej. "el padrino" cuando el servidor la tiene como "The Godfather").
+     */
+    suspend fun run(
+        ctx: Context, query: String, current: Account, idx: TvRepo.Index, all: List<Account>, only: String?,
+        includeOthers: Boolean, emit: (Outcome) -> Unit,
+    ) {
+        val base = plain(query, current, idx, all, only, includeOthers)
+        val ai = wants(ctx, query)
+        emit(Outcome(base, thinking = ai))
+        if (ai) {
+            kotlinx.coroutines.delay(600)   // para no preguntar letra por letra
+            emit(smart(ctx, query, current, idx, all, only, includeOthers) ?: Outcome(base))
+            return
+        }
+        if (!base.isEmpty) return
+        // Sin resultados: ¿se escribió con algún error de letras?
+        kotlinx.coroutines.delay(300)
+        val near = similar(query, idx)
+        if (near.isNotEmpty()) {
+            val r = searchMany(near, current, idx, all, only, includeOthers)
+            if (!r.isEmpty) { emit(Outcome(r, "Resultados parecidos a “${query.trim()}”")); return }
+        }
+        // Tampoco: la IA (otros nombres del título, en inglés o como se conoce en Latinoamérica)
+        if (enabled(ctx) && TvRepo.normalize(query).length >= 4) {
+            emit(Outcome(base, thinking = true))
+            kotlinx.coroutines.delay(500)
+            emit(smart(ctx, query, current, idx, all, only, includeOthers) ?: Outcome(base))
+        }
+    }
+
+    /** Varias búsquedas juntas, sin repetir. */
+    private suspend fun searchMany(
+        names: List<String>, current: Account, idx: TvRepo.Index, all: List<Account>, only: String?, includeOthers: Boolean,
+    ): ServerHub.Results {
+        val ch = LinkedHashMap<String, ServerHub.Hit>()
+        val mv = LinkedHashMap<String, ServerHub.Hit>()
+        val sr = LinkedHashMap<String, ServerHub.Hit>()
+        names.forEach { n ->
+            val r = ServerHub.search(n, current, idx, all, only, includeOthers)
+            r.channels.forEach { ch.putIfAbsentCompat(it.key, it) }
+            r.movies.forEach { mv.putIfAbsentCompat(it.key, it) }
+            r.series.forEach { sr.putIfAbsentCompat(it.key, it) }
+        }
+        return ServerHub.Results(ch.values.take(40), mv.values.take(50), sr.values.take(50))
+    }
+
+    /**
+     * Nombres del catálogo que se parecen a lo escrito, palabra por palabra, con 1 o 2 letras
+     * de diferencia ("simsons" → "simpsons", "rapidos y furiozos" → "rápidos y furiosos").
+     */
+    suspend fun similar(query: String, idx: TvRepo.Index, max: Int = 6): List<String> = withContext(Dispatchers.Default) {
+        val qt = TvRepo.normalize(query).split(' ').filter { it.length >= 3 }
+        if (qt.isEmpty() || qt.sumOf { it.length } < 4) return@withContext emptyList()
+        fun lev(a: String, b: String, limit: Int): Int {
+            if (kotlin.math.abs(a.length - b.length) > limit) return limit + 1
+            var prev = IntArray(b.length + 1) { it }
+            for (i in 1..a.length) {
+                val cur = IntArray(b.length + 1); cur[0] = i
+                var rowMin = cur[0]
+                for (j in 1..b.length) {
+                    cur[j] = minOf(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + if (a[i - 1] == b[j - 1]) 0 else 1)
+                    rowMin = minOf(rowMin, cur[j])
+                }
+                if (rowMin > limit) return limit + 1
+                prev = cur
+            }
+            return prev[b.length]
+        }
+        class Hit(val name: String, val d: Int)
+        val out = HashMap<String, Hit>()
+        fun scan(keys: List<String>, names: List<String>) {
+            for (k in keys.indices) {
+                val toks = keys[k].split(' ')
+                var total = 0
+                var ok = true
+                for (q in qt) {
+                    val limit = if (q.length <= 4) 1 else 2
+                    val d = toks.minOfOrNull { t -> if (t.startsWith(q)) 0 else lev(q, t, limit) } ?: (limit + 1)
+                    if (d > limit) { ok = false; break }
+                    total += d
+                }
+                if (ok && total > 0) {
+                    val key = keys[k]
+                    val prev = out[key]
+                    if (prev == null || total < prev.d) out[key] = Hit(names[k], total)
+                }
+            }
+        }
+        scan(idx.movieKeys, idx.movies.map { it.name })
+        scan(idx.seriesKeys, idx.series.map { it.name })
+        scan(idx.channelKeys, idx.channels.map { it.name })
+        out.values.sortedWith(compareBy<Hit> { it.d }.thenBy { it.name.length }).map { it.name }.distinct().take(max)
+    }
+
     /** Búsqueda normal (al instante). */
     suspend fun plain(query: String, current: Account, idx: TvRepo.Index, all: List<Account>, only: String?, includeOthers: Boolean) =
         ServerHub.search(query, current, idx, all, only, includeOthers)
